@@ -18,7 +18,7 @@ QuizRush Arena turns a room into a live multiplayer quiz race. The presenter run
 4. Everyone types or speaks what they know; fixed topic chips are no longer the main UX.
 5. The phone shows a detected arena such as `AI Agents x Space Tech x Database Systems`.
 6. The 5-second intent window closes automatically.
-7. The phone immediately starts `request_questions`; the Effect worker requests LLM questions and falls back to topic-specific deterministic questions after 700ms if needed.
+7. The phone immediately stores a `PlayerIntent`, starts `request_questions`, and commits a topic-specific instant pack while the Effect worker races cache/template paths and LLM refinement.
 8. The match starts automatically and phones answer seven rapid questions inside one 25-second race clock.
 9. Projector updates leaderboard and top-16 fixture lanes from committed state.
 10. Winner screen shows champion, score, fastest answer, sound, and confetti.
@@ -118,6 +118,8 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Single phone route at `/join/:code`.
 - Optional tech proof at `/tech/:code`.
 - Freeform expertise input with deterministic intent preview and optional Web Speech API mic enhancement.
+- Shared transcript cleanup removes repeated interim speech such as `Fruit Fruits Fruits` before reducers see it.
+- First-class `PlayerIntent` rows store raw expertise, cleaned text, canonical topics, topic key, arena name, confidence, and pack-ready status.
 - Realtime joins, expertise-derived topic votes, answers, scores, ranks, bracket, winner, and replay.
 - Tasteful generated howler.js sound effects with phone sound off by default.
 - Live projector metrics refreshed by reducer-owned `live_tick` updates.
@@ -128,7 +130,7 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Server-authoritative response time and score calculation.
 - Duplicate answer rejection and metric tracking.
 - `MatchEvent` replay ledger.
-- Effect-based LLM worker with provider routing, retries, validation, safety guard support, and topic-specific deterministic fallback.
+- Effect-based LLM worker with provider routing, retries, validation, safety guard support, Instant Quiz Engine cache/template racing, and topic-specific deterministic fallback.
 - NVIDIA model routing through environment variables in `.env.local`.
 - Deterministic topic-specific fallback questions if LLM calls fail or arrive too late.
 
@@ -139,6 +141,17 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Cloudflare/ngrok tunnel startup is automated by `make online-public` when the provider CLI is installed. You can still set `PUBLIC_BASE_URL` manually for a trusted domain.
 
 ## AI Agents
+
+The demo does not wait on an LLM to make progress. The intent path is:
+
+```text
+phone intent
+-> submit_player_intent reducer
+-> deterministic normalization
+-> topic-specific instant question pack
+-> Effect worker exact/alias/semantic/template cache path
+-> background LLM generation/refinement if it returns before the race locks
+```
 
 - Intent Parser / Topic Router Agent: selects a tournament topic from live expertise signals.
 - Arena Router Agent: represented in the UI pipeline and currently backed by deterministic topic clustering for the single sprint arena.
@@ -181,6 +194,8 @@ Core reducers:
 create_session
 join_session
 submit_topic_vote
+submit_player_intent
+submit_parsed_intent
 request_questions
 submit_question_pack
 start_match

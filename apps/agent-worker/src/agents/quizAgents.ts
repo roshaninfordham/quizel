@@ -1,5 +1,5 @@
 import { Duration, Effect, Schedule } from "effect";
-import { buildTopicFallbackQuestions, DEFAULT_SELECTED_TOPIC, QUESTION_COUNT, questionBatchSchema } from "@quizrush/shared";
+import { buildTopicFallbackQuestions, DEFAULT_SELECTED_TOPIC, QUESTION_COUNT, normalizeIntent, questionBatchSchema } from "@quizrush/shared";
 import type { QuestionInput } from "@quizrush/shared";
 import { ValidationError, type LlmError } from "../llm/errors";
 import type { LlmProvider } from "../llm/provider";
@@ -86,13 +86,14 @@ export function routeTopic(
         Effect.try({
           try: () => {
             const parsed = topicRouterSchema.parse(payload);
+            const selectedTopic = normalizeIntent(parsed.selected_topic).displayArenaName;
             return {
-              selectedTopic: parsed.selected_topic,
+              selectedTopic,
               status: "complete" as const,
               event: {
                 agentName: "Topic Router Agent",
                 eventType: "topic_selected",
-                content: parsed.reason,
+                content: `${parsed.reason} Arena normalized to ${selectedTopic}.`,
                 confidence: 0.9,
                 status: "complete" as const
               }

@@ -10,7 +10,7 @@ import {
 } from "@quizrush/shared";
 import { AnswerButton, Button, ConnectionBadge, Panel, PhoneShell, ReconnectingOverlay, SoundToggle, cn } from "../components/ui";
 import { useSpeechIntent } from "../hooks/useSpeechIntent";
-import { useJoinTournament, useRequestQuestions, useSubmitAnswer, useSubmitTopicVote } from "../hooks/useArenaActions";
+import { useJoinTournament, useRequestQuestions, useSubmitAnswer, useSubmitPlayerIntent, useSubmitTopicVote } from "../hooks/useArenaActions";
 import {
   getJoinedParticipantId,
   useCurrentQuestion,
@@ -38,14 +38,6 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const session = useSessionByCode(code);
   const sessionId = session?.sessionId ?? "session-demo";
   const [participantId, setParticipantId] = useState(() => getJoinedParticipantId(code));
-  const participant = state.participants.find((candidate) => candidate.participantId === participantId);
-  const round = useCurrentRound(sessionId);
-  const question = useCurrentQuestion(sessionId);
-  const score = getScore(state, sessionId, participantId);
-  const answer = getAnswerForParticipant(state, round?.roundId, participantId ?? undefined);
-  const totalPlayers = state.participants.filter((candidate) => candidate.sessionId === sessionId).length;
-  const joinedVotes = state.topicVotes.filter((vote) => vote.participantId === participantId).map((vote) => vote.topic);
-
   const [step, setStep] = useState<JoinStep>("profile");
   const [displayName, setDisplayName] = useState("");
   const [avatar, setAvatar] = useState(AVATAR_CHOICES[0] ?? "🚀");
@@ -54,13 +46,24 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const [lastAnswerState, setLastAnswerState] = useState<"correct" | "wrong" | null>(null);
   const placeholder = useMemo(() => INTENT_PLACEHOLDERS[Math.floor(Math.random() * INTENT_PLACEHOLDERS.length)] ?? "AI agents, databases, and startups", []);
   const parsedIntent = useMemo(() => parseIntentPreview(intentText), [intentText]);
+  const participant = state.participants.find((candidate) => candidate.participantId === participantId);
+  const round = useCurrentRound(sessionId);
+  const question = useCurrentQuestion(sessionId);
+  const score = getScore(state, sessionId, participantId);
+  const answer = getAnswerForParticipant(state, round?.roundId, participantId ?? undefined);
+  const totalPlayers = state.participants.filter((candidate) => candidate.sessionId === sessionId).length;
+  const joinedVotes = state.topicVotes.filter((vote) => vote.participantId === participantId).map((vote) => vote.topic);
+  const sessionQuestions = state.questions.filter((candidate) => candidate.sessionId === sessionId);
+  const questionsReady = sessionQuestions.length >= QUESTION_COUNT;
+  const arenaLabel = joinedVotes.length ? joinedVotes.map((topic) => topic.replace(/\s+(Systems|Strategy|Technology)$/i, "")).join(" x ") : session?.selectedTopic ?? parsedIntent.arenaName;
+  const packSource = packSourceLabel(sessionQuestions[0]?.generatedBy, sessionQuestions[0]?.fairnessStatus);
+
   const { joinTournament, loading: joining, error: joinError } = useJoinTournament(code);
   const { submitTopicVote, loading: voting, message: voteMessage, error: voteError } = useSubmitTopicVote();
+  const { submitPlayerIntent, loading: submittingIntent, error: intentError } = useSubmitPlayerIntent();
   const { requestQuestions, loading: requesting, error: requestError } = useRequestQuestions();
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
-  const speech = useSpeechIntent((value) => {
-    setIntentText((current) => (current ? `${current} ${value}` : value));
-  });
+  const speech = useSpeechIntent((value) => setIntentText(value));
 
   const options = useMemo<Array<[OptionKey, string]>>(
     () =>
@@ -109,8 +112,9 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     const result = await joinTournament({ displayName: displayName.trim() || "Player", avatar });
     if (result?.participant.participantId) {
       setParticipantId(result.participant.participantId);
+      await submitPlayerIntent(sessionId, intentText, speech.finalTranscript ? "speech" : "typed");
       await submitTopicVote(sessionId, parsedIntent.topics);
-      await requestQuestions(sessionId, parsedIntent.topics.join(" + "));
+      await requestQuestions(sessionId, parsedIntent.arenaName);
       playArenaAssigned();
     }
   };
@@ -191,6 +195,9 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
                 rows={5}
                 className="min-h-36 w-full resize-none bg-transparent px-2 py-2 text-2xl font-black leading-tight text-slate-950 outline-none placeholder:text-slate-400"
               />
+              {speech.interimTranscript ? (
+                <p className="px-2 pb-2 text-base font-black text-slate-400">Listening: {speech.interimTranscript}</p>
+              ) : null}
               <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
                 <p className="text-xs font-black uppercase text-slate-500">
                   {speech.available ? (speech.listening ? "Listening..." : "Voice optional") : "Voice unavailable here"}
@@ -245,13 +252,13 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
                 </span>
               ))}
             </div>
-            {joinError || voteError || requestError ? <ErrorMessage>{joinError || voteError || requestError}</ErrorMessage> : null}
+            {joinError || intentError || voteError || requestError ? <ErrorMessage>{joinError || intentError || voteError || requestError}</ErrorMessage> : null}
             <div className="mt-7 grid grid-cols-[0.42fr_0.58fr] gap-3">
               <Button onClick={() => setStep("intent")} variant="secondary" icon={<Pencil className="size-5" />}>
                 Edit
               </Button>
-              <Button onClick={enterArena} disabled={joining || voting || requesting} icon={<Check className="size-5" />}>
-                {requesting ? "Starting Agent" : "Enter Arena"}
+              <Button onClick={enterArena} disabled={joining || submittingIntent || voting || requesting} icon={<Check className="size-5" />}>
+                {requesting || submittingIntent ? "Starting Agent" : "Enter Arena"}
               </Button>
             </div>
           </Panel>
@@ -344,20 +351,26 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           {session?.status === "generating" || session?.status === "ready" ? "AI is building the sprint" : "Arena is forming"}
         </h1>
         <p className="mt-3 text-base font-bold text-slate-500">
-          You are racing in <span className="font-black text-slate-950">{joinedVotes.length ? joinedVotes.join(" x ") : session?.selectedTopic ?? "the live arena"}</span>.
+          You are racing in <span className="font-black text-slate-950">{arenaLabel}</span>.
         </p>
         <div className="mt-6 grid grid-cols-2 gap-3">
-          <WaitingStat label="Your arena" value={joinedVotes[0] ?? "Live"} />
+          <WaitingStat label="Your arena" value={arenaLabel} />
           <WaitingStat label="Global racers" value={String(totalPlayers)} />
           <WaitingStat label="Phase" value={(session?.status ?? "lobby").replace("_", " ")} />
-          <WaitingStat label="Questions" value={String(QUESTION_COUNT)} />
+          <WaitingStat label="Pack" value={packSource} />
         </div>
         <div className="mt-6 rounded-[26px] bg-gradient-to-r from-violet-50 to-cyan-50 p-4">
           <div className="flex items-center gap-3">
             <Sparkles className="size-6 text-violet-700" />
             <p className="text-base font-black text-slate-950">
-              {voteMessage ? "Expertise synced. Watch the projector." : "AI is clustering live room intent."}
+              {questionsReady ? "Sprint ready. Watch the projector countdown." : voteMessage ? "Expertise synced. Building instant pack..." : "AI is clustering live room intent."}
             </p>
+          </div>
+          <div className="mt-4 grid gap-2">
+            <ProgressStep complete label="Intent captured" />
+            <ProgressStep complete={Boolean(session?.selectedTopic || joinedVotes.length)} label={`Arena detected${arenaLabel ? `: ${arenaLabel}` : ""}`} />
+            <ProgressStep complete={questionsReady} label={questionsReady ? `Instant quiz pack ready (${packSource})` : "Using instant cache/template path"} />
+            <ProgressStep complete={session?.status === "playing"} label={session?.status === "playing" ? "Race live" : "Starting when presenter presses S"} />
           </div>
         </div>
       </Panel>
@@ -384,6 +397,17 @@ function WaitingStat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ProgressStep({ complete, label }: { complete: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-white/70 px-3 py-2">
+      <span className={cn("grid size-6 shrink-0 place-items-center rounded-full text-xs font-black", complete ? "bg-emerald-500 text-white" : "bg-white text-slate-400 ring-2 ring-slate-200")}>
+        {complete ? <Check className="size-4" /> : ""}
+      </span>
+      <span className={cn("text-sm font-black", complete ? "text-slate-950" : "text-slate-500")}>{label}</span>
+    </div>
+  );
+}
+
 function ResultStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[22px] bg-slate-50 p-4">
@@ -395,4 +419,11 @@ function ResultStat({ label, value }: { label: string; value: string }) {
 
 function ErrorMessage({ children }: { children: React.ReactNode }) {
   return <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{children}</p>;
+}
+
+function packSourceLabel(generatedBy?: string, fairnessStatus?: string): string {
+  if (!generatedBy) return "Preparing";
+  if (fairnessStatus === "fallback") return "Instant pack";
+  if (/quiz builder/i.test(generatedBy)) return "AI custom";
+  return generatedBy;
 }

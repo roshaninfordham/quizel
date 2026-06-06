@@ -139,6 +139,24 @@ describe("QuizRush reducer invariants", () => {
     expect(state.questions[0]?.questionText.toLowerCase()).toContain("visa");
   });
 
+  it("submit_player_intent records a parsed realtime intent row and ledger events", () => {
+    const engine = new QuizRushEngine();
+    engine.callReducer("join_session", { code: DEFAULT_SESSION_CODE, displayName: "Maya", avatar: "🚀" }, "device-maya");
+    const intent = engine.callReducer("submit_player_intent", {
+      sessionId: DEFAULT_SESSION_ID,
+      rawText: "Fruit Fruits Fruits",
+      transcriptSource: "speech"
+    }, "device-maya");
+    const state = engine.getSnapshot();
+
+    expect(intent.ok).toBe(true);
+    expect(state.playerIntents).toHaveLength(1);
+    expect(state.playerIntents[0]?.arenaName).toBe("Fruit Science");
+    expect(state.sessions[0]?.selectedTopic).toBe("Fruit Science");
+    expect(state.matchEvents.some((event) => event.eventType === "intent_submitted")).toBe(true);
+    expect(state.matchEvents.some((event) => event.eventType === "intent_parsed")).toBe(true);
+  });
+
   it("rounds advance immediately while staying inside the 25-second match budget", () => {
     const engine = prepareReadyMatch();
     const first = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };

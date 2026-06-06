@@ -7,10 +7,13 @@ QuizRush Arena uses agents to create the sprint, not to mutate scores. Scores, a
 ```mermaid
 flowchart LR
     Phone[Phone expertise text or speech transcript] --> Intent[Deterministic intent preview]
-    Intent --> Reducer[submit_topic_vote reducer]
-    Reducer --> Worker[Effect Agent Worker]
+    Intent --> IntentReducer[submit_player_intent reducer]
+    IntentReducer --> VoteReducer[submit_topic_vote / request_questions reducers]
+    VoteReducer --> Instant[Instant topic pack committed]
+    VoteReducer --> Worker[Effect Agent Worker]
     Worker --> Router[Intent Parser / Topic Router Agent]
-    Router --> Builder[Quiz Builder Agent]
+    Router --> Cache[Exact / alias / semantic cache race]
+    Cache --> Builder[Quiz Builder Agent]
     Builder --> Guard[Safety + Fairness Guard]
     Guard --> Pack[submit_question_pack reducer]
     Pack --> Arena[25-second sprint]
@@ -21,8 +24,11 @@ flowchart LR
 - Phone typing is primary.
 - Web Speech API is optional and never required.
 - Raw audio is not stored or sent to the realtime backend.
-- Freeform text is deterministically mapped to compact topics such as `AI Agents`, `Space Tech`, and `Database Systems`; unmatched spoken topics such as `US visa system` are preserved as custom arena topics instead of being forced into a default science/tech bucket.
-- The Effect worker uses those live topic signals to route the quiz topic and generate questions.
+- Interim speech results are display-only. Only final transcripts are committed, then repeated words/phrases are removed.
+- `submit_player_intent` stores raw text, cleaned text, canonical topics, topic key, arena name, confidence, and status in realtime state.
+- Freeform text is deterministically mapped to compact topics such as `AI Agents`, `Space Technology`, and `Database Systems`; spoken topics such as `US visa system` and `Fruit Fruits Fruits` become `US Visa System` and `Fruit Science`.
+- `request_questions` immediately commits a topic-specific pack so phones/projector never wait on model latency.
+- The Effect worker then records an Instant Quiz Engine event from exact cache, alias cache, semantic token cache, template, or seed fallback, while LLM generation can refine before the race locks.
 - If the model is slow or invalid, deterministic topic-specific fallback questions keep the sprint live without reverting to the static demo pack.
 
 ## Agent Guardrails
@@ -36,4 +42,4 @@ flowchart LR
 
 ## Production Expansion
 
-The next production pass should add first-class `PlayerIntent`, `Arena`, and `ArenaMember` tables in SpacetimeDB. That would let multiple quiz arenas run in parallel while the global leaderboard uses normalized arena-relative scores.
+The next production pass should add `Arena` and `ArenaMember` tables for multiple parallel quiz arenas. The `PlayerIntent` table/reducer path now exists in the shared engine and SpacetimeDB module contract.

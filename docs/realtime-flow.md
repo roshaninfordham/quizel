@@ -17,7 +17,9 @@ Phone scans QR
 
 ```text
 Phone submits freeform expertise text
--> deterministic intent preview maps text to compact topics
+-> deterministic transcript cleanup removes repeated words/phrases
+-> submit_player_intent reducer stores raw text, cleaned text, canonical topics, and arena name
+-> MatchEvent(intent_submitted/intent_parsed)
 -> submit_topic_vote reducer
 -> TopicVote rows replaced for participant
 -> MatchEvent(topic_vote)
@@ -30,15 +32,18 @@ Phone submits freeform expertise text
 ```text
 phone confirmation or 5-second expertise window closes
 -> request_questions reducer
+-> topic-specific instant pack committed immediately
 -> AgentRequest pending
--> Effect worker routes topic + generates quiz
+-> Effect worker routes topic + races exact cache / alias cache / semantic token cache / template
+-> Instant Quiz Engine records source + latency as AgentEvent
+-> LLM generation continues as refinement
 -> Zod validation + optional safety guard
 -> submit_question_pack reducer
 -> Question rows inserted
 -> Session status ready
 ```
 
-The phone starts the agent request as soon as the player confirms the arena, while the projector keeps a backup automation after the expertise window. It also starts a deterministic 700ms fallback timer. If approved LLM questions are not committed quickly, topic-specific fallback questions are submitted so the judged flow never waits on model latency or falls back to an unrelated quiz. Late LLM packs are ignored once a match has already started with an existing question pack.
+The phone starts the agent request as soon as the player confirms the arena, while the projector keeps a backup automation after the expertise window. `request_questions` commits a topic-specific instant pack first, so the judged flow never waits on model latency or falls back to an unrelated quiz. Late LLM packs are ignored once a match has already started with an existing question pack.
 
 ## 25-Second Match
 

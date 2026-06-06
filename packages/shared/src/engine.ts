@@ -11,6 +11,7 @@ import {
 import { questionBatchSchema, selectedOptionSchema } from "./schemas";
 import { computeAnswerScore, compareScores } from "./scoring";
 import { buildTopicFallbackQuestions } from "./topicFallbackQuestions";
+import { normalizeIntent } from "./intentNormalization";
 import type {
   AgentEvent,
   AgentRequest,
@@ -21,6 +22,7 @@ import type {
   MatchEventType,
   OptionKey,
   Participant,
+  PlayerIntent,
   Question,
   QuestionInput,
   QuizRushState,
@@ -98,6 +100,10 @@ export class QuizRushEngine {
         return this.joinSession(context as ReducerContext<{ code?: string; joinCode?: string; displayName: string; avatar: string }>);
       case "submit_topic_vote":
         return this.submitTopicVote(context as ReducerContext<{ sessionId: string; topics: string[] }>);
+      case "submit_player_intent":
+        return this.submitPlayerIntent(context as ReducerContext<{ sessionId: string; rawText: string; transcriptSource?: "typed" | "speech" }>);
+      case "submit_parsed_intent":
+        return this.submitParsedIntent(context as ReducerContext<{ intentId: string; parsed: ReturnType<typeof normalizeIntent> }>);
       case "request_questions":
         return this.requestQuestions(context as ReducerContext<{ sessionId: string; topic?: string; questionCount?: number }>);
       case "submit_question_pack":
@@ -237,10 +243,76 @@ export class QuizRushEngine {
     return inserted;
   }
 
+  private submitPlayerIntent({
+    args,
+    identity
+  }: ReducerContext<{ sessionId: string; rawText: string; transcriptSource?: "typed" | "speech" }>): PlayerIntent {
+    const session = this.requireSession(args.sessionId);
+    const participant = this.requireParticipantForIdentity(session.sessionId, identity);
+    const parsed = normalizeIntent(args.rawText);
+    const now = Date.now();
+    this.state.playerIntents = this.state.playerIntents.filter((intent) => intent.participantId !== participant.participantId);
+    const intent: PlayerIntent = {
+      intentId: this.nextId("player-intent"),
+      sessionId: session.sessionId,
+      participantId: participant.participantId,
+      rawText: parsed.rawText,
+      transcriptSource: args.transcriptSource ?? "typed",
+      cleanedText: parsed.cleanedText,
+      canonicalTopics: parsed.canonicalTopics,
+      topicKey: parsed.topicKey,
+      arenaName: parsed.displayArenaName,
+      difficultyHint: parsed.difficultyHint,
+      confidence: parsed.confidence,
+      status: "parsed",
+      createdAt: now,
+      updatedAt: now
+    };
+    this.state.playerIntents.push(intent);
+    if (session.status === "lobby") session.status = "topic_voting";
+    session.selectedTopic = intent.arenaName;
+    session.updatedAt = now;
+    this.matchEvent(session.sessionId, participant.participantId, "intent_submitted", null, null, null, {
+      rawText: intent.rawText,
+      transcriptSource: intent.transcriptSource
+    });
+    this.matchEvent(session.sessionId, participant.participantId, "intent_parsed", null, null, null, {
+      arenaName: intent.arenaName,
+      topics: intent.canonicalTopics,
+      topicKey: intent.topicKey,
+      confidence: intent.confidence
+    });
+    return intent;
+  }
+
+  private submitParsedIntent({ args }: ReducerContext<{ intentId: string; parsed: ReturnType<typeof normalizeIntent> }>): PlayerIntent {
+    const intent = this.state.playerIntents.find((candidate) => candidate.intentId === args.intentId);
+    if (!intent) throw new Error(`PlayerIntent not found: ${args.intentId}`);
+    const now = Date.now();
+    intent.cleanedText = args.parsed.cleanedText;
+    intent.canonicalTopics = args.parsed.canonicalTopics;
+    intent.topicKey = args.parsed.topicKey;
+    intent.arenaName = args.parsed.displayArenaName;
+    intent.difficultyHint = args.parsed.difficultyHint;
+    intent.confidence = args.parsed.confidence;
+    intent.status = "parsed";
+    intent.updatedAt = now;
+    const session = this.requireSession(intent.sessionId);
+    session.selectedTopic = intent.arenaName;
+    session.updatedAt = now;
+    this.matchEvent(intent.sessionId, intent.participantId, "intent_parsed", null, null, null, {
+      arenaName: intent.arenaName,
+      topics: intent.canonicalTopics,
+      topicKey: intent.topicKey,
+      confidence: intent.confidence
+    });
+    return intent;
+  }
+
   private requestQuestions({ args, identity }: ReducerContext<{ sessionId: string; topic?: string; questionCount?: number }>): AgentRequest {
     const session = this.requireSession(args.sessionId);
     const now = Date.now();
-    const topic = args.topic?.trim() || selectedTopicFromVotes(this.state.topicVotes.filter((vote) => vote.sessionId === session.sessionId));
+    const topic = normalizeIntent(args.topic?.trim() || selectedTopicFromVotes(this.state.topicVotes.filter((vote) => vote.sessionId === session.sessionId))).displayArenaName;
     const questionCount = args.questionCount ?? QUESTION_COUNT;
     const pendingSameTopic = this.state.agentRequests.find(
       (request) => request.sessionId === session.sessionId && request.status === "pending" && request.topic === topic
@@ -371,6 +443,10 @@ export class QuizRushEngine {
     session.selectedTopic = topic;
     session.status = inserted.length >= session.questionCount ? "ready" : "generating";
     session.updatedAt = now;
+    for (const intent of this.state.playerIntents.filter((candidate) => candidate.sessionId === session.sessionId)) {
+      intent.status = "pack_ready";
+      intent.updatedAt = now;
+    }
     if (args.requestId) {
       const request = this.state.agentRequests.find((candidate) => candidate.requestId === args.requestId);
       if (request) {
@@ -388,6 +464,11 @@ export class QuizRushEngine {
         status: identity === "agent-worker" ? "complete" : "fallback"
       },
       identity
+    });
+    this.matchEvent(session.sessionId, null, "pack_ready", null, null, null, {
+      topic,
+      questions: inserted.length,
+      source: identity === "agent-worker" ? "llm" : "instant"
     });
     return inserted;
   }
@@ -870,6 +951,7 @@ function emptyState(): QuizRushState {
     sessions: [],
     participants: [],
     topicVotes: [],
+    playerIntents: [],
     questions: [],
     rounds: [],
     answers: [],

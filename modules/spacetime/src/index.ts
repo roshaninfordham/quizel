@@ -49,6 +49,26 @@ const topic_vote = table(
   }
 );
 
+const player_intent = table(
+  { name: "player_intent", public: true },
+  {
+    intent_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
+    participant_id: t.string().index("btree"),
+    raw_text: t.string(),
+    transcript_source: t.string(),
+    cleaned_text: t.string(),
+    canonical_topics_json: t.string(),
+    topic_key: t.string(),
+    arena_name: t.string(),
+    difficulty_hint: t.string(),
+    confidence: t.f32(),
+    status: t.string(),
+    created_at_ms: t.u64(),
+    updated_at_ms: t.u64()
+  }
+);
+
 const question = table(
   { name: "question", public: true },
   {
@@ -192,6 +212,7 @@ const spacetimedb = schema({
   session,
   participant,
   topic_vote,
+  player_intent,
   question,
   round,
   answer,
@@ -270,10 +291,68 @@ export const submit_topic_vote = spacetimedb.reducer({ session_id: t.string(), t
   bumpStats(ctx, session_id);
 });
 
+export const submit_player_intent = spacetimedb.reducer(
+  { session_id: t.string(), raw_text: t.string(), transcript_source: t.string() },
+  (ctx, { session_id, raw_text, transcript_source }) => {
+    const participantRow = requireParticipantForSender(ctx, session_id);
+    const parsed = normalizeIntentForModule(raw_text);
+    const now = nowMs();
+    ctx.db.player_intent.participant_id.delete(participantRow.participant_id);
+    ctx.db.player_intent.insert({
+      intent_id: id("player-intent"),
+      session_id,
+      participant_id: participantRow.participant_id,
+      raw_text: raw_text.trim().slice(0, 300),
+      transcript_source: transcript_source || "typed",
+      cleaned_text: parsed.cleaned_text,
+      canonical_topics_json: JSON.stringify(parsed.canonical_topics),
+      topic_key: parsed.topic_key,
+      arena_name: parsed.arena_name,
+      difficulty_hint: parsed.difficulty_hint,
+      confidence: parsed.confidence,
+      status: "parsed",
+      created_at_ms: now,
+      updated_at_ms: now
+    });
+    const current = requireSession(ctx, session_id);
+    ctx.db.session.session_id.update({
+      ...current,
+      status: current.status === "lobby" ? "topic_voting" : current.status,
+      selected_topic: parsed.arena_name,
+      updated_at_ms: now
+    });
+    insertMatchEvent(ctx, session_id, participantRow.participant_id, "intent_submitted", undefined, undefined, undefined, JSON.stringify({ transcript_source }));
+    insertMatchEvent(ctx, session_id, participantRow.participant_id, "intent_parsed", undefined, undefined, undefined, JSON.stringify({ arena_name: parsed.arena_name, topics: parsed.canonical_topics, topic_key: parsed.topic_key }));
+    bumpStats(ctx, session_id);
+  }
+);
+
+export const submit_parsed_intent = spacetimedb.reducer({ intent_id: t.string(), parsed_json: t.string() }, (ctx, { intent_id, parsed_json }) => {
+  const existing = ctx.db.player_intent.intent_id.find(intent_id);
+  if (!existing) throw new Error(`PlayerIntent not found: ${intent_id}`);
+  const parsed = normalizeIntentForModule(parsed_json);
+  const now = nowMs();
+  ctx.db.player_intent.intent_id.update({
+    ...existing,
+    cleaned_text: parsed.cleaned_text,
+    canonical_topics_json: JSON.stringify(parsed.canonical_topics),
+    topic_key: parsed.topic_key,
+    arena_name: parsed.arena_name,
+    difficulty_hint: parsed.difficulty_hint,
+    confidence: parsed.confidence,
+    status: "parsed",
+    updated_at_ms: now
+  });
+  const current = requireSession(ctx, existing.session_id);
+  ctx.db.session.session_id.update({ ...current, selected_topic: parsed.arena_name, updated_at_ms: now });
+  insertMatchEvent(ctx, existing.session_id, existing.participant_id, "intent_parsed", undefined, undefined, undefined, JSON.stringify({ arena_name: parsed.arena_name, topics: parsed.canonical_topics, topic_key: parsed.topic_key }));
+  bumpStats(ctx, existing.session_id);
+});
+
 export const request_questions = spacetimedb.reducer({ session_id: t.string(), topic: t.string(), question_count: t.u32() }, (ctx, { session_id, topic, question_count }) => {
   const current = requireSession(ctx, session_id);
   const now = nowMs();
-  const selected_topic = topic || topicFromVotes(ctx, session_id);
+  const selected_topic = normalizeIntentForModule(topic || topicFromVotes(ctx, session_id)).arena_name;
   const requestedCount = question_count || QUESTION_COUNT;
   const pendingSame = Array.from(ctx.db.agent_request.session_id.filter(session_id)).find(
     (request) => request.status === "pending" && request.topic === selected_topic
@@ -630,6 +709,9 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
     });
   });
   ctx.db.session.session_id.update({ ...current, status: "ready", selected_topic, updated_at_ms: now });
+  for (const intent of ctx.db.player_intent.session_id.filter(session_id)) {
+    ctx.db.player_intent.intent_id.update({ ...intent, status: "pack_ready", updated_at_ms: now });
+  }
   if (request_id) {
     const request = ctx.db.agent_request.request_id.find(request_id);
     if (request) ctx.db.agent_request.request_id.update({ ...request, status: "complete", updated_at_ms: now });
@@ -744,6 +826,7 @@ function emptyScore(session_id: string, participant_id: string, now: bigint) {
 function resetSessionTables(ctx: ReducerCtx, session_id: string) {
   ctx.db.participant.session_id.delete(session_id);
   ctx.db.topic_vote.session_id.delete(session_id);
+  ctx.db.player_intent.session_id.delete(session_id);
   ctx.db.question.session_id.delete(session_id);
   ctx.db.round.session_id.delete(session_id);
   ctx.db.answer.session_id.delete(session_id);
@@ -921,6 +1004,16 @@ function fallbackQuestionsForTopic(topic: string, count: number) {
         fq("At a US port of entry, who decides admission?", ["Border officer", "Taxi driver", "Tour guide", "Travel blogger"], "A", "A border officer makes the final admission decision at the port of entry.", normalized),
         fq("Why do forms ask for travel purpose?", ["Match the visa", "Pick an airline", "Choose a meal", "Rate a hotel"], "A", "Travel purpose helps match a person to the correct visa category.", normalized)
       ]
+    : lower.includes("fruit") || lower.includes("nutrition")
+      ? [
+          fq("In {topic}, which part usually protects seeds?", ["Fruit", "Root", "Stem", "Leaf"], "A", "A fruit develops around seeds and often helps protect or spread them.", normalized),
+          fq("Which nutrient is citrus fruit famous for?", ["Vitamin C", "Iron", "Caffeine", "Salt"], "A", "Citrus fruits are widely known for vitamin C.", normalized),
+          fq("What process helps fruit plants make sugars?", ["Photosynthesis", "Evaporation", "Rusting", "Freezing"], "A", "Plants use photosynthesis to make sugars.", normalized),
+          fq("Which fruit is botanically a berry?", ["Banana", "Carrot", "Potato", "Onion"], "A", "Botanically, bananas are classified as berries.", normalized),
+          fq("Why do many fruits taste sweet?", ["Natural sugars", "Metal salts", "Chalk", "Air pressure"], "A", "Many ripe fruits contain natural sugars.", normalized),
+          fq("What can fruit fiber support?", ["Digestion", "Jet engines", "Magnetism", "Screen brightness"], "A", "Dietary fiber from fruit can support normal digestion.", normalized),
+          fq("Why do fruits ripen?", ["Seed dispersal", "Battery charging", "Rock melting", "Cloud forming"], "A", "Ripening can help seeds spread.", normalized)
+        ]
     : [
         fq("In {topic}, what helps make answers reliable?", ["Clear definitions", "Random guesses", "Hidden rules", "Long delays"], "A", "Clear definitions make a fast quiz on {topic} fair and answerable.", normalized),
         fq("What is the best first step when learning {topic}?", ["Know key terms", "Skip basics", "Ignore context", "Avoid examples"], "A", "Key terms give players a shared starting point for {topic}.", normalized),
@@ -950,21 +1043,106 @@ function normalizeTopic(topic: string): string {
   if (!cleaned) return DEFAULT_TOPIC;
   return cleaned
     .split(" + ")
-    .map((part) =>
-      part
-        .trim()
-        .split(/\s+/)
-        .map((word) => {
-          const lower = word.toLowerCase();
-          return ["us", "usa", "uk", "ai", "llm", "db", "sql", "api"].includes(lower)
-            ? lower.toUpperCase()
-            : lower.charAt(0).toUpperCase() + lower.slice(1);
-        })
-        .join(" ")
-    )
+    .map((part) => normalizeIntentForModule(part).arena_name)
+    .filter(Boolean)
     .slice(0, 3)
     .join(" + ")
     .slice(0, 80);
+}
+
+function normalizeIntentForModule(raw: string) {
+  const cleaned = removeRepeatedNgrams(
+    raw
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s+.-]/gu, " ")
+      .replace(/\b(i want to|i know about|i know|test me on|quiz me on|give quiz competition for|compete in|quiz|questions|about|on)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+  const topics: string[] = [];
+  if (/\b(us visa|visa system|immigration|uscis|embassy|consulate|green card|h-?1b|f-?1|b-?1|b-?2)\b/i.test(cleaned)) topics.push("US Visa System");
+  if (/\b(ai|artificial intelligence|agent|agents|llm|machine learning|prompt|automation)\b/i.test(cleaned)) topics.push("AI Agents");
+  if (/\b(space|rocket|nasa|orbit|satellite|mars|moon|spacex|astronomy)\b/i.test(cleaned)) topics.push("Space Technology");
+  if (/\b(database|databases|db|sql|spacetimedb|redis|postgres|backend|distributed)\b/i.test(cleaned)) topics.push("Database Systems");
+  if (/\b(startup|startups|founder|vc|venture|pitch|product|growth|business)\b/i.test(cleaned)) topics.push("Startup Strategy");
+  if (/\b(fruit|fruits|nutrition|nutrient|biology|botany|food science)\b/i.test(cleaned)) topics.push("Fruit Science");
+  if (/\b(math|probability|logic|algebra|calculus|statistics|puzzle)\b/i.test(cleaned)) topics.push("Math Logic");
+  if (/\b(history|empire|ancient|civilization|geography)\b/i.test(cleaned)) topics.push("World History");
+  if (/\b(sports|football|soccer|f1|formula|basketball|cricket|tennis|world cup)\b/i.test(cleaned)) topics.push("Sports Strategy");
+  const canonical_topics = suppressBroadModuleTopics(dedupe(topics.length ? topics : [titleCase(cleaned || "General Knowledge")])).slice(0, 3);
+  const arena_name = canonical_topics.map(displayTopic).join(" x ");
+  return {
+    cleaned_text: cleaned,
+    canonical_topics,
+    topic_key: canonical_topics.map(topicKey).sort().join("::") || "general_knowledge",
+    arena_name,
+    difficulty_hint: /\b(expert|advanced|hard|professional)\b/i.test(raw) ? "expert" : /\b(beginner|basic|easy|intro)\b/i.test(raw) ? "beginner" : "intermediate",
+    confidence: Math.min(0.96, 0.64 + canonical_topics.length * 0.1)
+  };
+}
+
+function removeRepeatedNgrams(text: string): string {
+  let words = text.split(/\s+/).filter(Boolean);
+  for (const size of [3, 2, 1]) {
+    const output: string[] = [];
+    for (let index = 0; index < words.length; index += 1) {
+      const current = words.slice(index, index + size).map(repeatKey).join(" ");
+      const previous = output.slice(Math.max(0, output.length - size)).map(repeatKey).join(" ");
+      if (output.length >= size && current === previous) {
+        index += size - 1;
+        continue;
+      }
+      output.push(words[index] ?? "");
+    }
+    words = output.filter(Boolean);
+  }
+  return words.join(" ");
+}
+
+function displayTopic(topic: string): string {
+  if (topic === "AI Agents") return "AI";
+  if (topic === "Space Technology") return "Space";
+  if (topic === "Database Systems") return "Databases";
+  if (topic === "Startup Strategy") return "Startups";
+  if (topic === "World History") return "History";
+  return topic;
+}
+
+function repeatKey(word: string): string {
+  const lower = word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return lower.length > 3 && lower.endsWith("s") ? lower.slice(0, -1) : lower;
+}
+
+function topicKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function dedupe(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const key = topicKey(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function suppressBroadModuleTopics(topics: string[]): string[] {
+  const hasSpecificScience = topics.some((topic) => ["Fruit Science", "Space Technology", "Database Systems", "AI Agents"].includes(topic));
+  return hasSpecificScience ? topics.filter((topic) => topic !== "Science") : topics;
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      return ["us", "usa", "uk", "ai", "llm", "db", "sql", "api"].includes(lower) ? lower.toUpperCase() : lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
 }
 
 function parseTopics(topics_json: string): string[] {

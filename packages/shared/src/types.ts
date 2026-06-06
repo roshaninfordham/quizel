@@ -2,10 +2,14 @@ export type OptionKey = "A" | "B" | "C" | "D";
 export type SessionStatus = "lobby" | "topic_voting" | "generating" | "ready" | "playing" | "finished" | "replay" | "reset";
 export type RoundStatus = "waiting" | "active" | "resolved";
 export type AgentStatus = "pending" | "running" | "complete" | "failed" | "fallback";
+export type PlayerIntentStatus = "pending" | "parsed" | "pack_ready" | "failed" | "fallback";
 export type MatchEventType =
   | "join"
+  | "intent_submitted"
+  | "intent_parsed"
   | "topic_vote"
   | "questions_requested"
+  | "pack_ready"
   | "question_start"
   | "answer"
   | "score_delta"
@@ -44,6 +48,23 @@ export interface TopicVote {
   participantId: string;
   topic: string;
   createdAt: number;
+}
+
+export interface PlayerIntent {
+  intentId: string;
+  sessionId: string;
+  participantId: string;
+  rawText: string;
+  transcriptSource: "typed" | "speech";
+  cleanedText: string;
+  canonicalTopics: string[];
+  topicKey: string;
+  arenaName: string;
+  difficultyHint: "beginner" | "intermediate" | "expert";
+  confidence: number;
+  status: PlayerIntentStatus;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface QuestionInput {
@@ -170,6 +191,7 @@ export interface QuizRushState {
   sessions: Session[];
   participants: Participant[];
   topicVotes: TopicVote[];
+  playerIntents: PlayerIntent[];
   questions: Question[];
   rounds: Round[];
   answers: Answer[];

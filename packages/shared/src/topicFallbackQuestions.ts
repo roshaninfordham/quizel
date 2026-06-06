@@ -1,11 +1,17 @@
 import type { QuestionInput } from "./types";
+import { normalizeIntent, toTitleCase } from "./intentNormalization";
 
 const OPTION_KEYS = ["A", "B", "C", "D"] as const;
 
 export function buildTopicFallbackQuestions(topicInput: string, questionCount: number): QuestionInput[] {
   const topic = normalizeTopic(topicInput);
   const lower = topic.toLowerCase();
-  const pack = lower.includes("visa") || lower.includes("immigration") ? visaQuestionPack(topic) : genericQuestionPack(topic);
+  const pack =
+    lower.includes("visa") || lower.includes("immigration")
+      ? visaQuestionPack(topic)
+      : lower.includes("fruit") || lower.includes("nutrition")
+        ? fruitQuestionPack(topic)
+        : genericQuestionPack(topic);
   const questions: QuestionInput[] = [];
   for (let index = 0; index < questionCount; index += 1) {
     const source = pack[index % pack.length] ?? pack[0];
@@ -23,13 +29,12 @@ export function buildTopicFallbackQuestions(topicInput: string, questionCount: n
 export function normalizeTopic(topicInput: string): string {
   const cleaned = topicInput.replace(/\s+/g, " ").trim();
   if (!cleaned) return "General Knowledge";
-  return cleaned
+  const normalizedParts = cleaned
     .split(" + ")
-    .map((part) => toTitleCase(part.trim()))
+    .map((part) => normalizeIntent(part).displayArenaName)
     .filter(Boolean)
-    .slice(0, 3)
-    .join(" + ")
-    .slice(0, 80);
+    .slice(0, 3);
+  return (normalizedParts.length ? normalizedParts : [toTitleCase(cleaned)]).join(" + ").slice(0, 80);
 }
 
 function visaQuestionPack(topic: string): QuestionInput[] {
@@ -41,6 +46,18 @@ function visaQuestionPack(topic: string): QuestionInput[] {
     q("What does overstaying usually mean?", ["Staying too long", "Booking early", "Flying direct", "Packing light"], "A", "Overstaying means remaining beyond the authorized period of stay.", topic),
     q("At a US port of entry, who makes the admission decision?", ["Border officer", "Taxi driver", "Tour guide", "Travel blogger"], "A", "A border officer makes the final admission decision at the port of entry.", topic),
     q("Why do forms ask for travel purpose?", ["Match the visa", "Pick an airline", "Choose a meal", "Rate a hotel"], "A", "Travel purpose helps match a person to the correct visa category and review path.", topic)
+  ];
+}
+
+function fruitQuestionPack(topic: string): QuestionInput[] {
+  return [
+    q("In {topic}, which part usually protects seeds?", ["Fruit", "Root", "Stem", "Leaf"], "A", "A fruit develops around seeds and often helps protect or spread them.", topic),
+    q("Which nutrient is citrus fruit famous for?", ["Vitamin C", "Iron", "Caffeine", "Salt"], "A", "Citrus fruits are widely known for vitamin C.", topic),
+    q("What process helps fruit plants make sugars?", ["Photosynthesis", "Evaporation", "Rusting", "Freezing"], "A", "Plants use photosynthesis to make sugars from light, water, and carbon dioxide.", topic),
+    q("Which fruit is botanically a berry?", ["Banana", "Carrot", "Potato", "Onion"], "A", "Botanically, bananas are classified as berries.", topic),
+    q("Why do many fruits taste sweet?", ["Natural sugars", "Metal salts", "Chalk", "Air pressure"], "A", "Many ripe fruits contain natural sugars that create sweetness.", topic),
+    q("What can fruit fiber support?", ["Digestion", "Jet engines", "Magnetism", "Screen brightness"], "A", "Dietary fiber from fruit can support normal digestion.", topic),
+    q("Why do fruits ripen?", ["Seed dispersal", "Battery charging", "Rock melting", "Cloud forming"], "A", "Ripening makes many fruits more attractive for animals that help spread seeds.", topic)
   ];
 }
 
@@ -75,15 +92,4 @@ function q(
     explanation,
     topic
   };
-}
-
-function toTitleCase(value: string): string {
-  return value
-    .split(/\s+/)
-    .map((word) => {
-      const lower = word.toLowerCase();
-      if (["us", "usa", "uk", "ai", "llm", "db", "sql", "api"].includes(lower)) return lower.toUpperCase();
-      return lower.charAt(0).toUpperCase() + lower.slice(1);
-    })
-    .join(" ");
 }

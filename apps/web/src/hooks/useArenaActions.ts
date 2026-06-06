@@ -81,6 +81,21 @@ export function useSubmitTopicVote() {
   return { ...runner, submitTopicVote };
 }
 
+export function useSubmitPlayerIntent() {
+  const { callReducer } = useSpacetime();
+  const runner = useActionRunner();
+  const submitPlayerIntent = useCallback(
+    (sessionId: string, rawText: string, transcriptSource: "typed" | "speech" = "typed") =>
+      runner.run("Intent captured", async () => {
+        const receipt = await callReducer("submit_player_intent", { sessionId, rawText, transcriptSource }, getDeviceIdentity());
+        if (!receipt.ok) throw new Error(receipt.error);
+        return receipt.data;
+      }),
+    [callReducer, runner]
+  );
+  return { ...runner, submitPlayerIntent };
+}
+
 export function useRequestQuestions() {
   const { callReducer } = useSpacetime();
   const runner = useActionRunner();

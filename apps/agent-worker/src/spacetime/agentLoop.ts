@@ -4,6 +4,7 @@ import { generateHostCommentary, generateLearningRecap, generateQuizQuestions, r
 import { selectLlmProvider } from "../llm/service";
 import type { LlmProvider } from "../llm/provider";
 import type { WorkerConfig } from "../effects/config";
+import { selectInstantQuizPack } from "../quiz/InstantQuizEngine";
 import { makeRealtimeClient, requireOk, type RealtimeClient } from "./realtimeClient";
 
 export function runRealtimeAgentWorker(config: WorkerConfig, provider: LlmProvider): Effect.Effect<void, never> {
@@ -126,6 +127,33 @@ function processAgentRequest(
       confidence: routing.event.confidence,
       status: routing.event.status
     }).pipe(Effect.flatMap(requireOk), Effect.catchAll(() => Effect.void));
+
+    const instantPack = yield* selectInstantQuizPack(
+      provider,
+      {
+        timeoutMs: Math.min(config.llm.timeoutMs, 1500),
+        includeLlm: false
+      },
+      {
+        topic: routing.selectedTopic,
+        questionCount: request.questionCount
+      }
+    );
+
+    yield* client.callReducer("record_agent_event", {
+      sessionId: request.sessionId,
+      agentName: "Instant Quiz Engine",
+      eventType: "instant_pack_ready",
+      content: `First valid pack ready from ${instantPack.sourceType.replace("_", " ")} in ${instantPack.latencyMs}ms.`,
+      confidence: instantPack.confidence,
+      status: instantPack.sourceType === "seed" ? "fallback" : "complete"
+    }).pipe(Effect.flatMap(requireOk), Effect.catchAll(() => Effect.void));
+
+    yield* client.callReducer("submit_question_pack", {
+      sessionId: request.sessionId,
+      selectedTopic: instantPack.arenaName,
+      questions: instantPack.questions
+    }, "instant-quiz-engine").pipe(Effect.flatMap(requireOk), Effect.catchAll(() => Effect.void));
 
     const result = yield* generateQuizQuestions(
       provider,
