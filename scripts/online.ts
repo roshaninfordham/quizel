@@ -281,7 +281,7 @@ async function startLocalhostRunTunnel(
     `80:localhost:${WEB_PORT}`,
     "nokey@localhost.run"
   ]);
-  const url = await waitForProcessUrl(child, /https:\/\/[a-zA-Z0-9-]+\.lhr\.life/, 45_000);
+  const url = await waitForStableProcessUrl(child, /https:\/\/[a-zA-Z0-9-]+\.lhr\.life/, 45_000, 2_500);
   if (!url && !child.killed) child.kill("SIGTERM");
   if (!url) return null;
   const normalized = url.replace(/\/$/, "");
@@ -324,6 +324,40 @@ async function waitForProcessUrl(child: ChildProcessWithoutNullStreams, pattern:
     };
     const cleanup = () => {
       clearTimeout(timer);
+      child.stdout.off("data", onData);
+      child.stderr.off("data", onData);
+    };
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+  });
+}
+
+async function waitForStableProcessUrl(
+  child: ChildProcessWithoutNullStreams,
+  pattern: RegExp,
+  timeoutMs = 20_000,
+  settleMs = 1_500
+): Promise<string | null> {
+  return await new Promise((resolve) => {
+    let latest: string | null = null;
+    let settleTimer: NodeJS.Timeout | undefined;
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(latest);
+    }, timeoutMs);
+    const onData = (chunk: Buffer) => {
+      const matches = String(chunk).match(new RegExp(pattern.source, "g"));
+      if (!matches?.length) return;
+      latest = matches[matches.length - 1] ?? latest;
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        cleanup();
+        resolve(latest);
+      }, settleMs);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (settleTimer) clearTimeout(settleTimer);
       child.stdout.off("data", onData);
       child.stderr.off("data", onData);
     };

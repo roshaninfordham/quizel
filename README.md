@@ -85,7 +85,7 @@ For a manual tunnel, expose the web app and set `PUBLIC_BASE_URL`. The websocket
 PUBLIC_BASE_URL=https://your-web-tunnel.example make online
 ```
 
-Only set `PUBLIC_REALTIME_URL` if you intentionally run a separate websocket tunnel.
+Only set `PUBLIC_REALTIME_URL` with `VITE_FORCE_REALTIME_URL=true` if you intentionally run a separate websocket tunnel.
 
 ## Architecture
 
