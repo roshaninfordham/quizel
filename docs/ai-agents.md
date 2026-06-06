@@ -6,7 +6,8 @@ The AI layer runs outside reducers in `apps/agent-worker`. Reducers remain deter
 
 | Agent | Job | Reducer Output |
 | --- | --- | --- |
-| Topic Router Agent | Merge topic votes into one tournament topic. | `record_agent_event`, selected topic for generation. |
+| Intent Parser / Topic Router Agent | Merge expertise-derived topic signals into one tournament topic. | `record_agent_event`, selected topic for generation. |
+| Arena Router Agent | Visible pipeline step for grouping similar expertise into fair arenas. Current MVP uses deterministic topic clustering for one sprint arena. | `record_agent_event` in the UI pipeline. |
 | Quiz Builder Agent | Generate exactly seven short MCQ questions for the sprint. | `submit_question_pack`. |
 | Safety Guard Agent | Optional model-based safety classification. | `record_agent_event`; rejects unsafe content before use. |
 | Fairness Agent | Validate options, ambiguity, length, and explanation correctness. | `record_agent_event`; repaired pack if needed. |

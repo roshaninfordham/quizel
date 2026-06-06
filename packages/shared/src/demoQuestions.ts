@@ -26,15 +26,15 @@ export const SEEDED_DEMO_QUESTIONS: QuestionInput[] = [
     topic: "Realtime Systems"
   },
   {
-    questionText: "Which signal should decide QuizRush topics?",
+    questionText: "Which signal should shape the arena topic?",
     options: {
-      A: "Room votes",
+      A: "Expertise notes",
       B: "Random ads",
       C: "Browser width",
       D: "File names"
     },
     correctOption: "A",
-    explanation: "The Topic Router Agent merges room topic votes into one short quiz theme.",
+    explanation: "The agent pipeline turns room expertise signals into one short quiz theme.",
     topic: "AI Agents"
   },
   {

@@ -36,7 +36,7 @@ export function connectToSpacetime(): {
   realtimeUrl: string;
 } {
   const host = import.meta.env.VITE_SPACETIMEDB_HOST ?? "ws://localhost:3000";
-  const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizrush-live";
+  const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizrush-arena";
   const configuredRealtimeUrl = String(import.meta.env.VITE_REALTIME_URL ?? "").trim();
   const sameOriginRealtimeUrl = browserRealtimeUrlFrom(window.location.origin);
   const realtimeUrl = isPrivateBrowserOrigin(window.location.hostname) ? sameOriginRealtimeUrl : configuredRealtimeUrl || sameOriginRealtimeUrl;
@@ -242,7 +242,7 @@ export function useLiveStats(sessionId = DEFAULT_SESSION_ID): LiveStats | undefi
 }
 
 export function getDeviceIdentity(): string {
-  const key = "quizrush-live-device";
+  const key = "quizrush-arena-device";
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
   const created = createClientId("device");
@@ -265,9 +265,9 @@ function createClientId(prefix: string): string {
 }
 
 export function getJoinedParticipantId(code = DEFAULT_SESSION_CODE): string | null {
-  return window.localStorage.getItem(`quizrush-live-participant-${code}`);
+  return window.localStorage.getItem(`quizrush-arena-participant-${code}`);
 }
 
 export function setJoinedParticipantId(participantId: string, code = DEFAULT_SESSION_CODE): void {
-  window.localStorage.setItem(`quizrush-live-participant-${code}`, participantId);
+  window.localStorage.setItem(`quizrush-arena-participant-${code}`, participantId);
 }

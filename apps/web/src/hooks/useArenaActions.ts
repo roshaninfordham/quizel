@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { nanoid } from "nanoid";
 import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, SEEDED_DEMO_QUESTIONS, type OptionKey } from "@quizrush/shared";
 import { getDeviceIdentity, setJoinedParticipantId, useSpacetime } from "../lib/spacetime/client";
 
@@ -135,7 +136,11 @@ export function useSubmitAnswer() {
   const submitAnswer = useCallback(
     (roundId: string, selectedOption: OptionKey) =>
       runner.run("Locked in", async () => {
-        const receipt = await callReducer("submit_answer", { roundId, selectedOption, clientSentAt: Date.now() }, getDeviceIdentity());
+        const receipt = await callReducer(
+          "submit_answer",
+          { roundId, selectedOption, clientSentAt: Date.now(), clientEventId: nanoid() },
+          getDeviceIdentity()
+        );
         if (!receipt.ok) throw new Error(receipt.error);
         return receipt.data;
       }),

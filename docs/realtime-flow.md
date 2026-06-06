@@ -13,10 +13,11 @@ Phone scans QR
 -> projector subscription renders avatar and count
 ```
 
-## Topic Swarm
+## Expertise Swarm
 
 ```text
-Phone locks topics
+Phone submits freeform expertise text
+-> deterministic intent preview maps text to compact topics
 -> submit_topic_vote reducer
 -> TopicVote rows replaced for participant
 -> MatchEvent(topic_vote)
@@ -26,7 +27,7 @@ Phone locks topics
 ## Question Generation
 
 ```text
-5-second topic window closes
+5-second expertise window closes
 -> request_questions reducer
 -> AgentRequest pending
 -> Effect worker routes topic + generates quiz
@@ -36,7 +37,7 @@ Phone locks topics
 -> Session status ready
 ```
 
-The projector starts this automatically after the topic window. It also starts a deterministic 700ms fallback timer. If approved LLM questions are not committed quickly, seed questions are submitted so the judged flow never waits on model latency. Late LLM packs are ignored once a match has already started with an existing question pack.
+The projector starts this automatically after the expertise window. It also starts a deterministic 700ms fallback timer. If approved LLM questions are not committed quickly, seed questions are submitted so the judged flow never waits on model latency. Late LLM packs are ignored once a match has already started with an existing question pack.
 
 ## 25-Second Match
 

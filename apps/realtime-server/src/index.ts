@@ -13,7 +13,7 @@ const server = createServer((request, response) => {
   }
 
   response.writeHead(200, { "content-type": "text/plain" });
-  response.end("QuizRush Live realtime reducer gateway is running.\n");
+  response.end("QuizRush Arena realtime reducer gateway is running.\n");
 });
 
 const wss = new WebSocketServer({ server });
@@ -85,5 +85,5 @@ wss.on("connection", (ws) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.info(`QuizRush Live realtime reducer gateway listening on ws://0.0.0.0:${port}`);
+  console.info(`QuizRush Arena realtime reducer gateway listening on ws://0.0.0.0:${port}`);
 });

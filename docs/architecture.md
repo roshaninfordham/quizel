@@ -1,6 +1,6 @@
 # Architecture
 
-QuizRush Live is built around one judged workflow: a public arena QR, a one-route phone controller, AI-generated questions, a 25-second match, and event-ledger replay.
+QuizRush Arena is built around one judged workflow: a public arena QR, a one-route phone controller, freeform expertise intent, AI-generated questions, a 25-second match, and event-ledger replay.
 
 ## System
 
@@ -40,7 +40,7 @@ sequenceDiagram
     P->>DB: subscribe Session/Participants/LiveStats
     U->>DB: join_session()
     DB-->>P: joined count update
-    U->>DB: submit_topic_vote()
+    U->>DB: submit_topic_vote(expertise-derived topics)
     W->>DB: subscribe TopicVote / AgentRequest
     W->>L: route topic + generate quiz JSON
     L-->>W: questions
@@ -92,3 +92,18 @@ flowchart TD
 - `apps/agent-worker`: Effect-powered agent worker and provider-neutral LLM adapters.
 - `modules/spacetime`: SpacetimeDB table/reducer module matching the shared contract.
 - `packages/shared`: reducer engine, types, schemas, scoring, fallback questions, tests.
+
+## SpacetimeDB SDK Direction
+
+The production transport should follow the generated TypeScript binding pattern from the SpacetimeDB skills reference:
+
+```text
+spacetime build
+spacetime publish
+spacetime generate --lang typescript
+DbConnection.builder()
+subscribe(tables...)
+ctx.reducers.reducerName(...)
+```
+
+The current public demo keeps the reducer gateway active because it has been verified through venue-safe tunnels. The reducer/table model remains aligned with the SpacetimeDB module so this is a transport swap, not a product rewrite.

@@ -1,6 +1,6 @@
 # Data Model
 
-QuizRush Live uses reducer-owned game state. Clients call reducers and subscribe to table updates; clients never calculate authoritative score or rank.
+QuizRush Arena uses reducer-owned game state. Clients call reducers and subscribe to table updates; clients never calculate authoritative score or rank.
 
 ## Tables
 
@@ -8,7 +8,7 @@ QuizRush Live uses reducer-owned game state. Clients call reducers and subscribe
 | --- | --- |
 | `Session` | Session code, status, selected topic, current round, match timestamps. |
 | `Participant` | Joined player identity, display name, avatar, simulated flag, heartbeat latency. |
-| `TopicVote` | One latest topic set per participant, stored as rows for live swarm counts. |
+| `TopicVote` | One latest expertise-derived topic set per participant, stored as rows for live swarm counts. |
 | `Question` | Seven approved sprint questions with options, correct option, explanation, and source. |
 | `Round` | Server-side start/end timestamps for each rapid question, capped by the 25-second match deadline. |
 | `Answer` | One committed answer per participant per round. |
@@ -36,6 +36,7 @@ lobby -> topic_voting -> generating -> ready -> playing -> finished -> replay
 - AI can submit question packs and agent events, but cannot mutate scores.
 - Replay is reconstructed from `MatchEvent`, not from client-only animation state.
 - Live metrics are refreshed through reducers such as `live_tick`, not client-only counters.
+- Freeform expertise currently maps to compact `TopicVote` rows for the judged sprint. Production multi-arena mode should add `PlayerIntent`, `Arena`, and `ArenaMember` tables.
 
 ## Scoring
 

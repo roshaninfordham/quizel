@@ -34,5 +34,6 @@ export const topicVoteSchema = z.object({
 export const selectedOptionSchema = z.object({
   roundId: z.string().min(1),
   selectedOption: optionKeySchema,
-  clientSentAt: z.number().optional()
+  clientSentAt: z.number().optional(),
+  clientEventId: z.string().min(4).max(80).optional()
 });

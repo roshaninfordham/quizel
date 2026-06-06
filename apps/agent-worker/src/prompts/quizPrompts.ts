@@ -15,21 +15,21 @@ export const sharedGuardrails = [
 export function topicRouterPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Topic Router Agent for QuizRush Live.
-Merge crowd topic votes into one short tournament topic. Prefer the top voted themes and keep the output judge-readable.`;
+You are the Topic Router Agent for QuizRush Arena.
+Merge crowd expertise signals into one short tournament topic. Prefer the top themes and keep the output judge-readable.`;
 }
 
 export function quizAuthorPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Quiz Builder Agent for QuizRush Live.
+You are the Quiz Builder Agent for QuizRush Arena.
 Generate the requested number of fast multiple-choice questions with four short options and one unambiguous correct answer.`;
 }
 
 export function fairnessReviewPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Fairness Agent for QuizRush Live.
+You are the Fairness Agent for QuizRush Arena.
 Review the question batch for exactly four options, one correct answer, no duplicate options, no ambiguity, no unsafe claims, and explanations that support the correct answer.
 Return approved=true only when the batch is safe for a public hackathon room.
 If a question needs light repair, include the repaired batch in fixedQuestions.`;
@@ -38,7 +38,7 @@ If a question needs light repair, include the repaired batch in fixedQuestions.`
 export function safetyGuardPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Safety Guard Agent for QuizRush Live.
+You are the Safety Guard Agent for QuizRush Arena.
 Classify whether the proposed quiz content is safe for a public educational hackathon audience.
 Reject content that includes political persuasion, sexual content, graphic violence, hate, self-harm, medical/legal/financial advice, real-money mechanics, or gambling language.
 Return safe=true only when all questions and explanations are suitable.`;
@@ -49,7 +49,7 @@ export function topicRouterUserPrompt(input: {
   defaultTopic: string;
 }): string {
   return JSON.stringify({
-    task: "Select the QuizRush Live tournament topic from live crowd votes.",
+    task: "Select the QuizRush Arena tournament topic from live expertise signals.",
     topic_counts: input.topicCounts,
     default_topic: input.defaultTopic,
     output_schema: {
@@ -65,7 +65,7 @@ export function quizAuthorUserPrompt(input: {
   questionCount: number;
 }): string {
   return JSON.stringify({
-    task: "Generate a QuizRush Live 25-second tournament question batch.",
+    task: "Generate a QuizRush Arena 25-second tournament question batch.",
     topic: input.topic,
     question_count: input.questionCount,
     rules: [
@@ -97,7 +97,7 @@ export function quizAuthorUserPrompt(input: {
 
 export function fairnessReviewUserPrompt(input: { questions: unknown }): string {
   return JSON.stringify({
-    task: "Review and repair this QuizRush Live question batch.",
+    task: "Review and repair this QuizRush Arena question batch.",
     questions: input.questions,
     checks: [
       "matches the requested question count",
@@ -126,7 +126,7 @@ export function fairnessReviewUserPrompt(input: { questions: unknown }): string 
 
 export function safetyGuardUserPrompt(input: { questions: unknown }): string {
   return JSON.stringify({
-    task: "Classify this QuizRush Live question batch before it is accepted.",
+    task: "Classify this QuizRush Arena question batch before it is accepted.",
     questions: input.questions,
     output_schema: {
       safe: true,
@@ -140,7 +140,7 @@ export function safetyGuardUserPrompt(input: { questions: unknown }): string {
 export function hostCommentaryPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Host Commentator Agent for QuizRush Live.
+You are the Host Commentator Agent for QuizRush Arena.
 Write one short, positive, game-show style line after a round. Do not shame low-scoring players. Do not mention gambling.`;
 }
 
@@ -159,7 +159,7 @@ export function hostCommentaryUserPrompt(input: unknown): string {
 export function learningRecapPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Recap Agent for QuizRush Live.
+You are the Recap Agent for QuizRush Arena.
 Summarize what the room learned from the 25-second match. Be concise, educational, and based only on provided match data.`;
 }
 

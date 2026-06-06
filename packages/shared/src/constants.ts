@@ -1,6 +1,6 @@
-export const APP_NAME = "QuizRush Live";
-export const APP_TAGLINE = "A 25-second real-time quiz tournament from one QR code";
-export const MEMORY_SENTENCE = "The whole room scanned one QR code and became a live tournament bracket in 25 seconds.";
+export const APP_NAME = "QuizRush Arena";
+export const APP_TAGLINE = "A 25-second AI-personalized quiz tournament from one QR code";
+export const MEMORY_SENTENCE = "The whole room scanned one QR code, shared expertise, and became a live AI-generated tournament in 25 seconds.";
 
 export const DEFAULT_SESSION_ID = "session-demo";
 export const DEFAULT_SESSION_CODE = "ARENA-42";
@@ -21,6 +21,13 @@ export const SIMULATED_ANSWER_BURST_SIZE = 8;
 export const DEFAULT_TOPICS = ["AI", "Space", "Tech", "Math", "History", "Startups"];
 export const DEFAULT_SELECTED_TOPIC = "AI + Space + Startups";
 export const AVATAR_CHOICES = ["🚀", "🧠", "⚡", "🐼", "🦊", "🐯", "✨", "🔥"];
+export const INTENT_PLACEHOLDERS = [
+  "AI agents, databases, and startups",
+  "Space missions and physics",
+  "World history and empires",
+  "Math puzzles and probability",
+  "Football, F1, and sports trivia"
+];
 
 export const DISCLAIMER =
-  "QuizRush Live uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.";
+  "QuizRush Arena uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.";

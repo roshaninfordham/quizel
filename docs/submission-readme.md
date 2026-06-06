@@ -1,17 +1,19 @@
 # Submission Readme
 
-Product: QuizRush Live
+Product: QuizRush Arena
 
-Tagline: A 25-second real-time quiz tournament from one QR code.
+Tagline: A 25-second AI-personalized quiz tournament from one QR code.
 
-Judges should remember: “The whole room scanned one QR code and became a live tournament bracket in 25 seconds.”
+Judges should remember: “The whole room scanned one QR code, shared expertise, and became a live AI-generated tournament in 25 seconds.”
 
 ## What To Demo
 
 - `make online`
 - QR lobby
 - phone join
-- topic swarm
+- expertise intent box with optional mic
+- detected arena confirmation
+- expertise swarm
 - agent pipeline
 - 25-second match
 - live leaderboard and bracket
@@ -21,7 +23,7 @@ Judges should remember: “The whole room scanned one QR code and became a live 
 
 ## What Is Real
 
-- Reducer-owned joins, topic votes, answers, scoring, rank recomputation, duplicate rejection, and reset.
+- Reducer-owned joins, expertise-derived topic votes, answers, scoring, rank recomputation, duplicate rejection, and reset.
 - Realtime websocket subscriptions for the laptop demo.
 - SpacetimeDB TypeScript module with the same public table/reducer contract.
 - Effect worker with provider-neutral LLM adapter, NVIDIA routing, validation, safety guard support, and fallback seed questions.

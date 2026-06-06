@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import confetti from "canvas-confetti";
+import { clsx } from "clsx";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -12,11 +13,14 @@ import {
   Sparkles,
   Trophy,
   Users,
+  Volume2,
+  VolumeX,
   Wifi,
   WifiOff,
   Zap
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { twMerge } from "tailwind-merge";
 import {
   APP_NAME,
   APP_TAGLINE,
@@ -34,14 +38,15 @@ import {
   percentile
 } from "@quizrush/shared";
 import type { ConnectionState } from "../lib/spacetime/client";
+import { getMuted, initSounds, setMuted } from "../lib/sound/soundManager";
 
 export function cn(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(" ");
+  return twMerge(clsx(classes));
 }
 
 export function ProjectorShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="projector-grid min-h-screen overflow-hidden px-8 py-6 text-slate-950">
+    <main className="projector-grid min-h-screen overflow-hidden bg-[#fff8ec] px-8 py-6 text-slate-950">
       <div className="mx-auto flex min-h-[calc(100vh-48px)] w-full max-w-[1700px] flex-col gap-4">{children}</div>
       <Footer compact />
     </main>
@@ -50,7 +55,7 @@ export function ProjectorShell({ children }: { children: React.ReactNode }) {
 
 export function PhoneShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="min-h-screen px-4 py-5 text-slate-950">
+    <main className="min-h-screen bg-[#fff8ec] px-4 py-5 pb-[calc(20px+env(safe-area-inset-bottom))] text-slate-950">
       <div className="mx-auto flex min-h-[calc(100vh-40px)] w-full max-w-[430px] flex-col gap-4">{children}</div>
       <Footer compact />
     </main>
@@ -66,7 +71,7 @@ export function Footer({ compact = false }: { compact?: boolean }) {
 }
 
 export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <section className={cn("rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70", className)}>{children}</section>;
+  return <section className={cn("rounded-[32px] bg-white p-5 shadow-xl shadow-slate-200/70 ring-1 ring-slate-200/70", className)}>{children}</section>;
 }
 
 export function Button({
@@ -127,7 +132,7 @@ export function TopStatusBar({
   lastSyncAt: number | null;
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white/95 px-5 py-4 shadow-sm backdrop-blur">
+    <header className="flex flex-wrap items-center justify-between gap-4 rounded-[32px] bg-white/95 px-5 py-4 shadow-xl shadow-slate-200/70 ring-1 ring-slate-200/70 backdrop-blur">
       <div>
         <div className="flex items-center gap-3">
           <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-r from-violet-600 to-blue-600 text-white">
@@ -140,7 +145,7 @@ export function TopStatusBar({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm font-black">
-        <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} players`} />
+        <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} racers`} />
         <StatusPill icon={<Play className="size-5" />} label={phase.replace("_", " ")} />
         <StatusPill icon={<Gauge className="size-5" />} label={`p95 ${p95LatencyMs}ms`} />
         <StatusPill icon={<Activity className="size-5" />} label={`${reducerCalls} reducers`} />
@@ -164,9 +169,29 @@ export function ConnectionBadge({ state, lastSyncAt }: { state: ConnectionState;
   return (
     <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-2 font-black", connected ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800")}>
       {connected ? <Wifi className="size-5" /> : <WifiOff className="size-5" />}
-      <span>{connected ? "SpacetimeDB Live" : state === "error" ? "Local fallback" : "Reconnecting"}</span>
+      <span>{connected ? "Realtime Live" : state === "error" ? "Local fallback" : "Reconnecting"}</span>
       <span className="text-slate-500">{lastSyncAt ? `${Math.max(0, Math.round((Date.now() - lastSyncAt) / 1000))}s` : ""}</span>
     </div>
+  );
+}
+
+export function SoundToggle({ className }: { className?: string }) {
+  const [muted, setMutedState] = React.useState(() => getMuted());
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        initSounds({ mutedByDefault: muted });
+        const next = !muted;
+        setMuted(next);
+        setMutedState(next);
+      }}
+      className={cn("inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-2 text-sm font-black text-slate-700 ring-1 ring-slate-200", className)}
+      aria-label={muted ? "Enable sound" : "Mute sound"}
+    >
+      {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+      <span>{muted ? "Sound off" : "Sound on"}</span>
+    </button>
   );
 }
 
@@ -221,16 +246,16 @@ export function QRHeroCard({
           {joinedCount.toString().padStart(3, "0")}
         </motion.div>
         <p className="mt-5 max-w-2xl text-5xl font-black leading-tight text-slate-950">
-          Everyone joins, picks topics, then races through a 25-second bracket.
+          Type or say expertise. AI forms live arenas. Everyone races for 25 seconds.
         </p>
         <div className="mt-7 inline-flex w-fit items-center gap-3 rounded-full bg-slate-950 px-5 py-4 text-2xl font-black text-white">
           <Clock className="size-7" />
-          {joinedCount ? `Topic window closes in ${countdownSeconds}s` : "Waiting for first scan"}
+          {joinedCount ? `Expertise window closes in ${countdownSeconds}s` : "Waiting for first scan"}
         </div>
         <div className="mt-7 grid max-w-2xl grid-cols-3 gap-3">
           <LobbyStep number="1" label="Name" />
-          <LobbyStep number="2" label="Topics" />
-          <LobbyStep number="3" label="Answer fast" />
+          <LobbyStep number="2" label="Expertise" />
+          <LobbyStep number="3" label="Race" />
         </div>
       </div>
     </Panel>
@@ -277,7 +302,7 @@ export function TopicSwarm({
   return (
     <Panel className="p-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-2xl font-black text-slate-950">Topic Intent</h2>
+        <h2 className="text-2xl font-black text-slate-950">Expertise Swarm</h2>
         {selectedTopic ? <span className="rounded-full bg-blue-100 px-3 py-2 text-sm font-black text-blue-700">Selected: {selectedTopic}</span> : null}
       </div>
       <div className="mt-4 space-y-3">
@@ -337,7 +362,7 @@ export function LiveJoinFeed({ participants }: { participants: Participant[] }) 
         {participants.slice(-6).reverse().map((participant) => (
           <motion.div key={participant.participantId} initial={{ x: 18, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2.5">
             <Avatar participant={participant} />
-            <span className="truncate text-base font-black">+ {participant.displayName} entered the race</span>
+            <span className="truncate text-base font-black">+ {participant.displayName} entered the arena</span>
           </motion.div>
         ))}
         {!participants.length ? <p className="text-lg font-bold text-slate-500">Waiting for the first scan...</p> : null}
@@ -348,9 +373,10 @@ export function LiveJoinFeed({ participants }: { participants: Participant[] }) 
 
 export function AgentPipeline({ events, status }: { events: AgentEvent[]; status: string }) {
   const steps = [
-    { name: "Topic Router Agent", detail: "merged room intent" },
+    { name: "Intent Parser Agent", detail: "normalized expertise notes" },
+    { name: "Arena Router Agent", detail: "formed fair live arenas" },
     { name: "Quiz Builder Agent", detail: `generated ${QUESTION_COUNT} sprint questions` },
-    { name: "Fairness Agent", detail: "approved the pack" },
+    { name: "Fairness Guard", detail: "approved the pack" },
     { name: "Match Engine", detail: "ready to race" }
   ];
   return (
@@ -359,9 +385,9 @@ export function AgentPipeline({ events, status }: { events: AgentEvent[]; status
         <h2 className="text-2xl font-black text-slate-950">AI Build Pipeline</h2>
         <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{status.replace("_", " ")}</span>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-5 gap-3">
         {steps.map((step) => {
-          const event = events.find((candidate) => candidate.agentName === step.name);
+          const event = events.find((candidate) => candidate.agentName === step.name || (step.name === "Intent Parser Agent" && candidate.agentName === "Topic Router Agent") || (step.name === "Fairness Guard" && candidate.agentName === "Fairness Agent"));
           const complete = event?.status === "complete" || event?.status === "fallback";
           const running = status === "generating" && !complete;
           return (
@@ -370,7 +396,7 @@ export function AgentPipeline({ events, status }: { events: AgentEvent[]; status
                 <Sparkles className={cn("size-5", complete ? "text-emerald-600" : "text-blue-600")} />
                 {complete ? <CheckCircle2 className="size-5 text-emerald-600" /> : running ? <Loader2 className="size-5 animate-spin text-blue-600" /> : null}
               </div>
-              <p className="mt-3 text-base font-black text-slate-950">{step.name}</p>
+              <p className="mt-3 text-sm font-black text-slate-950">{step.name}</p>
               <p className="mt-1 line-clamp-2 text-xs font-bold text-slate-500">{event?.content || step.detail}</p>
             </div>
           );
@@ -595,7 +621,7 @@ export function TechMetricStrip({ stats, eventsCount }: { stats?: LiveStats; eve
       <MetricStripItem label="reducer calls" value={stats?.reducerCalls ?? 0} />
       <MetricStripItem label="events" value={eventsCount} />
       <MetricStripItem label="duplicate taps" value={stats?.duplicateAnswersRejected ?? 0} />
-      <MetricStripItem label="p95 latency" value={`${stats?.p95LatencyMs ?? 48}ms`} />
+      <MetricStripItem label="measured p95" value={`${stats?.p95LatencyMs ?? 48}ms`} />
       <MetricStripItem label="active clients" value={stats?.activeClients ?? 0} />
     </div>
   );

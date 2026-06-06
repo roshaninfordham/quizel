@@ -4,7 +4,7 @@
 
 0:00-0:10
 
-“Most live quizzes are static polls. QuizRush Live turns the whole room into a 25-second realtime tournament from one QR code.”
+“Most live quizzes are static polls. QuizRush Arena turns the whole room into a 25-second AI-personalized tournament from one QR code.”
 
 0:10-0:25
 
@@ -14,15 +14,15 @@ Run `make online-public`. Show the projector arena and QR.
 
 0:25-0:40
 
-Audience joins and picks topics. Point to the live count and topic swarm.
+Audience joins and types or speaks expertise. Point to the live count and expertise swarm.
 
-“Every join and topic vote is committed through a reducer and synced to the projector.”
+“Every join and expertise signal is committed through a reducer and synced to the projector.”
 
 Optional backup: press `A` to stream 100 marked simulated players if the room is small. Say, “These are marked simulated load so we can prove the high-fan-in path honestly.”
 
 0:40-0:55
 
-“The Effect worker routes the room’s topic intent, calls the LLM, validates the JSON, runs fairness/safety guardrails, and falls back to seed questions if anything fails.”
+“The Effect worker routes the room’s expertise intent, calls the LLM, validates the JSON, runs fairness/safety guardrails, and falls back to seed questions if anything fails.”
 
 0:55-1:20
 
@@ -44,7 +44,7 @@ Press `T`.
 
 Close:
 
-“QuizRush Live is not just a quiz. It is a room-scale realtime state race powered by SpacetimeDB.”
+“QuizRush Arena is not just a quiz. It is a room-scale realtime state race powered by SpacetimeDB.”
 
 ## Q&A
 
@@ -54,7 +54,7 @@ Why SpacetimeDB?
 
 Why AI?
 
-“AI routes the room’s topic intent, generates the sprint challenge, reviews fairness, and produces recap/commentary. It is a content pipeline, not a chatbot bolted onto the side.”
+“AI routes the room’s expertise intent, generates the sprint challenge, reviews fairness, and produces recap/commentary. It is a content pipeline, not a chatbot bolted onto the side.”
 
 Is this gambling?
 

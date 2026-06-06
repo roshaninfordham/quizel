@@ -29,7 +29,7 @@ interface ManagedProcess {
 }
 
 const program = Effect.gen(function* () {
-  yield* Effect.logInfo("Starting QuizRush Live local arena");
+  yield* Effect.logInfo("Starting QuizRush Arena local arena");
   const processes: ManagedProcess[] = [];
 
   const startProcess = (name: string, command: string, args: string[], env: Record<string, string> = {}) => {
@@ -177,7 +177,7 @@ async function callReducer(reducer: string, args: unknown, identity: string) {
 
 function printReadyBlock() {
   console.log("");
-  console.log("QuizRush Live is online");
+  console.log("QuizRush Arena is online");
   console.log("");
   console.log(`Projector on this laptop: ${projectorUrl}`);
   console.log(`Phone join QR: ${joinUrl}`);
@@ -351,7 +351,7 @@ async function verifyHttpApp(url: string): Promise<boolean> {
     const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
     if (!response.ok) return false;
     const body = await response.text();
-    return body.includes("QuizRush Live");
+    return body.includes("QuizRush Arena");
   } catch {
     return false;
   }

@@ -46,6 +46,7 @@ import {
   useSpacetime
 } from "../lib/spacetime/client";
 import { getLeaderboard, topicCounts } from "../lib/selectors";
+import { initSounds, playCountdownTick, playJoin, playWinner, unlockAudioOnFirstTap } from "../lib/sound/soundManager";
 import { TechRoute } from "./TechRoute";
 
 export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
@@ -60,6 +61,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const question = useCurrentQuestion(sessionId);
   const answers = useAnswers(sessionId);
   const leaderboard = useMemo(() => getLeaderboard(state, sessionId), [sessionId, state]);
+  const winner = leaderboard[0];
   const topics = useMemo(() => topicCounts(state, sessionId), [sessionId, state]);
   const [showTech, setShowTech] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -78,6 +80,9 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const autoRequestRef = useRef(false);
   const autoSeedRef = useRef(false);
   const autoStartRef = useRef(false);
+  const lastParticipantCountRef = useRef(participants.length);
+  const lastCountdownSecondRef = useRef<number | null>(null);
+  const winnerSoundRef = useRef<string | null>(null);
   const phaseRef = useRef(phase);
   const participantCountRef = useRef(participants.length);
   const sessionCreatedAtRef = useRef(session?.createdAt ?? 0);
@@ -99,9 +104,31 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const selectedTopic = session?.selectedTopic ?? (topics.slice(0, 3).map((topic) => topic.topic).join(" + ") || DEFAULT_SELECTED_TOPIC);
 
   useEffect(() => {
+    initSounds({ mutedByDefault: false });
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (participants.length > lastParticipantCountRef.current) playJoin();
+    lastParticipantCountRef.current = participants.length;
+  }, [participants.length]);
+
+  useEffect(() => {
+    if (phase !== "playing" || !round) return;
+    const remaining = Math.ceil(Math.max(0, round.endsAt - now) / 1000);
+    if (remaining <= 5 && remaining > 0 && lastCountdownSecondRef.current !== remaining) {
+      lastCountdownSecondRef.current = remaining;
+      playCountdownTick();
+    }
+  }, [now, phase, round]);
+
+  useEffect(() => {
+    if ((phase === "finished" || phase === "replay") && winner?.participant.participantId && winnerSoundRef.current !== winner.participant.participantId) {
+      winnerSoundRef.current = winner.participant.participantId;
+      playWinner();
+    }
+  }, [phase, winner?.participant.participantId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -196,6 +223,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      unlockAudioOnFirstTap();
       const key = event.key.toLowerCase();
       if (key === "t") setShowTech((current) => !current);
       if (key === "r") void resetDemo(sessionId);
@@ -219,8 +247,6 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     session?.matchStartedAt && phase === "playing"
       ? Math.ceil(Math.max(0, session.matchStartedAt + TOTAL_MATCH_SECONDS * 1000 - now) / 1000)
       : TOTAL_MATCH_SECONDS;
-  const winner = leaderboard[0];
-
   return (
     <ProjectorShell>
       <TopStatusBar

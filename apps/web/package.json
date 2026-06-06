@@ -10,19 +10,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@quizrush/shared": "workspace:*",
     "@tailwindcss/vite": "^4.1.11",
     "@vitejs/plugin-react": "^4.7.0",
-    "@quizrush/shared": "workspace:*",
     "canvas-confetti": "^1.9.3",
+    "clsx": "^2.1.1",
     "framer-motion": "^12.23.12",
+    "howler": "^2.2.4",
     "lucide-react": "^0.468.0",
+    "nanoid": "^5.1.11",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
+    "@types/howler": "^2.2.13",
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
     "typescript": "^5.8.3",

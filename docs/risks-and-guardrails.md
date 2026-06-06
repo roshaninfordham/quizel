@@ -13,7 +13,7 @@
 
 UI disclaimer:
 
-> QuizRush Live uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
+> QuizRush Arena uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
 
 ## Realtime Integrity
 
@@ -29,10 +29,13 @@ UI disclaimer:
 
 - LLM output must be valid JSON.
 - Zod validates every question pack.
+- Typed expertise input is primary; Web Speech API input is optional and never required.
+- Voice audio is not stored; only the final transcript/text-derived topics are submitted.
 - Fairness Agent checks option count, duplicate options, ambiguity, safety, and explanation quality.
 - Safety Guard can classify content before acceptance.
 - Seed fallback keeps the match playable when API keys are missing, slow, or malformed.
 - AI cannot mutate score or rank.
+- The UI displays measured latency metrics; it does not claim fixed sub-millisecond internet latency.
 
 ## Demo Honesty
 

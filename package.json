@@ -1,8 +1,8 @@
 {
-  "name": "quizrush-live",
+  "name": "quizrush-arena",
   "version": "0.1.0",
   "private": true,
-  "description": "QuizRush Live: a 25-second real-time quiz tournament from one QR code.",
+  "description": "QuizRush Arena: a 25-second real-time quiz tournament from one QR code.",
   "type": "module",
   "scripts": {
     "online": "tsx scripts/online.ts",
@@ -18,7 +18,7 @@
     "spacetime:build": "~/.local/bin/spacetime build --module-path modules/spacetime --lint-dir=",
     "spacetime:generate": "~/.local/bin/spacetime generate --lang typescript --module-path modules/spacetime --out-dir apps/web/src/lib/spacetime/module_bindings --build-options='--lint-dir=' -y",
     "spacetime:start": "~/.local/bin/spacetime start --listen-addr 0.0.0.0:3000 --in-memory --non-interactive",
-    "spacetime:publish:local": "~/.local/bin/spacetime publish quizrush-live --server local --module-path modules/spacetime --anonymous -y=all"
+    "spacetime:publish:local": "~/.local/bin/spacetime publish quizrush-arena --server local --module-path modules/spacetime --anonymous -y=all"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
