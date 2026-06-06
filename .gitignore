@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+.turbo
+.env
+.env.local
+.DS_Store
+*.log
+coverage
+src/module_bindings
+apps/web/src/lib/spacetime/module_bindings
+target
+.spacetime
