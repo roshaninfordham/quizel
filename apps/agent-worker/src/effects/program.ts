@@ -16,7 +16,6 @@ export const QuizGenerationProgram = Effect.gen(function* () {
     },
     {
       topic: config.demo.topic,
-      difficulty: config.demo.difficulty,
       questionCount: config.demo.questionCount
     }
   );

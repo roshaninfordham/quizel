@@ -1,20 +1,19 @@
-import { SEEDED_DEMO_QUESTIONS } from "../packages/shared/src/demoQuestions";
+import { DEFAULT_SESSION_CODE, QUESTION_COUNT, SEEDED_DEMO_QUESTIONS } from "../packages/shared/src/index";
 import { WebSocket } from "ws";
 
 const url = process.env.REALTIME_URL ?? "ws://localhost:8787";
 const sessionId = process.env.SESSION_ID ?? "session-demo";
 
 await callReducer("reset_demo", { sessionId }, "host-local");
+await callReducer("create_session", { code: DEFAULT_SESSION_CODE, questionCount: QUESTION_COUNT }, "host-local");
 await callReducer(
-  "create_session",
-  { topic: "AI + Space + Startups", difficulty: "beginner", questionCount: 3 },
-  "host-local"
+  "submit_question_pack",
+  { sessionId, selectedTopic: "AI + Space + Startups", questions: SEEDED_DEMO_QUESTIONS },
+  "fallback-seed"
 );
-await callReducer("submit_question_batch", { sessionId, questions: SEEDED_DEMO_QUESTIONS.slice(0, 3) }, "fallback-seed");
-await callReducer("open_lobby", { sessionId }, "host-local");
-await callReducer("add_simulated_supporters", { sessionId, count: 25 }, "host-local");
+await callReducer("add_simulated_players", { sessionId, count: 25 }, "host-local");
 
-console.info(`Seeded ${sessionId} through ${url}`);
+console.info(`Seeded QuizRush ${sessionId} through ${url}`);
 
 async function callReducer(reducer: string, args: unknown, identity: string) {
   const socket = new WebSocket(url);

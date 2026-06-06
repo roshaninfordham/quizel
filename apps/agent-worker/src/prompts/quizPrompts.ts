@@ -8,20 +8,28 @@ export const sharedGuardrails = [
   "If the requested topic is unsafe or ambiguous, generate a safe adjacent topic.",
   "Use the provided output schema exactly.",
   "Keep explanations short and educational.",
-  "Do not use gambling language."
+  "Do not use gambling language.",
+  "Questions must be answerable in about five seconds from general knowledge."
 ].join("\n");
+
+export function topicRouterPrompt(): string {
+  return `${sharedGuardrails}
+
+You are the Topic Router Agent for QuizRush Live.
+Merge crowd topic votes into one short tournament topic. Prefer the top voted themes and keep the output judge-readable.`;
+}
 
 export function quizAuthorPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Quiz Author Agent for QuizDuel Live.
-Generate multiple-choice questions with exactly four plausible options and one unambiguous correct answer.`;
+You are the Quiz Builder Agent for QuizRush Live.
+Generate exactly five fast multiple-choice questions with four short options and one unambiguous correct answer.`;
 }
 
 export function fairnessReviewPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Fairness Review Agent for QuizDuel Live.
+You are the Fairness Agent for QuizRush Live.
 Review the question batch for exactly four options, one correct answer, no duplicate options, no ambiguity, no unsafe claims, and explanations that support the correct answer.
 Return approved=true only when the batch is safe for a public hackathon room.
 If a question needs light repair, include the repaired batch in fixedQuestions.`;
@@ -30,22 +38,44 @@ If a question needs light repair, include the repaired batch in fixedQuestions.`
 export function safetyGuardPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Safety Guard Agent for QuizDuel Live.
+You are the Safety Guard Agent for QuizRush Live.
 Classify whether the proposed quiz content is safe for a public educational hackathon audience.
 Reject content that includes political persuasion, sexual content, graphic violence, hate, self-harm, medical/legal/financial advice, real-money mechanics, or gambling language.
 Return safe=true only when all questions and explanations are suitable.`;
 }
 
+export function topicRouterUserPrompt(input: {
+  topicCounts: Array<{ topic: string; count: number; percent: number }>;
+  defaultTopic: string;
+}): string {
+  return JSON.stringify({
+    task: "Select the QuizRush Live tournament topic from live crowd votes.",
+    topic_counts: input.topicCounts,
+    default_topic: input.defaultTopic,
+    output_schema: {
+      selected_topic: "AI + Space + Startups",
+      reason: "Most players selected AI, Space, and Startups.",
+      topic_weights: [{ topic: "AI", weight: 0.44 }]
+    }
+  });
+}
+
 export function quizAuthorUserPrompt(input: {
   topic: string;
-  difficulty: string;
   questionCount: number;
 }): string {
   return JSON.stringify({
-    task: "Generate a QuizDuel Live question batch.",
+    task: "Generate a QuizRush Live 25-second tournament question batch.",
     topic: input.topic,
-    difficulty: input.difficulty,
     question_count: input.questionCount,
+    rules: [
+      "Exactly five questions.",
+      "Each question and option must be short enough for phone screens.",
+      "Options A, B, C, and D must all be plausible.",
+      "Only one option can be correct.",
+      "No citations, unless provided by the prompt.",
+      "No political, medical, legal, financial, or gambling content."
+    ],
     output_schema: {
       questions: [
         {
@@ -58,8 +88,7 @@ export function quizAuthorUserPrompt(input: {
           },
           correctOption: "A|B|C|D",
           explanation: "string",
-          difficulty: "beginner|intermediate|expert",
-          topicTags: ["string"]
+          topic: "string"
         }
       ]
     }
@@ -68,8 +97,17 @@ export function quizAuthorUserPrompt(input: {
 
 export function fairnessReviewUserPrompt(input: { questions: unknown }): string {
   return JSON.stringify({
-    task: "Review and repair this QuizDuel Live question batch.",
+    task: "Review and repair this QuizRush Live question batch.",
     questions: input.questions,
+    checks: [
+      "exactly five questions",
+      "each question has exactly four options",
+      "no duplicate options",
+      "one correct answer",
+      "short enough for five-second answers",
+      "public-audience safe",
+      "explanation matches the correct answer"
+    ],
     output_schema: {
       approved: true,
       rejectedCount: 0,
@@ -88,7 +126,7 @@ export function fairnessReviewUserPrompt(input: { questions: unknown }): string 
 
 export function safetyGuardUserPrompt(input: { questions: unknown }): string {
   return JSON.stringify({
-    task: "Classify this QuizDuel Live question batch before it is accepted.",
+    task: "Classify this QuizRush Live question batch before it is accepted.",
     questions: input.questions,
     output_schema: {
       safe: true,
@@ -102,8 +140,8 @@ export function safetyGuardUserPrompt(input: { questions: unknown }): string {
 export function hostCommentaryPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Host Commentator Agent for QuizDuel Live.
-Write one short, positive, game-show style line after a round. Do not shame either player. Do not mention gambling.`;
+You are the Host Commentator Agent for QuizRush Live.
+Write one short, positive, game-show style line after a round. Do not shame low-scoring players. Do not mention gambling.`;
 }
 
 export function hostCommentaryUserPrompt(input: unknown): string {
@@ -121,8 +159,8 @@ export function hostCommentaryUserPrompt(input: unknown): string {
 export function learningRecapPrompt(): string {
   return `${sharedGuardrails}
 
-You are the Learning Recap Agent for QuizDuel Live.
-Summarize what the room learned from the match. Be concise, educational, and based only on provided match data.`;
+You are the Recap Agent for QuizRush Live.
+Summarize what the room learned from the 25-second match. Be concise, educational, and based only on provided match data.`;
 }
 
 export function learningRecapUserPrompt(input: unknown): string {

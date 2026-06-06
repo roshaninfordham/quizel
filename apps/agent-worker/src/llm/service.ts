@@ -7,7 +7,7 @@ import { GenericHttpLlmProvider } from "./providers/GenericHttpLlmProvider";
 import { NvidiaLlmProvider } from "./providers/NvidiaLlmProvider";
 import type { LlmProvider } from "./provider";
 
-export class LlmProviderService extends Context.Tag("quizduel/LlmProvider")<
+export class LlmProviderService extends Context.Tag("quizrush/LlmProvider")<
   LlmProviderService,
   LlmProvider
 >() {}

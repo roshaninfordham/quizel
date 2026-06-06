@@ -1,39 +1,55 @@
 # Realtime Flow
 
-Default laptop demo flow:
+## QR Join
 
-1. `pnpm dev` starts Vite and the local reducer gateway.
-2. `pnpm dev` also starts the Effect agent worker.
-3. Host calls reducer actions from `/host`.
-4. Phones call reducers over WebSocket.
-5. The worker watches snapshots, processes `AgentRequest` rows, calls LLM providers, validates JSON, and writes back through reducers.
-6. The gateway runs the shared reducer engine.
-7. Every reducer commit broadcasts a fresh state snapshot.
-8. Projector, phones, host, and tech overlay render from the same authoritative snapshot.
+```text
+Phone scans QR
+-> /join/ARENA-42
+-> join_session reducer
+-> Participant + Score row inserted
+-> LiveStats joined_count updates
+-> projector subscription renders avatar and count
+```
 
-This local gateway exists so the entire hackathon demo can run from one laptop with phones on the same Wi-Fi. It uses the same reducer names, arguments, scoring constants, and invariants as the SpacetimeDB module, so the judged flow exercises the intended transactional contract without requiring a hosted database during presentation setup.
+## Topic Swarm
 
-SpacetimeDB flow:
+```text
+Phone locks topics
+-> submit_topic_vote reducer
+-> TopicVote rows replaced for participant
+-> MatchEvent(topic_vote)
+-> projector recomputes live bars
+```
 
-1. `modules/spacetime` defines the public tables and reducers.
-2. Clients call reducers such as `join_session`, `submit_answer`, and `support_player`.
-3. Clients subscribe to necessary table rows.
-4. SpacetimeDB transactions commit or roll back reducer mutations.
-5. Table updates stream to subscribed clients.
+## Question Generation
 
-Verified integration points:
+```text
+Projector key G
+-> request_questions reducer
+-> AgentRequest pending
+-> Effect worker routes topic + generates quiz
+-> Zod validation + optional safety guard
+-> submit_question_pack reducer
+-> Question rows inserted
+-> Session status ready
+```
 
-- `pnpm spacetime:build` builds the module in `modules/spacetime`.
-- `pnpm spacetime:generate` generates TypeScript bindings with `DbConnection`, typed table accessors, and typed reducer calls.
-- The next direct deployment step is swapping `apps/web/src/lib/spacetime/client.ts` from the local gateway socket to generated `DbConnection` subscriptions while preserving the current domain hooks.
+## 25-Second Match
 
-Measured metrics shown:
+```text
+Projector key S
+-> start_match reducer
+-> round 1 starts with server starts_at/ends_at
+-> phones render current question
+-> submit_answer reducer per tap
+-> duplicate check
+-> response_ms computed from server time
+-> Score row updated
+-> ranks recomputed
+-> MatchEvent(answer/score_delta/rank_change)
+-> projector and phone subscriptions update
+```
 
-- Connected clients
-- Reducer calls
-- Cheer events
-- Duplicate answers rejected
-- Double-spend attempts blocked
-- Approximate p95 sync latency
+## Replay
 
-The UI does not claim zero latency.
+Replay reads `MatchEvent` ordered by `created_at`. It does not trust client animations as the source of truth.

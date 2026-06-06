@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type { LlmProvider } from "../llm/provider";
 import { LlmProviderError } from "../llm/errors";
-import { generateQuizQuestions } from "./quizAgents";
+import { generateQuizQuestions, routeTopic } from "./quizAgents";
 import { MockLlmProvider } from "../llm/providers/MockLlmProvider";
 import { demoQuestions } from "../fallbacks/demoQuestions";
 
@@ -21,7 +21,7 @@ class MalformedProvider implements LlmProvider {
 class NativeSafetyProvider implements LlmProvider {
   public generateJson<T>(input: Parameters<LlmProvider["generateJson"]>[0]) {
     if (input.schemaName === "QuizQuestionBatch") {
-      return Effect.succeed({ questions: demoQuestions.slice(0, 3) } as T);
+      return Effect.succeed({ questions: demoQuestions.slice(0, 5) } as T);
     }
     if (input.schemaName === "SafetyGuardReview") {
       return Effect.succeed({ "User Safety": "safe", "Response Safety": "safe" } as T);
@@ -39,17 +39,31 @@ class NativeSafetyProvider implements LlmProvider {
 }
 
 describe("agent fallback behavior", () => {
+  it("routes crowd topic votes into a selected tournament topic", async () => {
+    const result = await Effect.runPromise(
+      routeTopic(new MockLlmProvider(), { timeoutMs: 100, maxRetries: 0 }, {
+        topicCounts: [
+          { topic: "AI", count: 8, percent: 44 },
+          { topic: "Space", count: 6, percent: 33 }
+        ],
+        defaultTopic: "AI + Space + Startups"
+      })
+    );
+
+    expect(result.status).toBe("complete");
+    expect(result.selectedTopic).toContain("AI");
+  });
+
   it("missing LLM_API_KEY triggers fallback seed questions", async () => {
     const result = await Effect.runPromise(
       generateQuizQuestions(new FailingProvider(), { timeoutMs: 100, maxRetries: 0 }, {
         topic: "AI + Space + Startups",
-        difficulty: "beginner",
-        questionCount: 3
+        questionCount: 5
       })
     );
 
     expect(result.status).toBe("fallback");
-    expect(result.questions).toHaveLength(3);
+    expect(result.questions).toHaveLength(5);
     expect(result.events[0]?.eventType).toBe("fallback_used");
   });
 
@@ -57,21 +71,20 @@ describe("agent fallback behavior", () => {
     const result = await Effect.runPromise(
       generateQuizQuestions(new MalformedProvider(), { timeoutMs: 100, maxRetries: 0 }, {
         topic: "AI + Space + Startups",
-        difficulty: "beginner",
-        questionCount: 3
+        questionCount: 5
       })
     );
 
     expect(result.status).toBe("fallback");
-    expect(result.questions[0]?.questionText).toContain("SpacetimeDB");
+    expect(result.questions).toHaveLength(5);
+    expect(result.questions[0]?.options.B).toBe("SpacetimeDB");
   });
 
   it("records Safety Guard approval when guard is enabled", async () => {
     const result = await Effect.runPromise(
       generateQuizQuestions(new MockLlmProvider(), { timeoutMs: 100, maxRetries: 0, enableSafetyGuard: true }, {
         topic: "AI + Space + Startups",
-        difficulty: "beginner",
-        questionCount: 3
+        questionCount: 5
       })
     );
 
@@ -83,13 +96,12 @@ describe("agent fallback behavior", () => {
     const result = await Effect.runPromise(
       generateQuizQuestions(new NativeSafetyProvider(), { timeoutMs: 100, maxRetries: 0, enableSafetyGuard: true }, {
         topic: "AI + Space + Startups",
-        difficulty: "beginner",
-        questionCount: 3
+        questionCount: 5
       })
     );
 
     expect(result.status).toBe("complete");
-    expect(result.questions).toHaveLength(3);
+    expect(result.questions).toHaveLength(5);
     expect(result.events.map((event) => event.agentName)).toContain("Safety Guard Agent");
   });
 });

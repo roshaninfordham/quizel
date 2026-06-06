@@ -1,0 +1,157 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT } from "@quizrush/shared";
+import {
+  AgentPipeline,
+  FloatingAvatarCloud,
+  LeaderboardPanel,
+  LiveJoinFeed,
+  ProjectorShell,
+  QRHeroCard,
+  QuestionStage,
+  RaceReplay,
+  ReconnectingOverlay,
+  TechMetricStrip,
+  TopStatusBar,
+  TopicSwarm,
+  TournamentBracket,
+  WinnerExplosion
+} from "../components/ui";
+import {
+  useAddSimulatedPlayers,
+  useFinishMatch,
+  useRequestQuestions,
+  useResetDemo,
+  useResolveRound,
+  useSeedQuestions,
+  useStartMatch
+} from "../hooks/useArenaActions";
+import {
+  useAgentEvents,
+  useAnswers,
+  useCurrentQuestion,
+  useCurrentRound,
+  useLiveStats,
+  useMatchEvents,
+  useParticipants,
+  useSessionByCode,
+  useSpacetime
+} from "../lib/spacetime/client";
+import { getLeaderboard, topicCounts } from "../lib/selectors";
+import { TechRoute } from "./TechRoute";
+
+export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
+  const { state, connectionState, lastSyncAt } = useSpacetime();
+  const session = useSessionByCode(code);
+  const sessionId = session?.sessionId ?? DEFAULT_SESSION_ID;
+  const participants = useParticipants(sessionId);
+  const stats = useLiveStats(sessionId);
+  const events = useMatchEvents(sessionId);
+  const agentEvents = useAgentEvents(sessionId);
+  const round = useCurrentRound(sessionId);
+  const question = useCurrentQuestion(sessionId);
+  const answers = useAnswers(sessionId);
+  const leaderboard = useMemo(() => getLeaderboard(state, sessionId), [sessionId, state]);
+  const topics = useMemo(() => topicCounts(state, sessionId), [sessionId, state]);
+  const [showTech, setShowTech] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+  const { requestQuestions } = useRequestQuestions();
+  const { seedQuestions } = useSeedQuestions();
+  const { startMatch } = useStartMatch();
+  const { resolveRound } = useResolveRound();
+  const { finishMatch } = useFinishMatch();
+  const { resetDemo } = useResetDemo();
+  const { addSimulatedPlayers } = useAddSimulatedPlayers();
+
+  const questionCountRef = useRef(0);
+  questionCountRef.current = state.questions.filter((candidate) => candidate.sessionId === sessionId).length;
+
+  const joinUrl = useMemo(() => {
+    const base = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
+    return `${base.replace(/\/$/, "")}/join/${session?.code ?? code}`;
+  }, [code, session?.code]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!round || round.status !== "active") return;
+    if (now < round.endsAt) return;
+    void resolveRound(round.roundId);
+  }, [now, resolveRound, round]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      const key = event.key.toLowerCase();
+      if (key === "t") setShowTech((current) => !current);
+      if (key === "r") void resetDemo(sessionId);
+      if (key === "a") void addSimulatedPlayers(sessionId, 100);
+      if (key === "f") void finishMatch(sessionId);
+      if (key === "s") void startMatch(sessionId);
+      if (key === "g") {
+        void requestQuestions(sessionId);
+        window.setTimeout(() => {
+          if (questionCountRef.current < QUESTION_COUNT) void seedQuestions(sessionId, session?.selectedTopic ?? "AI + Space + Startups");
+        }, 2200);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [addSimulatedPlayers, finishMatch, requestQuestions, resetDemo, seedQuestions, session?.selectedTopic, sessionId, startMatch]);
+
+  const phase = session?.status ?? "lobby";
+  const currentAnswers = round ? answers.filter((answer) => answer.roundId === round.roundId).length : 0;
+  const secondsRemaining = round ? Math.ceil(Math.max(0, round.endsAt - now) / 1000) : 25;
+  const winner = leaderboard[0];
+
+  return (
+    <ProjectorShell>
+      <TopStatusBar
+        connectedCount={participants.length}
+        phase={phase}
+        p95LatencyMs={stats?.p95LatencyMs ?? 48}
+        reducerCalls={stats?.reducerCalls ?? 0}
+        connectionState={connectionState}
+        lastSyncAt={lastSyncAt}
+      />
+      <ReconnectingOverlay state={connectionState} />
+
+      {showTech ? <TechRoute code={session?.code ?? code} embedded /> : null}
+
+      {phase === "playing" ? (
+        <div className="grid flex-1 grid-cols-[0.82fr_1.4fr_0.88fr] gap-5">
+          <TournamentBracket entries={leaderboard} />
+          <div className="flex flex-col gap-5">
+            <QuestionStage question={question} round={round} answersCount={currentAnswers} secondsRemaining={secondsRemaining} />
+            <TechMetricStrip stats={stats} eventsCount={events.length} />
+          </div>
+          <LeaderboardPanel entries={leaderboard} compact />
+        </div>
+      ) : phase === "finished" || phase === "replay" ? (
+        <div className="grid flex-1 grid-cols-[1.2fr_0.8fr] gap-5">
+          <div className="flex flex-col gap-5">
+            <WinnerExplosion winner={winner} totalPlayers={participants.length} />
+            <RaceReplay events={events} participants={participants} />
+          </div>
+          <LeaderboardPanel entries={leaderboard} />
+        </div>
+      ) : (
+        <div className="grid flex-1 grid-cols-[1.08fr_0.92fr] gap-5">
+          <div className="flex flex-col gap-5">
+            <QRHeroCard joinUrl={joinUrl} sessionCode={session?.code ?? code} joinedCount={participants.length} countdownSeconds={25} />
+            <FloatingAvatarCloud participants={participants} />
+          </div>
+          <div className="flex flex-col gap-5">
+            <TopicSwarm topicCounts={topics} selectedTopic={session?.selectedTopic} />
+            <AgentPipeline events={agentEvents} status={phase} />
+            <LiveJoinFeed participants={participants} />
+            <TechMetricStrip stats={stats} eventsCount={events.length} />
+          </div>
+        </div>
+      )}
+    </ProjectorShell>
+  );
+}

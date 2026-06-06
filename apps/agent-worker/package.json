@@ -1,5 +1,5 @@
 {
-  "name": "@quizduel/agent-worker",
+  "name": "@quizrush/agent-worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@quizduel/shared": "workspace:*",
+    "@quizrush/shared": "workspace:*",
     "dotenv": "^16.4.7",
     "effect": "^3.16.12",
     "ws": "^8.18.3",

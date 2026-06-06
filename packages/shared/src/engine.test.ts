@@ -1,169 +1,143 @@
 import { describe, expect, it } from "vitest";
-import { CHEER_AMOUNT, DEFAULT_JOIN_CODE, INITIAL_ENERGY, MAX_CROWD_BOOST } from "./constants";
-import { QuizDuelEngine } from "./engine";
-import { computePlayerRoundScore } from "./scoring";
+import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT } from "./constants";
+import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
+import { QuizRushEngine } from "./engine";
+import { computeAnswerScore } from "./scoring";
 
-function setupActiveRound() {
-  const engine = new QuizDuelEngine();
-  engine.callReducer("create_session", {
-    topic: "AI + Space + Startups",
-    difficulty: "beginner",
-    questionCount: 3
-  });
-  engine.callReducer("open_lobby", { sessionId: "session-demo" });
-  const playerA = engine.callReducer("join_session", {
-    joinCode: DEFAULT_JOIN_CODE,
+function prepareReadyMatch() {
+  const engine = new QuizRushEngine();
+  const joinA = engine.callReducer("join_session", {
+    code: DEFAULT_SESSION_CODE,
     displayName: "Maya",
-    roleRequested: "player",
-    interests: ["AI"]
+    avatar: "🚀"
   }, "device-maya");
-  const playerB = engine.callReducer("join_session", {
-    joinCode: DEFAULT_JOIN_CODE,
+  const joinB = engine.callReducer("join_session", {
+    code: DEFAULT_SESSION_CODE,
     displayName: "Arjun",
-    roleRequested: "player",
-    interests: ["Space"]
+    avatar: "🧠"
   }, "device-arjun");
-  const crowd = engine.callReducer("join_session", {
-    joinCode: DEFAULT_JOIN_CODE,
-    displayName: "Sarah",
-    roleRequested: "crowd",
-    interests: ["Startups"]
-  }, "device-sarah");
-  engine.callReducer("request_questions", {
-    sessionId: "session-demo",
-    topic: "AI + Space + Startups",
-    difficulty: "beginner",
-    questionCount: 3
-  });
-  engine.callReducer("assign_champions_randomly", { sessionId: "session-demo" });
-  const match = engine.getSnapshot().matches[0];
-  if (!match) throw new Error("Expected match");
-  engine.callReducer("start_match", { matchId: match.matchId });
-  const round = engine.getSnapshot().rounds[0];
-  if (!round) throw new Error("Expected round");
-  return { engine, playerA, playerB, crowd, match, round };
+  engine.callReducer("submit_topic_vote", { sessionId: DEFAULT_SESSION_ID, topics: ["AI", "Space"] }, "device-maya");
+  engine.callReducer("submit_topic_vote", { sessionId: DEFAULT_SESSION_ID, topics: ["Startups"] }, "device-arjun");
+  const pack = engine.callReducer("submit_question_pack", {
+    sessionId: DEFAULT_SESSION_ID,
+    selectedTopic: "AI + Space + Startups",
+    questions: SEEDED_DEMO_QUESTIONS
+  }, "agent-worker");
+
+  expect(joinA.ok).toBe(true);
+  expect(joinB.ok).toBe(true);
+  expect(pack.ok).toBe(true);
+  return engine;
 }
 
-describe("QuizDuel reducer invariants", () => {
-  it("join_session grants exactly 500 Energy", () => {
-    const engine = new QuizDuelEngine();
-    engine.callReducer("open_lobby", { sessionId: "session-demo" });
+describe("QuizRush reducer invariants", () => {
+  it("join_session creates one participant and one score row", () => {
+    const engine = new QuizRushEngine();
     const receipt = engine.callReducer("join_session", {
-      joinCode: DEFAULT_JOIN_CODE,
+      code: DEFAULT_SESSION_CODE,
       displayName: "Maya",
-      roleRequested: "player",
-      interests: ["AI"]
+      avatar: "🚀"
     }, "device-maya");
+    const state = engine.getSnapshot();
 
     expect(receipt.ok).toBe(true);
-    expect(engine.getSnapshot().energyBalances[0]?.spendableEnergy).toBe(INITIAL_ENERGY);
+    expect(state.sessions[0]?.status).toBe("topic_voting");
+    expect(state.participants).toHaveLength(1);
+    expect(state.scores).toHaveLength(1);
+    expect(state.liveStats[0]?.joinedCount).toBe(1);
   });
 
-  it("assign_champions_randomly selects exactly 2 players", () => {
-    const { engine } = setupActiveRound();
-    const assigned = engine
-      .getSnapshot()
-      .participants.filter((participant) => participant.roleAssigned === "player1" || participant.roleAssigned === "player2");
-    expect(assigned).toHaveLength(2);
+  it("submit_topic_vote stores a latest topic set per participant", () => {
+    const engine = new QuizRushEngine();
+    engine.callReducer("join_session", { code: DEFAULT_SESSION_CODE, displayName: "Maya", avatar: "🚀" }, "device-maya");
+    engine.callReducer("submit_topic_vote", { sessionId: DEFAULT_SESSION_ID, topics: ["AI", "Space"] }, "device-maya");
+    engine.callReducer("submit_topic_vote", { sessionId: DEFAULT_SESSION_ID, topics: ["Startups"] }, "device-maya");
+
+    const votes = engine.getSnapshot().topicVotes;
+    expect(votes).toHaveLength(1);
+    expect(votes[0]?.topic).toBe("Startups");
   });
 
-  it("duplicate answer is rejected without adding a second answer", () => {
-    const { engine, round } = setupActiveRound();
-    const first = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "A" }, "device-maya");
-    const second = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
-    const playerAnswers = engine.getSnapshot().answers.filter((answer) => answer.roundId === round.roundId);
+  it("submit_question_pack validates the LLM JSON shape and readies the match", () => {
+    const engine = new QuizRushEngine();
+    const bad = engine.callReducer("submit_question_pack", {
+      sessionId: DEFAULT_SESSION_ID,
+      questions: [{ questionText: "Bad", options: { A: "x" }, correctOption: "A" }]
+    }, "agent-worker");
+    const good = engine.callReducer("submit_question_pack", {
+      sessionId: DEFAULT_SESSION_ID,
+      selectedTopic: "AI + Space + Startups",
+      questions: SEEDED_DEMO_QUESTIONS
+    }, "agent-worker");
+
+    expect(bad.ok).toBe(false);
+    expect(good.ok).toBe(true);
+    expect(engine.getSnapshot().questions).toHaveLength(QUESTION_COUNT);
+    expect(engine.getSnapshot().sessions[0]?.status).toBe("ready");
+  });
+
+  it("start_match creates a server-authoritative active round", () => {
+    const engine = prepareReadyMatch();
+    const started = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const round = engine.getSnapshot().rounds[0];
+
+    expect(started.ok).toBe(true);
+    expect(round?.status).toBe("active");
+    expect(round?.endsAt).toBeGreaterThan(round?.startsAt ?? 0);
+    expect(engine.getSnapshot().sessions[0]?.currentRound).toBe(1);
+  });
+
+  it("submit_answer rejects duplicate answers and records the rejection", () => {
+    const engine = prepareReadyMatch();
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    const first = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
+    const second = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "A" }, "device-maya");
 
     expect(first.ok).toBe(true);
-    expect(second.ok).toBe(true);
-    expect(second.data).toMatchObject({ accepted: false, reason: "duplicate_answer" });
-    expect(playerAnswers).toHaveLength(1);
+    expect(second.ok).toBe(false);
+    expect(engine.getSnapshot().answers).toHaveLength(1);
     expect(engine.getSnapshot().liveStats[0]?.duplicateAnswersRejected).toBe(1);
   });
 
-  it("support_player deducts exactly 25 Energy and rejects invalid amount", () => {
-    const { engine, round, match } = setupActiveRound();
-    const supporter = engine.getSnapshot().participants.find((participant) => participant.identity === "device-sarah");
-    expect(supporter).toBeTruthy();
-
-    const accepted = engine.callReducer("support_player", {
-      roundId: round.roundId,
-      playerId: match.player1Id,
-      amount: CHEER_AMOUNT,
-      clientEventId: "cheer-1"
-    }, "device-sarah");
-    const invalid = engine.callReducer("support_player", {
-      roundId: round.roundId,
-      playerId: match.player1Id,
-      amount: 50,
-      clientEventId: "cheer-2"
-    }, "device-sarah");
-
-    const balance = engine.getSnapshot().energyBalances.find((candidate) => candidate.participantId === supporter?.participantId);
-    expect(accepted.ok).toBe(true);
-    expect(invalid.ok).toBe(false);
-    expect(balance?.spendableEnergy).toBe(INITIAL_ENERGY - CHEER_AMOUNT);
+  it("scores correct fast answers and gives wrong answers no speed bonus", () => {
+    expect(computeAnswerScore({ isCorrect: true, responseMs: 500 })).toBeGreaterThan(1000);
+    expect(computeAnswerScore({ isCorrect: false, responseMs: 1 })).toBe(0);
   });
 
-  it("support_player cannot make Energy negative", () => {
-    const { engine, round, match } = setupActiveRound();
-    for (let index = 0; index < 25; index += 1) {
-      engine.callReducer("support_player", {
-        roundId: round.roundId,
-        playerId: match.player1Id,
-        amount: CHEER_AMOUNT,
-        clientEventId: `cheer-${index}`
-      }, "device-sarah");
-    }
-
-    const supporter = engine.getSnapshot().participants.find((participant) => participant.identity === "device-sarah");
-    const balance = engine.getSnapshot().energyBalances.find((candidate) => candidate.participantId === supporter?.participantId);
-    expect(balance?.spendableEnergy).toBe(0);
-    expect(engine.getSnapshot().liveStats[0]?.doubleSpendAttemptsBlocked).toBeGreaterThan(0);
-  });
-
-  it("resolve_round is idempotent and supporter XP is awarded once", () => {
-    const { engine, round, match } = setupActiveRound();
-    engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "A" }, "device-maya");
+  it("updates rankings and writes replay events after answers", () => {
+    const engine = prepareReadyMatch();
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
     engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "A" }, "device-arjun");
-    engine.callReducer("support_player", {
-      roundId: round.roundId,
-      playerId: match.player1Id,
-      amount: CHEER_AMOUNT,
-      clientEventId: "cheer-1"
-    }, "device-sarah");
 
-    engine.callReducer("resolve_round", { roundId: round.roundId });
-    const firstXp = engine.getSnapshot().scores.find((score) => score.participantId !== match.player1Id && score.participantId !== match.player2Id)?.supporterXp;
-    engine.callReducer("resolve_round", { roundId: round.roundId });
-    const secondXp = engine.getSnapshot().scores.find((score) => score.participantId !== match.player1Id && score.participantId !== match.player2Id)?.supporterXp;
-
-    expect(secondXp).toBe(firstXp);
+    const state = engine.getSnapshot();
+    const ranked = [...state.scores].sort((a, b) => a.currentRank - b.currentRank);
+    expect(ranked[0]?.currentRank).toBe(1);
+    expect(state.matchEvents.some((event) => event.eventType === "answer")).toBe(true);
+    expect(state.matchEvents.some((event) => event.eventType === "score_delta")).toBe(true);
   });
 
-  it("support bonus is capped and wrong answers get no speed bonus", () => {
-    const capped = computePlayerRoundScore({
-      isCorrect: true,
-      responseMs: 100,
-      totalSupportForPlayer: 10_000
-    });
-    const wrong = computePlayerRoundScore({
-      isCorrect: false,
-      responseMs: 1,
-      totalSupportForPlayer: 0
-    });
+  it("resolve_round is idempotent and starts the next question once", () => {
+    const engine = prepareReadyMatch();
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    const first = engine.callReducer("resolve_round", { roundId: round.roundId }, "operator");
+    const second = engine.callReducer("resolve_round", { roundId: round.roundId }, "operator");
 
-    expect(capped.crowdBoost).toBe(MAX_CROWD_BOOST);
-    expect(wrong.speedBonus).toBe(0);
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(engine.getSnapshot().rounds.filter((candidate) => candidate.orderIndex === 2)).toHaveLength(1);
   });
 
-  it("malformed LLM JSON shape is rejected by submit_question_batch", () => {
-    const engine = new QuizDuelEngine();
-    const receipt = engine.callReducer("submit_question_batch", {
-      sessionId: "session-demo",
-      questions: [{ questionText: "Bad", options: { A: "x" }, correctOption: "A" }]
-    }, "agent-worker");
+  it("reset_demo returns to a clean lobby state", () => {
+    const engine = prepareReadyMatch();
+    engine.callReducer("add_simulated_players", { sessionId: DEFAULT_SESSION_ID, count: 12 }, "operator");
+    const reset = engine.callReducer("reset_demo", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const state = engine.getSnapshot();
 
-    expect(receipt.ok).toBe(false);
-    expect(engine.getSnapshot().questions).toHaveLength(0);
+    expect(reset.ok).toBe(true);
+    expect(state.sessions[0]?.status).toBe("lobby");
+    expect(state.participants).toHaveLength(0);
+    expect(state.questions).toHaveLength(0);
+    expect(state.liveStats[0]?.joinedCount).toBe(0);
   });
 });

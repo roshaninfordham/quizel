@@ -1,29 +1,45 @@
-# Submission README
+# Submission Readme
 
-Product: QuizDuel Live
+Product: QuizRush Live
 
-One-liner:
+Tagline: A 25-second real-time quiz tournament from one QR code.
 
-Two players battle live, the Crowd cheers from their phones, AI hosts the quiz, and reducer-owned realtime state syncs every tap live.
+Judges should remember: “The whole room scanned one QR code and became a live tournament bracket in 25 seconds.”
 
-Best demo route:
+## What To Demo
 
-1. `/host`
-2. `/lobby/session-demo`
-3. `/join/ARENA-42`
-4. `/arena/session-demo/reveal`
-5. `/arena/session-demo`
-6. `/arena/session-demo/final`
-7. `/tech/session-demo`
+- `make online`
+- QR lobby
+- phone join
+- topic swarm
+- agent pipeline
+- 25-second match
+- live leaderboard and bracket
+- final champion
+- race replay
+- tech overlay
 
-What to emphasize:
+## What Is Real
 
-- One QR code turns the room into the game.
-- SpacetimeDB reducers are the authoritative state contract.
-- The local gateway lets the demo run from one laptop.
-- AI is schema-validated and has a deterministic fallback.
-- Energy has no real-world value.
+- Reducer-owned joins, topic votes, answers, scoring, rank recomputation, duplicate rejection, and reset.
+- Realtime websocket subscriptions for the laptop demo.
+- SpacetimeDB TypeScript module with the same public table/reducer contract.
+- Effect worker with provider-neutral LLM adapter, NVIDIA routing, validation, safety guard support, and fallback seed questions.
+- MatchEvent ledger used by replay.
 
-Final line:
+## What Is Prototype Scope
 
-Two players. One Crowd. Every phone live.
+- Production auth.
+- Profiles.
+- Automated public tunnel startup.
+- Direct generated SpacetimeDB web bindings as the default transport.
+- Long-term content management.
+
+## Backup Plan
+
+If LLM or network fails:
+
+1. Press `R`.
+2. Press `A` to add simulated players.
+3. Press `S`; `start_match` uses deterministic fallback questions if needed.
+4. Press `T` to show duplicate rejection and reducer metrics.

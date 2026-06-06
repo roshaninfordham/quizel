@@ -1,32 +1,61 @@
 # Data Model
 
-The authoritative model is implemented in `modules/spacetime/src/index.ts` and mirrored in `packages/shared/src/types.ts`.
+QuizRush Live uses reducer-owned game state. Clients call reducers and subscribe to table updates; clients never calculate authoritative score or rank.
 
-Primary tables:
+## Tables
 
-- `Session`: room settings, topic, status, current match.
-- `Participant`: audience identity, display name, requested role, assigned role.
-- `Match`: selected Champions and match status.
-- `Question`: generated or fallback quiz content.
-- `Round`: active/resolved round timing and winner.
-- `Answer`: one player answer per round.
-- `PlayAlongAnswer`: one Crowd play-along answer per round.
-- `SupportEvent`: positive Cheer events only.
-- `EnergyBalance`: current spendable Energy and Trust XP.
-- `Score`: cached player/supporter leaderboard rows.
-- `LedgerEntry`: append-only audit ledger for Energy, Trust XP, and player score deltas.
-- `AgentRequest`: external worker request queue.
-- `AgentEvent`: visible agent status, commentary, explanations, and fallbacks.
-- `LiveStats`: cached live metrics for projector and tech overlay.
-- `AuditEvent`: reducer action feed.
+| Table | Purpose |
+| --- | --- |
+| `Session` | Session code, status, selected topic, current round, match timestamps. |
+| `Participant` | Joined player identity, display name, avatar, simulated flag, heartbeat latency. |
+| `TopicVote` | One latest topic set per participant, stored as rows for live swarm counts. |
+| `Question` | Five approved questions with options, correct option, explanation, and source. |
+| `Round` | Server-side start/end timestamps for each 5-second question. |
+| `Answer` | One committed answer per participant per round. |
+| `Score` | Cached total score, correct count, response time, fastest answer, current rank. |
+| `MatchEvent` | Event ledger for join, topic vote, answer, score delta, rank change, round resolved, match finished. |
+| `AgentRequest` | Pending quiz generation/recap work for the Effect worker. |
+| `AgentEvent` | Visible agent pipeline events and fallback logs. |
+| `LiveStats` | Joined counts, answer rate, reducer calls, duplicate rejects, p95 latency. |
+| `AuditEvent` | Operator/system audit trail for demo reset and session changes. |
 
-Critical invariants:
+## Session Status
 
-- Only reducers mutate game state.
-- One player answer per round.
-- One Crowd play-along answer per round.
-- Cheer amount is exactly 25 Energy.
-- Energy cannot go below zero.
-- Round scoring is idempotent.
-- Crowd boost is capped at 200 points.
-- AI cannot directly mutate scores.
+```text
+lobby -> topic_voting -> generating -> ready -> playing -> finished -> replay
+```
+
+## Critical Invariants
+
+- All core mutations happen through reducers.
+- A participant answers at most once per round.
+- Response time is computed from server time.
+- Score and rank are server-authoritative.
+- Wrong answers receive no speed bonus.
+- Duplicate answers are rejected and counted.
+- AI can submit question packs and agent events, but cannot mutate scores.
+- Replay is reconstructed from `MatchEvent`, not from client-only animation state.
+
+## Scoring
+
+```text
+if correct:
+  base = 1000
+  speed_bonus = floor(1000 * clamp(1 - response_ms / 5000, 0, 1))
+else:
+  base = 0
+  speed_bonus = 0
+
+score_delta = base + speed_bonus
+```
+
+Tie-breakers:
+
+```text
+1. higher total_score
+2. higher correct_count
+3. lower total_response_ms
+4. lower fastest_response_ms
+5. earlier final answer timestamp
+6. deterministic participant_id ordering
+```

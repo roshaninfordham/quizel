@@ -1,30 +1,33 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_SESSION_CODE,
   DEFAULT_SESSION_ID,
-  QuizDuelEngine,
-  type EnergyBalance,
+  QuizRushEngine,
+  type AgentEvent,
+  type Answer,
   type LiveStats,
-  type Match,
+  type MatchEvent,
   type Participant,
-  type QuizDuelState,
+  type Question,
+  type QuizRushState,
   type ReducerReceipt,
   type Round,
   type Score,
   type Session,
-  type SupportEvent
-} from "@quizduel/shared";
+  type TopicVote
+} from "@quizrush/shared";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected" | "error";
 
 interface RealtimeContextValue {
-  state: QuizDuelState;
+  state: QuizRushState;
   stateVersion: number;
   connectionState: ConnectionState;
   lastSyncAt: number | null;
   callReducer: <T = unknown>(name: string, args: unknown, identity?: string) => Promise<ReducerReceipt<T>>;
 }
 
-const localEngine = new QuizDuelEngine();
+const localEngine = new QuizRushEngine();
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
 export function connectToSpacetime(): {
@@ -33,14 +36,14 @@ export function connectToSpacetime(): {
   realtimeUrl: string;
 } {
   const host = import.meta.env.VITE_SPACETIMEDB_HOST ?? "ws://localhost:3000";
-  const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizduel-live";
+  const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizrush-live";
   const realtimeUrl =
     import.meta.env.VITE_REALTIME_URL ?? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8787`;
   return { host, module, realtimeUrl };
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  const [state, setState] = useState<QuizDuelState>(localEngine.getSnapshot());
+  const [state, setState] = useState<QuizRushState>(localEngine.getSnapshot());
   const [stateVersion, setStateVersion] = useState(localEngine.stateVersion);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(Date.now());
@@ -74,7 +77,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
 
       socket.addEventListener("message", (event) => {
         const message = JSON.parse(String(event.data)) as
-          | { type: "snapshot"; state: QuizDuelState; stateVersion: number; serverTime: number }
+          | { type: "snapshot"; state: QuizRushState; stateVersion: number; serverTime: number }
           | { type: "receipt"; requestId: string | null; receipt: ReducerReceipt }
           | { type: "error"; error: string };
 
@@ -115,21 +118,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
   }, []);
 
   const callReducer = useCallback(
-    async <T,>(name: string, args: unknown, identity = name.startsWith("host") ? "host-local" : getDeviceIdentity()) => {
+    async <T,>(name: string, args: unknown, identity = getDeviceIdentity()) => {
       const socket = socketRef.current;
       if (socket && socket.readyState === WebSocket.OPEN) {
         const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         return await new Promise<ReducerReceipt<T>>((resolve) => {
           pendingRef.current.set(requestId, resolve as (receipt: ReducerReceipt) => void);
-          socket.send(
-            JSON.stringify({
-              type: "call",
-              requestId,
-              reducer: name,
-              args,
-              identity
-            })
-          );
+          socket.send(JSON.stringify({ type: "call", requestId, reducer: name, args, identity }));
           window.setTimeout(() => {
             const pending = pendingRef.current.get(requestId);
             if (pending) {
@@ -153,13 +148,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
   );
 
   const value = useMemo<RealtimeContextValue>(
-    () => ({
-      state,
-      stateVersion,
-      connectionState,
-      lastSyncAt,
-      callReducer
-    }),
+    () => ({ state, stateVersion, connectionState, lastSyncAt, callReducer }),
     [callReducer, connectionState, lastSyncAt, state, stateVersion]
   );
 
@@ -168,68 +157,73 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
 
 export function useSpacetime(): RealtimeContextValue {
   const value = useContext(RealtimeContext);
-  if (!value) {
-    throw new Error("useSpacetime must be used inside RealtimeProvider.");
-  }
+  if (!value) throw new Error("useSpacetime must be used inside RealtimeProvider.");
   return value;
 }
 
 export function useSession(sessionId = DEFAULT_SESSION_ID): Session | undefined {
-  return useSpacetime().state.sessions.find((session) => session.sessionId === sessionId) ?? useSpacetime().state.sessions[0];
+  const { state } = useSpacetime();
+  return state.sessions.find((session) => session.sessionId === sessionId) ?? state.sessions[0];
+}
+
+export function useSessionByCode(code = DEFAULT_SESSION_CODE): Session | undefined {
+  const { state } = useSpacetime();
+  return state.sessions.find((session) => session.code === code || session.sessionId === code) ?? state.sessions[0];
 }
 
 export function useParticipants(sessionId = DEFAULT_SESSION_ID): Participant[] {
   return useSpacetime().state.participants.filter((participant) => participant.sessionId === sessionId);
 }
 
+export function useTopicVotes(sessionId = DEFAULT_SESSION_ID): TopicVote[] {
+  return useSpacetime().state.topicVotes.filter((vote) => vote.sessionId === sessionId);
+}
+
+export function useQuestions(sessionId = DEFAULT_SESSION_ID): Question[] {
+  return useSpacetime().state.questions.filter((question) => question.sessionId === sessionId).sort((a, b) => a.orderIndex - b.orderIndex);
+}
+
+export function useCurrentRound(sessionId = DEFAULT_SESSION_ID): Round | undefined {
+  const { state } = useSpacetime();
+  const session = state.sessions.find((candidate) => candidate.sessionId === sessionId) ?? state.sessions[0];
+  if (!session) return undefined;
+  return (
+    state.rounds.find((round) => round.sessionId === session.sessionId && round.status === "active") ??
+    state.rounds
+      .filter((round) => round.sessionId === session.sessionId)
+      .sort((a, b) => b.orderIndex - a.orderIndex)[0]
+  );
+}
+
+export function useCurrentQuestion(sessionId = DEFAULT_SESSION_ID): Question | undefined {
+  const round = useCurrentRound(sessionId);
+  const { state } = useSpacetime();
+  if (!round) return undefined;
+  return state.questions.find((question) => question.questionId === round.questionId);
+}
+
+export function useAnswers(sessionId = DEFAULT_SESSION_ID): Answer[] {
+  return useSpacetime().state.answers.filter((answer) => answer.sessionId === sessionId);
+}
+
+export function useScores(sessionId = DEFAULT_SESSION_ID): Score[] {
+  return useSpacetime().state.scores.filter((score) => score.sessionId === sessionId).sort((a, b) => a.currentRank - b.currentRank);
+}
+
+export function useMatchEvents(sessionId = DEFAULT_SESSION_ID): MatchEvent[] {
+  return useSpacetime().state.matchEvents.filter((event) => event.sessionId === sessionId);
+}
+
+export function useAgentEvents(sessionId = DEFAULT_SESSION_ID): AgentEvent[] {
+  return useSpacetime().state.agentEvents.filter((event) => event.sessionId === sessionId).slice(-8).reverse();
+}
+
 export function useLiveStats(sessionId = DEFAULT_SESSION_ID): LiveStats | undefined {
   return useSpacetime().state.liveStats.find((stats) => stats.sessionId === sessionId);
 }
 
-export function useCurrentMatch(sessionId = DEFAULT_SESSION_ID): Match | undefined {
-  const { state } = useSpacetime();
-  const session = state.sessions.find((candidate) => candidate.sessionId === sessionId) ?? state.sessions[0];
-  if (!session?.currentMatchId) return undefined;
-  return state.matches.find((match) => match.matchId === session.currentMatchId);
-}
-
-export function useCurrentRound(matchId?: string): Round | undefined {
-  const { state } = useSpacetime();
-  if (!matchId) return undefined;
-  const match = state.matches.find((candidate) => candidate.matchId === matchId);
-  if (!match) return undefined;
-  return state.rounds.find((round) => round.matchId === matchId && round.roundNumber === match.currentRoundNumber);
-}
-
-export function useScores(matchId?: string): Score[] {
-  const { state } = useSpacetime();
-  if (!matchId) return [];
-  return state.scores.filter((score) => score.matchId === matchId);
-}
-
-export function useSupportTotals(roundId?: string): Record<string, number> {
-  const { state } = useSpacetime();
-  if (!roundId) return {};
-  return state.supportEvents
-    .filter((event) => event.roundId === roundId)
-    .reduce<Record<string, number>>((totals, event: SupportEvent) => {
-      totals[event.playerId] = (totals[event.playerId] ?? 0) + event.amount;
-      return totals;
-    }, {});
-}
-
-export function useAgentEvents(sessionId = DEFAULT_SESSION_ID) {
-  return useSpacetime().state.agentEvents.filter((event) => event.sessionId === sessionId).slice(-8).reverse();
-}
-
-export function useEnergyBalance(participantId?: string): EnergyBalance | undefined {
-  const { state } = useSpacetime();
-  if (!participantId) return undefined;
-  return state.energyBalances.find((balance) => balance.participantId === participantId);
-}
-
 export function getDeviceIdentity(): string {
-  const key = "quizduel-live-device";
+  const key = "quizrush-live-device";
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
   const created = `device-${crypto.randomUUID()}`;
@@ -237,10 +231,10 @@ export function getDeviceIdentity(): string {
   return created;
 }
 
-export function getJoinedParticipantId(): string | null {
-  return window.localStorage.getItem("quizduel-live-participant");
+export function getJoinedParticipantId(code = DEFAULT_SESSION_CODE): string | null {
+  return window.localStorage.getItem(`quizrush-live-participant-${code}`);
 }
 
-export function setJoinedParticipantId(participantId: string): void {
-  window.localStorage.setItem("quizduel-live-participant", participantId);
+export function setJoinedParticipantId(participantId: string, code = DEFAULT_SESSION_CODE): void {
+  window.localStorage.setItem(`quizrush-live-participant-${code}`, participantId);
 }

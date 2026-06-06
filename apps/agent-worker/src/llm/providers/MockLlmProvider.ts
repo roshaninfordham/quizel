@@ -10,13 +10,25 @@ export class MockLlmProvider implements LlmProvider {
         approved: true,
         rejectedCount: 0,
         issues: [],
-        fixedQuestions: demoQuestions.slice(0, 3)
+        fixedQuestions: demoQuestions.slice(0, 5)
+      } as T);
+    }
+
+    if (input.schemaName === "TopicRouter") {
+      return Effect.succeed({
+        selected_topic: "AI + Space + Startups",
+        reason: "Most players selected AI, Space, and Startups.",
+        topic_weights: [
+          { topic: "AI", weight: 0.44 },
+          { topic: "Space", weight: 0.31 },
+          { topic: "Startups", weight: 0.25 }
+        ]
       } as T);
     }
 
     if (input.schemaName === "HostCommentary") {
       return Effect.succeed({
-        commentary: "The room moved as one. Fast answers, positive support, and a clean explanation.",
+        commentary: "Ranks just jumped from committed answers. The race is live.",
         tone: "excited",
         confidence: 0.9
       } as T);
@@ -33,14 +45,14 @@ export class MockLlmProvider implements LlmProvider {
 
     if (input.schemaName === "LearningRecap") {
       return Effect.succeed({
-        summary: "The room learned how reducers, realtime subscriptions, and AI fallbacks keep a live quiz fair.",
-        hardestConcepts: ["reducer-owned state", "capped crowd boost"],
+        summary: "The room learned how reducers, realtime subscriptions, and AI fallbacks keep a live tournament fair.",
+        hardestConcepts: ["reducer-owned state", "event-ledger replay"],
         nextQuizRecommendation: "Try a deeper realtime systems quiz next."
       } as T);
     }
 
     return Effect.succeed({
-      questions: demoQuestions.slice(0, 3)
+      questions: demoQuestions.slice(0, 5)
     } as T);
   }
 }

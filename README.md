@@ -1,191 +1,173 @@
-# QuizDuel Live
+# QuizRush Live
 
-Two players battle live, the crowd cheers from their phones, AI agents generate and explain the quiz, and reducer-owned realtime state synchronizes every tap, score, cheer, leaderboard, and state transition.
+A 25-second real-time quiz tournament from one QR code.
 
-Memory sentence for judges:
+> The whole room scanned one QR code and became a live tournament bracket in 25 seconds.
 
-> The one where the whole room scanned one QR code and became part of a live AI-powered quiz duel.
-
-QuizDuel Live uses non-redeemable educational game XP only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
+QuizRush Live uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
 
 ## What It Does
 
-- Host creates a session for `AI + Space + Startups`.
-- AI quiz generation uses a provider-neutral Effect worker with deterministic fallback questions.
-- Projector lobby shows a QR code and live join counts.
-- Phones join as Champion candidates or Crowd supporters.
-- Exactly two Champions are selected through a reducer.
-- Players answer timed questions.
-- Crowd supporters play along and Cheer with non-redeemable Energy.
-- Scores, support bars, metrics, round results, AI explanations, and leaderboards update live.
+QuizRush Live turns a room into a live multiplayer quiz race. The presenter runs `make online`, the projector shows a giant QR code, everyone joins from a phone, topic votes form a live swarm, AI agents generate and review five questions, and the arena shows every answer, score, rank jump, bracket movement, winner, and replay live.
 
-## What Works
+## Demo Flow
 
-- Full React app with routes for host, lobby, join, reveal, arena, player phone, crowd phone, tech overlay, and final leaderboard.
-- Laptop-hosted WebSocket reducer gateway for multiple local devices on the same Wi-Fi.
-- Shared reducer engine with transaction-style rollback and invariant tests.
-- Build-verified SpacetimeDB TypeScript module in `modules/spacetime`.
-- Effect-based agent worker package with provider-neutral LLM adapter and fallback seed provider.
-- Deterministic demo mode, reset script, seed script, and 10 fallback questions.
+1. Run `make online`.
+2. Projector opens `/arena/ARENA-42`.
+3. Audience scans the QR and joins `/join/ARENA-42`.
+4. Everyone picks up to three topics.
+5. Press `G` on the projector to run the agent pipeline.
+6. Press `S` to start the 25-second match.
+7. Phones answer five 5-second questions.
+8. Projector updates leaderboard and top-16 bracket from committed state.
+9. Winner screen shows champion, score, fastest answer, and confetti.
+10. Replay reads the `MatchEvent` ledger to show how the race changed.
+11. Press `T` to show the SpacetimeDB tech proof overlay.
 
-## Prototype Scope
+Projector keyboard controls:
 
-- Default web demo uses the local reducer gateway for no-login laptop reliability.
-- The SpacetimeDB module builds successfully and preserves the table/reducer contract, but generated React bindings are not wired as the default client transport yet.
-- Production auth, payments, redeemable balances, long-term profiles, and content marketplace are intentionally not built.
-- LLM provider calls are configurable; missing credentials automatically use seed fallback questions.
+```text
+S = start match
+G = generate questions
+A = add 100 simulated players
+T = toggle tech overlay
+F = force finish
+R = reset demo
+```
 
-## Run Locally
+## Run
 
 ```bash
 pnpm install
-pnpm dev
+make online
 ```
 
-`pnpm dev` starts three laptop-hosted processes: the realtime reducer gateway, the Effect agent worker, and the Vite web app.
+Default local URLs:
 
-Open:
+- Projector: http://localhost:5173/arena/ARENA-42
+- Phone: http://localhost:5173/join/ARENA-42
+- Tech proof: http://localhost:5173/tech/ARENA-42
+- Realtime gateway: ws://localhost:8787
 
-- Host: http://localhost:5174/host
-- Lobby: http://localhost:5174/lobby/session-demo
-- Join: http://localhost:5174/join/ARENA-42
-- Arena: http://localhost:5174/arena/session-demo
-- Tech proof: http://localhost:5174/tech/session-demo
-
-For phones on the same Wi-Fi, set:
+For room phones, expose the laptop with Cloudflare Tunnel/ngrok and run:
 
 ```bash
-VITE_PUBLIC_APP_URL=http://YOUR_LAPTOP_IP:5174
-VITE_REALTIME_URL=ws://YOUR_LAPTOP_IP:8787
-pnpm dev
+PUBLIC_BASE_URL=https://your-public-url.example make online
 ```
-
-## Golden Path
-
-1. Open `/host`.
-2. Click `Generate AI Quiz`.
-3. Click `Open Lobby`.
-4. Open `/lobby/session-demo` on the projector.
-5. Scan the QR from at least two phones and choose `I want to play`.
-6. Join everyone else as Crowd.
-7. In Host Console, click `Select Champions`.
-8. Open `/arena/session-demo/reveal`, then start the match.
-9. Players answer on `/play/session-demo`.
-10. Crowd cheers and plays along on `/crowd/session-demo`.
-11. Host resolves each round and advances.
-12. Show `/arena/session-demo/final` and `/tech/session-demo`.
-
-## SpacetimeDB
-
-Install and build:
-
-```bash
-curl -sSf https://install.spacetimedb.com | sh
-pnpm spacetime:build
-```
-
-Run local SpacetimeDB in another terminal:
-
-```bash
-pnpm spacetime:start
-```
-
-Publish the module locally:
-
-```bash
-pnpm spacetime:publish:local
-```
-
-SpacetimeDB is used as the authoritative backend contract in `modules/spacetime`: tables are public for subscriptions, and all game-critical state changes are reducers. The local gateway mirrors this reducer model for judged demos when generated bindings are not enabled.
-
-## AI Agents
-
-The worker package lives in `apps/agent-worker` and defines:
-
-- Quiz Author Agent
-- Safety Guard Agent
-- Fairness Review Agent
-- Host Commentator Agent
-- Learning Recap Agent
-
-Effect is used as the TypeScript runtime pattern for external/async workflows: typed config, service layers, retries, timeouts, schema validation, fallback, and structured logs. See `docs/effect-adoption.md`.
-
-The worker auto-detects useful keys without printing secret values:
-
-- `LLM_API_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL_ID` for OpenAI-compatible gateways.
-- `OPENAI_API_KEY` for OpenAI Chat Completions.
-- `NVIDIA_AUTHOR_API_KEY` or `NVIDIA_API_KEY` for NVIDIA-hosted OpenAI-compatible models.
-- `ANTHROPIC_API_KEY` for Anthropic Messages.
-- `GEMINI_API_KEY` for Gemini `generateContent`.
-
-Put real keys in `.env.local`; keep `.env.example` as placeholders only.
-
-Configuration is provider-neutral:
-
-```bash
-LLM_API_BASE_URL=
-LLM_API_KEY=
-LLM_MODEL_ID=
-LLM_SMALL_MODEL_ID=
-LLM_PROVIDER_NAME=auto
-LLM_TIMEOUT_MS=12000
-LLM_MAX_RETRIES=2
-LLM_JSON_MODE=true
-```
-
-You can also set `OPENAI_API_KEY`, `NVIDIA_AUTHOR_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`. `LLM_PROVIDER_NAME=auto` picks the first configured provider; set `LLM_PROVIDER_NAME=generic|openai|nvidia|anthropic|gemini` to force one.
-
-For the current NVIDIA setup:
-
-- Quiz Author: `nvidia/llama-3.3-nemotron-super-49b-v1.5`
-- Fairness Review: `nvidia/nemotron-3-super-120b-a12b`
-- Fast commentary/recap: `nvidia/llama-3.1-nemotron-nano-8b-v1`
-- Safety Guard: `nvidia/llama-3.1-nemotron-safety-guard-8b-v3`
-
-## Test
-
-```bash
-pnpm test
-pnpm typecheck
-pnpm build
-pnpm spacetime:build
-```
-
-Generate TypeScript bindings:
-
-```bash
-pnpm spacetime:generate
-```
-
-The laptop demo uses the local reducer gateway for easy multi-device hosting from one machine. The SpacetimeDB module in `modules/spacetime` builds successfully and generated TypeScript bindings can replace the gateway behind the existing web hooks in a direct deployment.
-
-Critical reducer tests cover Energy grants, Champion selection, duplicate answer rejection, Cheer deduction, double-spend prevention, invalid amount rejection, idempotent round resolution, support cap, missing speed bonus on wrong answers, and malformed LLM fallback rejection.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Host[Host Console] -->|create_session / open_lobby| STDB[(SpacetimeDB Module)]
-    PhoneJoin[Audience Phones] -->|join_session| STDB
-    PlayerPhones[Champion Phones] -->|submit_answer| STDB
-    CrowdPhones[Crowd Phones] -->|support_player / playalong_answer| STDB
-    Projector[Projector Arena] -->|subscriptions| STDB
-    Tech[Tech Proof Screen] -->|subscriptions| STDB
+    Terminal[make online CLI] --> STDB[(SpacetimeDB Module)]
+    Terminal --> Web[Vite Web App]
+    Terminal --> Worker[Effect Agent Worker]
+    Terminal --> Gateway[Local Realtime Gateway]
 
-    STDB -->|table updates| Host
-    STDB -->|table updates| PhoneJoin
-    STDB -->|table updates| PlayerPhones
-    STDB -->|table updates| CrowdPhones
-    STDB -->|table updates| Projector
-    STDB -->|table updates| Tech
+    Phones[Audience Phones] -->|join_session / submit_answer| Gateway
+    Projector[Projector Arena] -->|subscriptions| Gateway
+    Tech[Tech Overlay] -->|subscriptions| Gateway
 
-    Worker[Effect Agent Worker] -->|subscribe to AgentRequest / Match state| STDB
-    Worker -->|LLM calls via generic adapter| LLM[Swappable LLM Provider]
-    Worker -->|submit_question_batch / record_agent_event| STDB
+    Gateway -->|same reducer contract| STDB
+    Worker -->|subscribe AgentRequest / Session state| Gateway
+    Worker -->|generic LLM calls| LLM[Swappable LLM Provider]
+    Worker -->|submit_question_pack / record_agent_event| Gateway
+
+    Gateway -->|live table snapshots| Phones
+    Gateway -->|live table snapshots| Projector
+    Gateway -->|live table snapshots| Tech
 ```
 
-See `docs/architecture.md` for full diagrams.
+The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer contract. The laptop demo also includes `apps/realtime-server`, a local websocket reducer gateway that mirrors the same contract for reliable room demos while generated SpacetimeDB bindings are optional.
 
-## Next Best Improvement
+## What Works
 
-Wire generated SpacetimeDB TypeScript bindings into `apps/web/src/lib/spacetime/client.ts` behind a `VITE_USE_SPACETIMEDB=true` switch, replacing the local gateway transport while keeping the existing hooks and UI unchanged.
+- Public projector arena at `/arena/:code`.
+- Single phone route at `/join/:code`.
+- Optional tech proof at `/tech/:code`.
+- Realtime joins, topic votes, answers, scores, ranks, bracket, winner, and replay.
+- Reducer-owned game state in `packages/shared` and `modules/spacetime`.
+- One answer per participant per round.
+- Server-authoritative response time and score calculation.
+- Duplicate answer rejection and metric tracking.
+- `MatchEvent` replay ledger.
+- Effect-based LLM worker with provider routing, retries, validation, safety guard support, and seed fallback.
+- NVIDIA model routing through environment variables in `.env.local`.
+- Deterministic fallback questions if LLM calls fail.
+
+## What Is Prototype Scope
+
+- Production auth, payments, stored-value accounts, profiles, chat, and content marketplace are intentionally omitted.
+- The default judged laptop transport is the local realtime gateway for reliability. The SpacetimeDB module builds and exposes the same public reducers/tables for direct integration.
+- Cloudflare/ngrok tunnel startup is not automated; set `PUBLIC_BASE_URL` after starting a tunnel.
+
+## AI Agents
+
+- Topic Router Agent: selects a tournament topic from live votes.
+- Quiz Builder Agent: generates exactly five short MCQ questions.
+- Safety Guard Agent: optional NVIDIA safety review.
+- Fairness Agent: validates options, ambiguity, length, and public safety.
+- Host Commentator Agent: writes short round commentary.
+- Recap Agent: summarizes what the room learned.
+
+Real keys belong only in `.env.local`. `.env.example` contains placeholders.
+
+## Commands
+
+```bash
+make online
+make reset
+make seed
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm spacetime:build
+```
+
+## SpacetimeDB
+
+```bash
+curl -sSf https://install.spacetimedb.com | sh
+pnpm spacetime:build
+pnpm spacetime:start
+pnpm spacetime:publish:local
+```
+
+Core reducers:
+
+```text
+create_session
+join_session
+submit_topic_vote
+request_questions
+submit_question_pack
+start_match
+start_round
+submit_answer
+resolve_round
+finish_match
+heartbeat
+reset_demo
+add_simulated_players
+record_agent_event
+```
+
+## Verification
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm --filter @quizrush/web build
+```
+
+Manual golden path:
+
+- Join from two browser tabs or phones.
+- Lock topics.
+- Press `G`, then `S`.
+- Answer on phones.
+- Tap the same answer twice and verify duplicate rejection in tech overlay.
+- Let five rounds resolve.
+- Verify winner, leaderboard, replay, and reset.
+
+See `docs/` for architecture diagrams, data model, realtime flow, AI guardrails, demo script, risks, and reducer API contract.

@@ -51,8 +51,7 @@ const baseConfig: WorkerConfig = {
   },
   demo: {
     topic: "AI + Space + Startups",
-    difficulty: "beginner",
-    questionCount: 3
+    questionCount: 5
   }
 };
 
@@ -134,6 +133,6 @@ describe("Effect worker runtime", () => {
     const result = await Effect.runPromise(Effect.provide(QuizGenerationProgram, testLayer));
 
     expect(result.status).toBe("complete");
-    expect(result.questions).toHaveLength(3);
+    expect(result.questions).toHaveLength(5);
   });
 });

@@ -1,19 +1,19 @@
 import { createServer } from "node:http";
-import { QuizDuelEngine } from "@quizduel/shared";
-import type { ReducerEnvelope, SnapshotMessage } from "@quizduel/shared";
+import { QuizRushEngine } from "@quizrush/shared";
+import type { ReducerEnvelope, SnapshotMessage } from "@quizrush/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 
 const port = Number(process.env.REALTIME_PORT ?? 8787);
-const engine = new QuizDuelEngine();
+const engine = new QuizRushEngine();
 const server = createServer((request, response) => {
   if (request.url === "/health") {
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, service: "quizduel-realtime-server" }));
+    response.end(JSON.stringify({ ok: true, service: "quizrush-realtime-server" }));
     return;
   }
 
   response.writeHead(200, { "content-type": "text/plain" });
-  response.end("QuizDuel Live realtime reducer gateway is running.\n");
+  response.end("QuizRush Live realtime reducer gateway is running.\n");
 });
 
 const wss = new WebSocketServer({ server });
@@ -85,5 +85,5 @@ wss.on("connection", (ws) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.info(`QuizDuel Live realtime reducer gateway listening on ws://0.0.0.0:${port}`);
+  console.info(`QuizRush Live realtime reducer gateway listening on ws://0.0.0.0:${port}`);
 });

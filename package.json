@@ -1,14 +1,15 @@
 {
-  "name": "quizduel-live",
+  "name": "quizrush-live",
   "version": "0.1.0",
   "private": true,
-  "description": "QuizDuel Live: AI-hosted realtime crowd quiz duel with reducer-owned game state.",
+  "description": "QuizRush Live: a 25-second real-time quiz tournament from one QR code.",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n realtime,agent,web -c cyan,yellow,magenta \"pnpm --filter @quizduel/realtime-server dev\" \"pnpm --filter @quizduel/agent-worker dev\" \"pnpm --filter @quizduel/web dev\"",
-    "dev:web": "pnpm --filter @quizduel/web dev",
-    "dev:server": "pnpm --filter @quizduel/realtime-server dev",
-    "dev:worker": "pnpm --filter @quizduel/agent-worker dev",
+    "online": "tsx scripts/online.ts",
+    "dev": "concurrently -n realtime,agent,web -c cyan,yellow,magenta \"pnpm --filter @quizrush/realtime-server dev\" \"pnpm --filter @quizrush/agent-worker dev\" \"pnpm --filter @quizrush/web dev\"",
+    "dev:web": "pnpm --filter @quizrush/web dev",
+    "dev:server": "pnpm --filter @quizrush/realtime-server dev",
+    "dev:worker": "pnpm --filter @quizrush/agent-worker dev",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
@@ -17,12 +18,15 @@
     "spacetime:build": "~/.local/bin/spacetime build --module-path modules/spacetime --lint-dir=",
     "spacetime:generate": "~/.local/bin/spacetime generate --lang typescript --module-path modules/spacetime --out-dir apps/web/src/lib/spacetime/module_bindings --build-options='--lint-dir=' -y",
     "spacetime:start": "~/.local/bin/spacetime start --listen-addr 0.0.0.0:3000 --in-memory --non-interactive",
-    "spacetime:publish:local": "~/.local/bin/spacetime publish quizduel-live --server local --module-path modules/spacetime --anonymous -y=all"
+    "spacetime:publish:local": "~/.local/bin/spacetime publish quizrush-live --server local --module-path modules/spacetime --anonymous -y=all"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.1.2",
+    "effect": "^3.21.3",
+    "qrcode-terminal": "^0.12.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",

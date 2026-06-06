@@ -1,51 +1,69 @@
 # Demo Script
 
+## 90 Seconds
+
 0:00-0:10
 
-Most quiz apps make one person play and everyone else watch. QuizDuel Live turns the whole room into the game.
+“Most live quizzes are static polls. QuizRush Live turns the whole room into a 25-second realtime tournament from one QR code.”
 
 0:10-0:25
 
-Scan this QR code. Choose whether you want to be a Champion or join the Crowd.
+Run `make online`. Show the projector arena and QR.
+
+“Scan this. No app, no login. Your phone becomes the controller.”
 
 0:25-0:40
 
-SpacetimeDB is selecting two players and syncing everyone else into the live crowd.
+Audience joins and picks topics. Point to the live count and topic swarm.
 
-0:40-1:20
+“Every join and topic vote is committed through a reducer and synced to the projector.”
 
-Players answer the quiz. The Crowd cheers with Energy. Watch the scores, support bars, and leaderboards update instantly.
+0:40-0:55
 
-1:20-1:40
+Press `G`.
 
-The AI agents generated and reviewed these questions, then explain each answer after the round.
+“The Effect worker routes the room’s topic intent, calls the LLM, validates the JSON, runs fairness/safety guardrails, and falls back to seed questions if anything fails.”
 
-1:40-2:00
+0:55-1:20
 
-Every answer, Cheer, score, and leaderboard update is a reducer transaction and subscription update. This is a realtime social learning game, not a static quiz.
+Press `S`. Phones answer five questions.
+
+“Now watch the leaderboard and top-16 bracket move after every tap. Scores are not client-side guesses; response time, correctness, rank, and duplicate-answer rejection happen in reducer-owned state.”
+
+1:20-1:35
+
+Winner screen and replay.
+
+“The replay is reconstructed from the MatchEvent ledger. This is the 25-second state race, not a canned animation.”
+
+1:35-1:45
+
+Press `T`.
+
+“This overlay shows reducer calls, answer rate, duplicate rejections, p95 latency, current tables, subscriptions, and agent events.”
 
 Close:
 
-Two players. One Crowd. Every phone live.
+“QuizRush Live is not just a quiz. It is a room-scale realtime state race powered by SpacetimeDB.”
 
 ## Q&A
 
 Why SpacetimeDB?
 
-Because the game needs authoritative transactional state plus live subscriptions. Answers, Energy spending, scoring, and leaderboards cannot be inconsistent.
+“The game needs authoritative transactional state plus live subscriptions. Joins, answers, score, rank, and replay cannot desync.”
 
 Why AI?
 
-AI generates quiz content, reviews fairness, hosts commentary, and summarizes learning. It is not just a chatbot; it drives the live match content.
+“AI routes the room’s topic intent, generates the five-question challenge, reviews fairness, and produces recap/commentary. It is a content pipeline, not a chatbot bolted onto the side.”
 
 Is this gambling?
 
-No. No money, no purchase, no cash-out, no transfer, no real-world value. Energy is non-redeemable educational game XP.
+“No. There is no money, no purchase, no payout, no transfer, no stored-value account, and no real-world value.”
 
 What is technically hard?
 
-Hundreds of simultaneous taps must not double-spend Energy, duplicate answers, or desync screens. Reducers make state changes transactional and subscriptions update all clients live.
+“Hundreds of simultaneous taps must not create duplicate answers or inconsistent ranks. Reducers make the state transition authoritative, and subscriptions update every screen.”
 
 What is mocked?
 
-Production auth, payments, and long-term profiles are out of scope. The live QR join, realtime match, scoring, Energy deduction, leaderboard, and AI/fallback pipeline are implemented for the demo. Generated SpacetimeDB React bindings are the next integration step.
+“Production auth, profiles, cloud deployment, and automated public tunneling. The realtime match engine, reducer invariants, scoring, replay ledger, AI validation/fallback, and UI flow are working.”

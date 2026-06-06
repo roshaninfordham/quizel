@@ -1,19 +1,23 @@
 import { schema, table, t } from "spacetimedb/server";
 
+const QUESTION_COUNT = 5;
+const QUESTION_TIME_LIMIT_MS = 5_000;
+const DEFAULT_TOPIC = "AI + Space + Startups";
+const DEFAULT_CODE = "ARENA-42";
+
 const session = table(
   { name: "session", public: true },
   {
     session_id: t.string().primaryKey(),
-    join_code: t.string().unique(),
-    topic: t.string(),
-    difficulty: t.string(),
-    question_count: t.u32(),
+    code: t.string().unique(),
     status: t.string(),
-    created_by: t.string(),
+    selected_topic: t.option(t.string()),
+    question_count: t.u32(),
+    current_round: t.u32(),
+    match_started_at_ms: t.option(t.u64()),
+    match_finished_at_ms: t.option(t.u64()),
     created_at_ms: t.u64(),
-    updated_at_ms: t.u64(),
-    current_match_id: t.option(t.string()),
-    lobby_opened_at_ms: t.option(t.u64())
+    updated_at_ms: t.u64()
   }
 );
 
@@ -24,29 +28,22 @@ const participant = table(
     session_id: t.string().index("btree"),
     identity: t.string().index("btree"),
     display_name: t.string(),
-    avatar_seed: t.string(),
-    role_requested: t.string(),
-    role_assigned: t.string(),
-    interests_json: t.string(),
+    avatar: t.string(),
     joined_at_ms: t.u64(),
     last_seen_ms: t.u64(),
-    is_simulated: t.bool()
+    is_simulated: t.bool(),
+    client_latency_ms: t.option(t.u32())
   }
 );
 
-const match = table(
-  { name: "match", public: true },
+const topic_vote = table(
+  { name: "topic_vote", public: true },
   {
-    match_id: t.string().primaryKey(),
+    vote_id: t.string().primaryKey(),
     session_id: t.string().index("btree"),
-    player1_id: t.string(),
-    player2_id: t.string(),
-    status: t.string(),
-    current_round_number: t.u32(),
-    player1_ready: t.bool(),
-    player2_ready: t.bool(),
-    started_at_ms: t.option(t.u64()),
-    finished_at_ms: t.option(t.u64())
+    participant_id: t.string().index("btree"),
+    topic: t.string(),
+    created_at_ms: t.u64()
   }
 );
 
@@ -55,8 +52,7 @@ const question = table(
   {
     question_id: t.string().primaryKey(),
     session_id: t.string().index("btree"),
-    match_id: t.option(t.string()),
-    round_number: t.u32(),
+    order_index: t.u32(),
     question_text: t.string(),
     option_a: t.string(),
     option_b: t.string(),
@@ -64,8 +60,8 @@ const question = table(
     option_d: t.string(),
     correct_option: t.string(),
     explanation: t.string(),
-    difficulty: t.string(),
-    source_agent: t.string(),
+    topic: t.string(),
+    generated_by: t.string(),
     fairness_status: t.string(),
     created_at_ms: t.u64()
   }
@@ -75,14 +71,13 @@ const round = table(
   { name: "round", public: true },
   {
     round_id: t.string().primaryKey(),
-    match_id: t.string().index("btree"),
+    session_id: t.string().index("btree"),
     question_id: t.string(),
-    round_number: t.u32(),
+    order_index: t.u32(),
     status: t.string(),
     starts_at_ms: t.u64(),
     ends_at_ms: t.u64(),
-    resolved_at_ms: t.option(t.u64()),
-    winner_player_id: t.option(t.string())
+    resolved_at_ms: t.option(t.u64())
   }
 );
 
@@ -90,49 +85,14 @@ const answer = table(
   { name: "answer", public: true },
   {
     answer_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
     round_id: t.string().index("btree"),
     participant_id: t.string().index("btree"),
     selected_option: t.string(),
-    server_received_at_ms: t.u64(),
-    response_ms: t.u32(),
     is_correct: t.bool(),
-    points_awarded: t.u32()
-  }
-);
-
-const play_along_answer = table(
-  { name: "play_along_answer", public: true },
-  {
-    answer_id: t.string().primaryKey(),
-    round_id: t.string().index("btree"),
-    supporter_id: t.string().index("btree"),
-    selected_option: t.string(),
-    server_received_at_ms: t.u64(),
-    is_correct: t.bool()
-  }
-);
-
-const support_event = table(
-  { name: "support_event", public: true },
-  {
-    support_id: t.string().primaryKey(),
-    round_id: t.string().index("btree"),
-    supporter_id: t.string().index("btree"),
-    player_id: t.string().index("btree"),
-    amount: t.u32(),
-    created_at_ms: t.u64(),
-    client_event_id: t.option(t.string())
-  }
-);
-
-const energy_balance = table(
-  { name: "energy_balance", public: true },
-  {
-    participant_id: t.string().primaryKey(),
-    session_id: t.string().index("btree"),
-    spendable_energy: t.u32(),
-    trust_xp: t.u32(),
-    updated_at_ms: t.u64()
+    response_ms: t.u32(),
+    score_delta: t.u32(),
+    server_received_at_ms: t.u64()
   }
 );
 
@@ -140,30 +100,30 @@ const score = table(
   { name: "score", public: true },
   {
     score_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
     participant_id: t.string().index("btree"),
-    match_id: t.string().index("btree"),
-    player_score: t.u32(),
-    supporter_xp: t.u32(),
-    support_accuracy_num: t.u32(),
-    support_accuracy_den: t.u32(),
-    playalong_correct: t.u32(),
-    playalong_total: t.u32(),
+    total_score: t.u32(),
+    correct_count: t.u32(),
+    total_response_ms: t.u32(),
+    fastest_response_ms: t.option(t.u32()),
+    current_rank: t.u32(),
+    previous_rank: t.u32(),
+    last_answer_at_ms: t.option(t.u64()),
     updated_at_ms: t.u64()
   }
 );
 
-const ledger_entry = table(
-  { name: "ledger_entry", public: true },
+const match_event = table(
+  { name: "match_event", public: true },
   {
-    ledger_id: t.string().primaryKey(),
+    event_id: t.string().primaryKey(),
     session_id: t.string().index("btree"),
-    match_id: t.option(t.string()),
-    round_id: t.option(t.string()),
-    participant_id: t.string().index("btree"),
-    delta: t.i32(),
-    currency_type: t.string(),
-    reason: t.string(),
-    metadata_json: t.string(),
+    participant_id: t.option(t.string()),
+    event_type: t.string(),
+    round_index: t.option(t.u32()),
+    score_after: t.option(t.u32()),
+    rank_after: t.option(t.u32()),
+    payload_json: t.string(),
     created_at_ms: t.u64()
   }
 );
@@ -175,7 +135,6 @@ const agent_request = table(
     session_id: t.string().index("btree"),
     request_type: t.string(),
     topic: t.string(),
-    difficulty: t.string(),
     question_count: t.u32(),
     status: t.string(),
     created_at_ms: t.u64(),
@@ -203,15 +162,14 @@ const live_stats = table(
   {
     session_id: t.string().primaryKey(),
     joined_count: t.u32(),
-    player_candidate_count: t.u32(),
-    crowd_count: t.u32(),
-    active_clients: t.u32(),
-    cheer_events_count: t.u32(),
-    cheer_events_per_sec: t.u32(),
-    reducer_calls_count: t.u32(),
+    real_joined_count: t.u32(),
+    simulated_joined_count: t.u32(),
+    answers_count: t.u32(),
+    answers_per_sec: t.u32(),
+    reducer_calls: t.u32(),
     duplicate_answers_rejected: t.u32(),
-    double_spend_attempts_blocked: t.u32(),
-    p95_sync_latency_ms: t.u32(),
+    p95_latency_ms: t.u32(),
+    active_clients: t.u32(),
     updated_at_ms: t.u64()
   }
 );
@@ -219,12 +177,11 @@ const live_stats = table(
 const audit_event = table(
   { name: "audit_event", public: true },
   {
-    event_id: t.string().primaryKey(),
+    audit_id: t.string().primaryKey(),
     session_id: t.string().index("btree"),
     actor_identity: t.string(),
     event_type: t.string(),
     message: t.string(),
-    metadata_json: t.string(),
     created_at_ms: t.u64()
   }
 );
@@ -232,15 +189,12 @@ const audit_event = table(
 const spacetimedb = schema({
   session,
   participant,
-  match,
+  topic_vote,
   question,
   round,
   answer,
-  play_along_answer,
-  support_event,
-  energy_balance,
   score,
-  ledger_entry,
+  match_event,
   agent_request,
   agent_event,
   live_stats,
@@ -249,514 +203,446 @@ const spacetimedb = schema({
 
 export default spacetimedb;
 
-const INITIAL_ENERGY = 500;
-const CHEER_AMOUNT = 25;
-const QUESTION_TIME_LIMIT_MS = 10_000;
-
 export const init = spacetimedb.init((ctx) => {
-  const now = nowMs();
   if (!ctx.db.session.session_id.find("session-demo")) {
-    ctx.db.session.insert({
-      session_id: "session-demo",
-      join_code: "ARENA-42",
-      topic: "AI + Space + Startups",
-      difficulty: "beginner",
-      question_count: 3,
-      status: "draft",
-      created_by: "system",
-      created_at_ms: now,
-      updated_at_ms: now,
-      current_match_id: undefined,
-      lobby_opened_at_ms: undefined
-    });
-    ctx.db.live_stats.insert(emptyStats("session-demo", now));
-    insertAudit(ctx, "session-demo", "system", "demo_ready", "Demo session initialized.", "{}");
+    createSessionRow(ctx, DEFAULT_CODE, QUESTION_COUNT);
   }
 });
 
-export const create_session = spacetimedb.reducer(
-  { topic: t.string(), difficulty: t.string(), question_count: t.u32() },
-  (ctx, { topic, difficulty, question_count }) => {
-    const now = nowMs();
-    const existing = ctx.db.session.session_id.find("session-demo");
-    if (existing) {
-      ctx.db.session.session_id.update({
-        ...existing,
-        topic,
-        difficulty,
-        question_count,
-        status: "draft",
-        updated_at_ms: now
-      });
-    } else {
-      ctx.db.session.insert({
-        session_id: "session-demo",
-        join_code: "ARENA-42",
-        topic,
-        difficulty,
-        question_count,
-        status: "draft",
-        created_by: sender(ctx),
-        created_at_ms: now,
-        updated_at_ms: now,
-        current_match_id: undefined,
-        lobby_opened_at_ms: undefined
-      });
-      ctx.db.live_stats.insert(emptyStats("session-demo", now));
-    }
-    bumpStats(ctx, "session-demo");
-    insertAudit(ctx, "session-demo", sender(ctx), "create_session", `Session prepared for ${topic}.`, "{}");
-  }
-);
+export const create_session = spacetimedb.reducer({ code: t.string(), question_count: t.u32() }, (ctx, { code, question_count }) => {
+  resetSessionTables(ctx, "session-demo");
+  createSessionRow(ctx, code || DEFAULT_CODE, question_count || QUESTION_COUNT);
+  insertAudit(ctx, "session-demo", sender(ctx), "create_session", "QuizRush session created.");
+  bumpStats(ctx, "session-demo");
+});
 
-export const open_lobby = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+export const join_session = spacetimedb.reducer({ code: t.string(), display_name: t.string(), avatar: t.string() }, (ctx, { code, display_name, avatar }) => {
+  const current = requireSessionByCode(ctx, code);
+  if (!["lobby", "topic_voting", "generating", "ready"].includes(current.status)) {
+    throw new Error("This tournament is already in progress.");
+  }
+  const caller = sender(ctx);
+  for (const existing of ctx.db.participant.session_id.filter(current.session_id)) {
+    if (existing.identity === caller) {
+      ctx.db.participant.participant_id.update({ ...existing, display_name: cleanName(display_name), avatar, last_seen_ms: nowMs() });
+      return;
+    }
+  }
+
+  const now = nowMs();
+  const participant_id = id("participant");
+  ctx.db.participant.insert({
+    participant_id,
+    session_id: current.session_id,
+    identity: caller,
+    display_name: cleanName(display_name),
+    avatar: avatar || "🚀",
+    joined_at_ms: now,
+    last_seen_ms: now,
+    is_simulated: false,
+    client_latency_ms: undefined
+  });
+  ctx.db.score.insert(emptyScore(current.session_id, participant_id, now));
+  ctx.db.session.session_id.update({ ...current, status: current.status === "lobby" ? "topic_voting" : current.status, updated_at_ms: now });
+  insertMatchEvent(ctx, current.session_id, participant_id, "join", undefined, undefined, undefined, `{"displayName":${JSON.stringify(cleanName(display_name))}}`);
+  recalcStats(ctx, current.session_id);
+});
+
+export const submit_topic_vote = spacetimedb.reducer({ session_id: t.string(), topics_json: t.string() }, (ctx, { session_id, topics_json }) => {
+  const participantRow = requireParticipantForSender(ctx, session_id);
+  ctx.db.topic_vote.participant_id.delete(participantRow.participant_id);
+  const topics = parseTopics(topics_json);
+  const now = nowMs();
+  for (const topic of topics) {
+    ctx.db.topic_vote.insert({
+      vote_id: id("topic-vote"),
+      session_id,
+      participant_id: participantRow.participant_id,
+      topic,
+      created_at_ms: now
+    });
+  }
+  insertMatchEvent(ctx, session_id, participantRow.participant_id, "topic_vote", undefined, undefined, undefined, JSON.stringify({ topics }));
+  bumpStats(ctx, session_id);
+});
+
+export const request_questions = spacetimedb.reducer({ session_id: t.string(), topic: t.string(), question_count: t.u32() }, (ctx, { session_id, topic, question_count }) => {
   const current = requireSession(ctx, session_id);
   const now = nowMs();
+  const selected_topic = topic || topicFromVotes(ctx, session_id);
   ctx.db.session.session_id.update({
     ...current,
-    status: "lobby",
-    lobby_opened_at_ms: now,
+    status: "generating",
+    selected_topic,
+    question_count: question_count || QUESTION_COUNT,
     updated_at_ms: now
   });
+  ctx.db.agent_request.insert({
+    request_id: id("agent-request"),
+    session_id,
+    request_type: "quiz_generation",
+    topic: selected_topic,
+    question_count: question_count || QUESTION_COUNT,
+    status: "pending",
+    created_at_ms: now,
+    updated_at_ms: now,
+    error_message: undefined
+  });
+  insertAgentEvent(ctx, session_id, "Topic Router Agent", "topic_selected", `Selected ${selected_topic} from live topic votes.`, 0.88, "complete");
+  insertMatchEvent(ctx, session_id, undefined, "questions_requested", undefined, undefined, undefined, JSON.stringify({ selected_topic }));
   bumpStats(ctx, session_id);
-  insertAudit(ctx, session_id, sender(ctx), "open_lobby", "Lobby opened for live audience join.", "{}");
 });
 
-export const request_questions = spacetimedb.reducer(
-  { session_id: t.string(), topic: t.string(), difficulty: t.string(), question_count: t.u32() },
-  (ctx, { session_id, topic, difficulty, question_count }) => {
-    const now = nowMs();
-    const request_id = id("agent-request");
-    ctx.db.agent_request.insert({
-      request_id,
-      session_id,
-      request_type: "quiz_generation",
-      topic,
-      difficulty,
-      question_count,
-      status: "pending",
-      created_at_ms: now,
-      updated_at_ms: now,
-      error_message: undefined
-    });
-    insertAgentEvent(ctx, session_id, "Quiz Author Agent", "request_created", `Question request queued for ${topic}.`, 0.9, "pending");
-    bumpStats(ctx, session_id);
-  }
+export const submit_question_pack = spacetimedb.reducer(
+  { session_id: t.string(), selected_topic: t.string(), questions_json: t.string(), request_id: t.option(t.string()) },
+  (ctx, input) => submitQuestionPackInternal(ctx, input.session_id, input.selected_topic, input.questions_json, input.request_id)
 );
 
 export const submit_question_batch = spacetimedb.reducer(
-  { session_id: t.string(), questions_json: t.string(), request_id: t.option(t.string()) },
-  (ctx, { session_id, questions_json, request_id }) => {
-    const parsed = JSON.parse(questions_json) as {
-      questions?: Array<{
-        questionText: string;
-        options: { A: string; B: string; C: string; D: string };
-        correctOption: string;
-        explanation: string;
-        difficulty: string;
-      }>;
-    };
-    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
-      throw new Error("Malformed question batch.");
-    }
-    ctx.db.question.session_id.delete(session_id);
-    const current = requireSession(ctx, session_id);
-    const now = nowMs();
-    parsed.questions.slice(0, Number(current.question_count)).forEach((item, index) => {
-      if (!["A", "B", "C", "D"].includes(item.correctOption)) {
-        throw new Error("Malformed question option.");
-      }
-      ctx.db.question.insert({
-        question_id: id("question"),
-        session_id,
-        match_id: current.current_match_id,
-        round_number: index + 1,
-        question_text: item.questionText,
-        option_a: item.options.A,
-        option_b: item.options.B,
-        option_c: item.options.C,
-        option_d: item.options.D,
-        correct_option: item.correctOption,
-        explanation: item.explanation,
-        difficulty: item.difficulty,
-        source_agent: "Quiz Author Agent",
-        fairness_status: "approved",
-        created_at_ms: now
-      });
-    });
-    if (request_id) {
-      const request = ctx.db.agent_request.request_id.find(request_id);
-      if (request) ctx.db.agent_request.request_id.update({ ...request, status: "complete", updated_at_ms: now });
-    }
-    insertAgentEvent(ctx, session_id, "Fairness Review Agent", "questions_approved", "Questions validated and ready for the match.", 0.98, "complete");
-    bumpStats(ctx, session_id);
-  }
+  { session_id: t.string(), selected_topic: t.string(), questions_json: t.string(), request_id: t.option(t.string()) },
+  (ctx, input) => submitQuestionPackInternal(ctx, input.session_id, input.selected_topic, input.questions_json, input.request_id)
 );
 
-export const join_session = spacetimedb.reducer(
-  { join_code: t.string(), display_name: t.string(), role_requested: t.string(), interests_json: t.string() },
-  (ctx, { join_code, display_name, role_requested, interests_json }) => {
-    const current = ctx.db.session.join_code.find(join_code);
-    if (!current || current.status !== "lobby") throw new Error("This arena is not accepting joins yet.");
-    const caller = sender(ctx);
-    for (const existing of ctx.db.participant.session_id.filter(current.session_id)) {
-      if (existing.identity === caller) return;
-    }
-    const now = nowMs();
-    const participant_id = id("participant");
-    ctx.db.participant.insert({
-      participant_id,
-      session_id: current.session_id,
-      identity: caller,
-      display_name,
-      avatar_seed: `${display_name}-${caller}`,
-      role_requested,
-      role_assigned: "crowd",
-      interests_json,
-      joined_at_ms: now,
-      last_seen_ms: now,
-      is_simulated: false
-    });
-    ctx.db.energy_balance.insert({
-      participant_id,
-      session_id: current.session_id,
-      spendable_energy: INITIAL_ENERGY,
-      trust_xp: 0,
+export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+  const current = requireSession(ctx, session_id);
+  if (Array.from(ctx.db.question.session_id.filter(session_id)).length < current.question_count) {
+    throw new Error("Question pack is not ready.");
+  }
+  ctx.db.round.session_id.delete(session_id);
+  ctx.db.answer.session_id.delete(session_id);
+  const now = nowMs();
+  for (const item of ctx.db.score.session_id.filter(session_id)) {
+    ctx.db.score.score_id.update({
+      ...item,
+      total_score: 0,
+      correct_count: 0,
+      total_response_ms: 0,
+      fastest_response_ms: undefined,
+      current_rank: 1,
+      previous_rank: 1,
+      last_answer_at_ms: undefined,
       updated_at_ms: now
     });
-    insertLedger(ctx, current.session_id, undefined, undefined, participant_id, INITIAL_ENERGY, "energy", "initial_grant", "{}");
-    recalcStats(ctx, current.session_id);
-    insertAudit(ctx, current.session_id, caller, "join_session", `${display_name} joined the arena.`, "{}");
   }
-);
-
-export const assign_champions_randomly = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
-  const current = requireSession(ctx, session_id);
-  if (current.current_match_id) return;
-  if (current.status !== "lobby") throw new Error("Champions can only be selected from lobby.");
-  const candidates = Array.from(ctx.db.participant.session_id.filter(session_id))
-    .filter((item) => item.role_requested === "player")
-    .sort((a, b) => a.participant_id.localeCompare(b.participant_id));
-  if (candidates.length < 2 || !candidates[0] || !candidates[1]) throw new Error("At least two Champion candidates are required.");
-  for (const item of ctx.db.participant.session_id.filter(session_id)) {
-    ctx.db.participant.participant_id.update({ ...item, role_assigned: "crowd" });
-  }
-  const player1 = candidates[0];
-  const player2 = candidates[1];
-  ctx.db.participant.participant_id.update({ ...player1, role_assigned: "player1" });
-  ctx.db.participant.participant_id.update({ ...player2, role_assigned: "player2" });
-  const match_id = id("match");
-  const now = nowMs();
-  ctx.db.match.insert({
-    match_id,
-    session_id,
-    player1_id: player1.participant_id,
-    player2_id: player2.participant_id,
-    status: "waiting",
-    current_round_number: 0,
-    player1_ready: false,
-    player2_ready: false,
-    started_at_ms: undefined,
-    finished_at_ms: undefined
-  });
-  for (const item of ctx.db.participant.session_id.filter(session_id)) {
-    upsertScore(ctx, item.participant_id, match_id);
-  }
-  for (const item of ctx.db.question.session_id.filter(session_id)) {
-    ctx.db.question.question_id.update({ ...item, match_id });
-  }
-  ctx.db.session.session_id.update({ ...current, current_match_id: match_id, status: "selecting", updated_at_ms: now });
-  recalcStats(ctx, session_id);
-  insertAudit(ctx, session_id, sender(ctx), "assign_champions_randomly", "Two Champions selected transactionally.", "{}");
-});
-
-export const player_ready = spacetimedb.reducer({ match_id: t.string() }, (ctx, { match_id }) => {
-  const current = requireMatch(ctx, match_id);
-  const callerParticipant = participantForSender(ctx, current.session_id);
-  if (!callerParticipant) throw new Error("Participant not found.");
-  if (callerParticipant.participant_id !== current.player1_id && callerParticipant.participant_id !== current.player2_id) {
-    throw new Error("Only selected Champions can mark ready.");
-  }
-  ctx.db.match.match_id.update({
+  ctx.db.session.session_id.update({
     ...current,
-    player1_ready: current.player1_ready || callerParticipant.participant_id === current.player1_id,
-    player2_ready: current.player2_ready || callerParticipant.participant_id === current.player2_id
+    status: "playing",
+    current_round: 1,
+    match_started_at_ms: now,
+    match_finished_at_ms: undefined,
+    updated_at_ms: now
   });
+  recomputeRanks(ctx, session_id);
+  startRoundInternal(ctx, session_id, 1);
+  bumpStats(ctx, session_id);
 });
 
-export const start_match = spacetimedb.reducer({ match_id: t.string() }, (ctx, { match_id }) => {
-  const current = requireMatch(ctx, match_id);
-  const now = nowMs();
-  ctx.db.match.match_id.update({ ...current, status: "active", started_at_ms: now });
-  const currentSession = requireSession(ctx, current.session_id);
-  ctx.db.session.session_id.update({ ...currentSession, status: "active", updated_at_ms: now });
-  createRound(ctx, current, 1);
-  bumpStats(ctx, current.session_id);
-});
-
-export const start_round = spacetimedb.reducer({ match_id: t.string(), round_number: t.u32() }, (ctx, { match_id, round_number }) => {
-  const current = requireMatch(ctx, match_id);
-  createRound(ctx, current, round_number);
-  bumpStats(ctx, current.session_id);
+export const start_round = spacetimedb.reducer({ session_id: t.string(), question_order: t.u32() }, (ctx, { session_id, question_order }) => {
+  startRoundInternal(ctx, session_id, question_order);
+  bumpStats(ctx, session_id);
 });
 
 export const submit_answer = spacetimedb.reducer({ round_id: t.string(), selected_option: t.string() }, (ctx, { round_id, selected_option }) => {
   if (!["A", "B", "C", "D"].includes(selected_option)) throw new Error("selected_option must be A/B/C/D.");
   const currentRound = requireRound(ctx, round_id);
-  if (currentRound.status !== "active") throw new Error("Round is not accepting answers.");
-  const currentMatch = requireMatch(ctx, currentRound.match_id);
-  const callerParticipant = participantForSender(ctx, currentMatch.session_id);
-  if (!callerParticipant || (callerParticipant.participant_id !== currentMatch.player1_id && callerParticipant.participant_id !== currentMatch.player2_id)) {
-    throw new Error("Only selected Champions can answer.");
-  }
+  if (currentRound.status !== "active") throw new Error("Round is not active.");
+  const participantRow = requireParticipantForSender(ctx, currentRound.session_id);
   for (const existing of ctx.db.answer.round_id.filter(round_id)) {
-    if (existing.participant_id === callerParticipant.participant_id) {
-      const stats = requireStats(ctx, currentMatch.session_id);
+    if (existing.participant_id === participantRow.participant_id) {
+      const stats = requireStats(ctx, currentRound.session_id);
       ctx.db.live_stats.session_id.update({
         ...stats,
         duplicate_answers_rejected: stats.duplicate_answers_rejected + 1,
         updated_at_ms: nowMs()
       });
-      return;
+      throw new Error("Duplicate answer rejected.");
     }
   }
   const currentQuestion = requireQuestion(ctx, currentRound.question_id);
   const now = nowMs();
+  const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms), QUESTION_TIME_LIMIT_MS));
+  const is_correct = selected_option === currentQuestion.correct_option;
+  const score_delta = computeAnswerScore(is_correct, response_ms);
   ctx.db.answer.insert({
     answer_id: id("answer"),
+    session_id: currentRound.session_id,
     round_id,
-    participant_id: callerParticipant.participant_id,
+    participant_id: participantRow.participant_id,
     selected_option,
-    server_received_at_ms: now,
-    response_ms: Number(now - currentRound.starts_at_ms),
-    is_correct: selected_option === currentQuestion.correct_option,
-    points_awarded: 0
+    is_correct,
+    response_ms,
+    score_delta,
+    server_received_at_ms: now
   });
-  let playerAnswers = 0;
-  for (const item of ctx.db.answer.round_id.filter(round_id)) {
-    if (item.participant_id === currentMatch.player1_id || item.participant_id === currentMatch.player2_id) playerAnswers += 1;
-  }
-  if (playerAnswers >= 2) {
-    ctx.db.round.round_id.update({ ...currentRound, status: "locked" });
-  }
-  bumpStats(ctx, currentMatch.session_id);
-});
-
-export const submit_playalong_answer = spacetimedb.reducer({ round_id: t.string(), selected_option: t.string() }, (ctx, { round_id, selected_option }) => {
-  if (!["A", "B", "C", "D"].includes(selected_option)) throw new Error("selected_option must be A/B/C/D.");
-  const currentRound = requireRound(ctx, round_id);
-  if (currentRound.status !== "active") throw new Error("Round is not accepting play-along answers.");
-  const currentMatch = requireMatch(ctx, currentRound.match_id);
-  const callerParticipant = participantForSender(ctx, currentMatch.session_id);
-  if (!callerParticipant || callerParticipant.role_assigned !== "crowd") throw new Error("Only Crowd supporters can play along.");
-  for (const existing of ctx.db.play_along_answer.round_id.filter(round_id)) {
-    if (existing.supporter_id === callerParticipant.participant_id) return;
-  }
-  const currentQuestion = requireQuestion(ctx, currentRound.question_id);
-  ctx.db.play_along_answer.insert({
-    answer_id: id("playalong"),
-    round_id,
-    supporter_id: callerParticipant.participant_id,
-    selected_option,
-    server_received_at_ms: nowMs(),
-    is_correct: selected_option === currentQuestion.correct_option
+  const currentScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
+  ctx.db.score.score_id.update({
+    ...currentScore,
+    total_score: currentScore.total_score + score_delta,
+    correct_count: currentScore.correct_count + (is_correct ? 1 : 0),
+    total_response_ms: currentScore.total_response_ms + response_ms,
+    fastest_response_ms:
+      currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms),
+    last_answer_at_ms: now,
+    updated_at_ms: now
   });
-  bumpStats(ctx, currentMatch.session_id);
+  recomputeRanks(ctx, currentRound.session_id);
+  const updatedScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
+  insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, response_ms }));
+  insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ score_delta }));
+  recalcStats(ctx, currentRound.session_id);
 });
-
-export const support_player = spacetimedb.reducer(
-  { round_id: t.string(), player_id: t.string(), amount: t.u32(), client_event_id: t.option(t.string()) },
-  (ctx, { round_id, player_id, amount, client_event_id }) => {
-    if (amount !== CHEER_AMOUNT) throw new Error("Cheer amount must be exactly 25.");
-    const currentRound = requireRound(ctx, round_id);
-    if (currentRound.status !== "active") throw new Error("Cheering is only open during an active round.");
-    const currentMatch = requireMatch(ctx, currentRound.match_id);
-    if (player_id !== currentMatch.player1_id && player_id !== currentMatch.player2_id) throw new Error("Invalid player target.");
-    const supporter = participantForSender(ctx, currentMatch.session_id);
-    if (!supporter || supporter.role_assigned !== "crowd") throw new Error("Only Crowd supporters can cheer.");
-    if (client_event_id) {
-      for (const existing of ctx.db.support_event.round_id.filter(round_id)) {
-        if (existing.client_event_id === client_event_id) return;
-      }
-    }
-    const balance = ctx.db.energy_balance.participant_id.find(supporter.participant_id);
-    if (!balance) throw new Error("Energy balance not found.");
-    if (balance.spendable_energy < CHEER_AMOUNT) {
-      const stats = requireStats(ctx, currentMatch.session_id);
-      ctx.db.live_stats.session_id.update({
-        ...stats,
-        double_spend_attempts_blocked: stats.double_spend_attempts_blocked + 1,
-        updated_at_ms: nowMs()
-      });
-      return;
-    }
-    const now = nowMs();
-    ctx.db.energy_balance.participant_id.update({
-      ...balance,
-      spendable_energy: balance.spendable_energy - CHEER_AMOUNT,
-      updated_at_ms: now
-    });
-    ctx.db.support_event.insert({
-      support_id: id("support"),
-      round_id,
-      supporter_id: supporter.participant_id,
-      player_id,
-      amount,
-      created_at_ms: now,
-      client_event_id
-    });
-    insertLedger(ctx, currentMatch.session_id, currentMatch.match_id, round_id, supporter.participant_id, -CHEER_AMOUNT, "energy", "cheer_spend", "{}");
-    const stats = requireStats(ctx, currentMatch.session_id);
-    ctx.db.live_stats.session_id.update({
-      ...stats,
-      cheer_events_count: stats.cheer_events_count + 1,
-      cheer_events_per_sec: Math.max(1, Math.floor((stats.cheer_events_count + 1) / 8)),
-      updated_at_ms: now
-    });
-  }
-);
 
 export const resolve_round = spacetimedb.reducer({ round_id: t.string() }, (ctx, { round_id }) => {
   const currentRound = requireRound(ctx, round_id);
   if (currentRound.status === "resolved") return;
-  const currentMatch = requireMatch(ctx, currentRound.match_id);
-  const currentQuestion = requireQuestion(ctx, currentRound.question_id);
-  const p1Answer = answerFor(ctx, round_id, currentMatch.player1_id);
-  const p2Answer = answerFor(ctx, round_id, currentMatch.player2_id);
-  const p1Support = totalSupport(ctx, round_id, currentMatch.player1_id);
-  const p2Support = totalSupport(ctx, round_id, currentMatch.player2_id);
-  const p1Score = roundScore(p1Answer?.is_correct ?? false, p1Answer?.response_ms ?? QUESTION_TIME_LIMIT_MS, p1Support);
-  const p2Score = roundScore(p2Answer?.is_correct ?? false, p2Answer?.response_ms ?? QUESTION_TIME_LIMIT_MS, p2Support);
-  const winner = p1Score === p2Score ? currentMatch.player1_id : p1Score > p2Score ? currentMatch.player1_id : currentMatch.player2_id;
-  applyPlayerScore(ctx, currentMatch, currentRound, currentMatch.player1_id, p1Score);
-  applyPlayerScore(ctx, currentMatch, currentRound, currentMatch.player2_id, p2Score);
-  for (const event of ctx.db.support_event.round_id.filter(round_id)) {
-    const supporterScore = upsertScore(ctx, event.supporter_id, currentMatch.match_id);
-    const xp = event.player_id === winner ? 12 : 2;
-    ctx.db.score.score_id.update({
-      ...supporterScore,
-      supporter_xp: supporterScore.supporter_xp + xp,
-      support_accuracy_num: supporterScore.support_accuracy_num + (event.player_id === winner ? 1 : 0),
-      support_accuracy_den: supporterScore.support_accuracy_den + 1,
-      updated_at_ms: nowMs()
-    });
-    const balance = ctx.db.energy_balance.participant_id.find(event.supporter_id);
-    if (balance) ctx.db.energy_balance.participant_id.update({ ...balance, trust_xp: balance.trust_xp + xp, updated_at_ms: nowMs() });
-  }
-  for (const playalong of ctx.db.play_along_answer.round_id.filter(round_id)) {
-    const supporterScore = upsertScore(ctx, playalong.supporter_id, currentMatch.match_id);
-    ctx.db.score.score_id.update({
-      ...supporterScore,
-      supporter_xp: supporterScore.supporter_xp + (playalong.selected_option === currentQuestion.correct_option ? 5 : 0),
-      playalong_correct: supporterScore.playalong_correct + (playalong.selected_option === currentQuestion.correct_option ? 1 : 0),
-      playalong_total: supporterScore.playalong_total + 1,
-      updated_at_ms: nowMs()
-    });
-  }
   const now = nowMs();
-  ctx.db.round.round_id.update({ ...currentRound, status: "resolved", resolved_at_ms: now, winner_player_id: winner });
-  insertAgentEvent(ctx, currentMatch.session_id, "Host Commentator Agent", "round_explanation", currentQuestion.explanation, 0.95, "complete");
-  insertAudit(ctx, currentMatch.session_id, sender(ctx), "resolve_round", `Round ${currentRound.round_number} resolved.`, "{}");
-  const currentSession = requireSession(ctx, currentMatch.session_id);
-  if (currentRound.round_number >= currentSession.question_count) {
-    finishMatchInternal(ctx, currentMatch);
+  ctx.db.round.round_id.update({ ...currentRound, status: "resolved", resolved_at_ms: now });
+  insertMatchEvent(ctx, currentRound.session_id, undefined, "round_resolved", currentRound.order_index, undefined, undefined, "{}");
+  const current = requireSession(ctx, currentRound.session_id);
+  if (currentRound.order_index >= current.question_count) {
+    finishMatchInternal(ctx, current.session_id);
+  } else {
+    startRoundInternal(ctx, current.session_id, currentRound.order_index + 1);
   }
-  bumpStats(ctx, currentMatch.session_id);
+  bumpStats(ctx, currentRound.session_id);
 });
 
-export const finish_match = spacetimedb.reducer({ match_id: t.string() }, (ctx, { match_id }) => {
-  finishMatchInternal(ctx, requireMatch(ctx, match_id));
+export const finish_match = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+  finishMatchInternal(ctx, session_id);
+  bumpStats(ctx, session_id);
+});
+
+export const heartbeat = spacetimedb.reducer({ session_id: t.string(), client_latency_ms: t.option(t.u32()) }, (ctx, { session_id, client_latency_ms }) => {
+  const participantRow = participantForSender(ctx, session_id);
+  if (participantRow) {
+    ctx.db.participant.participant_id.update({ ...participantRow, last_seen_ms: nowMs(), client_latency_ms });
+  }
+  recalcStats(ctx, session_id);
+});
+
+export const reset_demo = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+  resetSessionTables(ctx, session_id);
+  const current = ctx.db.session.session_id.find(session_id);
+  if (current) ctx.db.session.session_id.delete(session_id);
+  createSessionRow(ctx, DEFAULT_CODE, QUESTION_COUNT);
+  insertAudit(ctx, session_id, sender(ctx), "reset_demo", "QuizRush demo reset to a clean lobby.");
+});
+
+export const add_simulated_players = spacetimedb.reducer({ session_id: t.string(), count: t.u32() }, (ctx, { session_id, count }) => {
+  const now = nowMs();
+  const avatars = ["🚀", "🧠", "⚡", "✨", "🔥", "🐯"];
+  const limit = Math.min(250, count);
+  for (let i = 0; i < limit; i += 1) {
+    const participant_id = id("sim");
+    ctx.db.participant.insert({
+      participant_id,
+      session_id,
+      identity: `sim-${participant_id}`,
+      display_name: `Rusher ${i + 1}`,
+      avatar: avatars[i % avatars.length] ?? "🚀",
+      joined_at_ms: now,
+      last_seen_ms: now,
+      is_simulated: true,
+      client_latency_ms: 35 + (i % 70)
+    });
+    ctx.db.score.insert(emptyScore(session_id, participant_id, now));
+    insertMatchEvent(ctx, session_id, participant_id, "join", undefined, undefined, undefined, "{\"simulated\":true}");
+  }
+  const current = requireSession(ctx, session_id);
+  if (current.status === "lobby") ctx.db.session.session_id.update({ ...current, status: "topic_voting", updated_at_ms: now });
+  recomputeRanks(ctx, session_id);
+  recalcStats(ctx, session_id);
 });
 
 export const record_agent_event = spacetimedb.reducer(
   { session_id: t.string(), agent_name: t.string(), event_type: t.string(), content: t.string(), confidence: t.f32(), status: t.string() },
-  (ctx, { session_id, agent_name, event_type, content, confidence, status }) => {
-    insertAgentEvent(ctx, session_id, agent_name, event_type, content, confidence, status);
+  (ctx, input) => {
+    insertAgentEvent(ctx, input.session_id, input.agent_name, input.event_type, input.content, input.confidence, input.status);
+    bumpStats(ctx, input.session_id);
   }
 );
 
-export const add_simulated_supporters = spacetimedb.reducer({ session_id: t.string(), count: t.u32() }, (ctx, { session_id, count }) => {
+type ReducerCtx = Parameters<Parameters<typeof spacetimedb.reducer>[1]>[0];
+type SessionRow = ReturnType<ReducerCtx["db"]["session"]["session_id"]["find"]> extends infer R ? NonNullable<R> : never;
+type RoundRow = ReturnType<ReducerCtx["db"]["round"]["round_id"]["find"]> extends infer R ? NonNullable<R> : never;
+type QuestionRow = ReturnType<ReducerCtx["db"]["question"]["question_id"]["find"]> extends infer R ? NonNullable<R> : never;
+type ParticipantRow = ReturnType<ReducerCtx["db"]["participant"]["participant_id"]["find"]> extends infer R ? NonNullable<R> : never;
+type ScoreRow = ReturnType<ReducerCtx["db"]["score"]["score_id"]["find"]> extends infer R ? NonNullable<R> : never;
+
+function createSessionRow(ctx: ReducerCtx, code: string, question_count: number) {
+  const now = nowMs();
+  ctx.db.session.insert({
+    session_id: "session-demo",
+    code,
+    status: "lobby",
+    selected_topic: undefined,
+    question_count,
+    current_round: 0,
+    match_started_at_ms: undefined,
+    match_finished_at_ms: undefined,
+    created_at_ms: now,
+    updated_at_ms: now
+  });
+  ctx.db.live_stats.insert(emptyStats("session-demo", now));
+  insertAgentEvent(ctx, "session-demo", "Seed Fallback Provider", "fallback_ready", "Five deterministic backup questions are ready if the LLM is unavailable.", 1, "complete");
+}
+
+function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selected_topic: string, questions_json: string, request_id?: string) {
+  const parsed = JSON.parse(questions_json) as {
+    questions?: Array<{
+      questionText: string;
+      options: { A: string; B: string; C: string; D: string };
+      correctOption: string;
+      explanation: string;
+      topic?: string;
+    }>;
+  };
+  if (!Array.isArray(parsed.questions) || parsed.questions.length < QUESTION_COUNT) {
+    throw new Error("Malformed question pack.");
+  }
+  ctx.db.question.session_id.delete(session_id);
+  ctx.db.round.session_id.delete(session_id);
   const current = requireSession(ctx, session_id);
   const now = nowMs();
-  for (let i = 0; i < Math.min(250, count); i += 1) {
-    const participant_id = id("sim");
-    ctx.db.participant.insert({
-      participant_id,
-      session_id: current.session_id,
-      identity: `sim-${participant_id}`,
-      display_name: `Sim Supporter ${i + 1}`,
-      avatar_seed: `sim-${i}`,
-      role_requested: "crowd",
-      role_assigned: "crowd",
-      interests_json: "[\"AI\",\"Space\"]",
-      joined_at_ms: now,
-      last_seen_ms: now,
-      is_simulated: true
+  parsed.questions.slice(0, current.question_count).forEach((item, index) => {
+    if (!item.options || !["A", "B", "C", "D"].includes(item.correctOption)) throw new Error("Malformed question option.");
+    ctx.db.question.insert({
+      question_id: id("question"),
+      session_id,
+      order_index: index + 1,
+      question_text: item.questionText,
+      option_a: item.options.A,
+      option_b: item.options.B,
+      option_c: item.options.C,
+      option_d: item.options.D,
+      correct_option: item.correctOption,
+      explanation: item.explanation,
+      topic: item.topic || selected_topic,
+      generated_by: sender(ctx) === "agent-worker" ? "Quiz Builder Agent" : "Seed Fallback Provider",
+      fairness_status: sender(ctx) === "agent-worker" ? "approved" : "fallback",
+      created_at_ms: now
     });
-    ctx.db.energy_balance.insert({ participant_id, session_id, spendable_energy: INITIAL_ENERGY, trust_xp: 0, updated_at_ms: now });
+  });
+  ctx.db.session.session_id.update({ ...current, status: "ready", selected_topic, updated_at_ms: now });
+  if (request_id) {
+    const request = ctx.db.agent_request.request_id.find(request_id);
+    if (request) ctx.db.agent_request.request_id.update({ ...request, status: "complete", updated_at_ms: now });
   }
-  recalcStats(ctx, session_id);
-  insertAudit(ctx, session_id, sender(ctx), "add_simulated_supporters", `${count} simulated supporters added.`, "{\"simulated\":true}");
-});
+  insertAgentEvent(ctx, session_id, "Match Engine", "questions_ready", "Five questions are ready for a 25-second race.", 1, "complete");
+  bumpStats(ctx, session_id);
+}
 
-export const reset_demo = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order: number) {
+  const current = requireSession(ctx, session_id);
+  const questionRow = Array.from(ctx.db.question.session_id.filter(session_id)).find((candidate) => candidate.order_index === question_order);
+  if (!questionRow) throw new Error(`Question ${question_order} is not ready.`);
+  const now = nowMs();
+  for (const active of ctx.db.round.session_id.filter(session_id)) {
+    if (active.status === "active") ctx.db.round.round_id.update({ ...active, status: "resolved", resolved_at_ms: now });
+  }
+  const existing = Array.from(ctx.db.round.session_id.filter(session_id)).find((candidate) => candidate.order_index === question_order);
+  if (existing) {
+    ctx.db.round.round_id.update({
+      ...existing,
+      status: "active",
+      starts_at_ms: now,
+      ends_at_ms: now + BigInt(QUESTION_TIME_LIMIT_MS),
+      resolved_at_ms: undefined
+    });
+  } else {
+    ctx.db.round.insert({
+      round_id: id("round"),
+      session_id,
+      question_id: questionRow.question_id,
+      order_index: question_order,
+      status: "active",
+      starts_at_ms: now,
+      ends_at_ms: now + BigInt(QUESTION_TIME_LIMIT_MS),
+      resolved_at_ms: undefined
+    });
+  }
+  ctx.db.session.session_id.update({ ...current, status: "playing", current_round: question_order, updated_at_ms: now });
+  insertMatchEvent(ctx, session_id, undefined, "question_start", question_order, undefined, undefined, JSON.stringify({ question_id: questionRow.question_id }));
+}
+
+function recomputeRanks(ctx: ReducerCtx, session_id: string) {
+  const scores = Array.from(ctx.db.score.session_id.filter(session_id)).sort(compareScores);
+  const now = nowMs();
+  scores.forEach((item, index) => {
+    const nextRank = index + 1;
+    const previousRank = item.current_rank;
+    ctx.db.score.score_id.update({
+      ...item,
+      previous_rank: previousRank,
+      current_rank: nextRank,
+      updated_at_ms: now
+    });
+    if (previousRank !== nextRank) {
+      insertMatchEvent(ctx, session_id, item.participant_id, "rank_change", undefined, item.total_score, nextRank, JSON.stringify({ previousRank, currentRank: nextRank }));
+    }
+  });
+}
+
+function compareScores(a: ScoreRow, b: ScoreRow): number {
+  if (b.total_score !== a.total_score) return b.total_score - a.total_score;
+  if (b.correct_count !== a.correct_count) return b.correct_count - a.correct_count;
+  if (a.total_response_ms !== b.total_response_ms) return a.total_response_ms - b.total_response_ms;
+  const aFast = a.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
+  const bFast = b.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
+  if (aFast !== bFast) return aFast - bFast;
+  const aLast = a.last_answer_at_ms ?? BigInt(Number.MAX_SAFE_INTEGER);
+  const bLast = b.last_answer_at_ms ?? BigInt(Number.MAX_SAFE_INTEGER);
+  if (aLast !== bLast) return aLast < bLast ? -1 : 1;
+  return a.participant_id.localeCompare(b.participant_id);
+}
+
+function finishMatchInternal(ctx: ReducerCtx, session_id: string) {
+  const current = requireSession(ctx, session_id);
+  if (current.status === "finished") return;
+  const now = nowMs();
+  for (const active of ctx.db.round.session_id.filter(session_id)) {
+    if (active.status === "active") ctx.db.round.round_id.update({ ...active, status: "resolved", resolved_at_ms: now });
+  }
+  ctx.db.session.session_id.update({ ...current, status: "finished", match_finished_at_ms: now, updated_at_ms: now });
+  const winner = Array.from(ctx.db.score.session_id.filter(session_id)).sort(compareScores)[0];
+  insertMatchEvent(ctx, session_id, winner?.participant_id, "match_finished", undefined, winner?.total_score, winner?.current_rank, "{}");
+}
+
+function computeAnswerScore(is_correct: boolean, response_ms: number): number {
+  if (!is_correct) return 0;
+  const speed = Math.floor(1000 * Math.max(0, Math.min(1, 1 - response_ms / QUESTION_TIME_LIMIT_MS)));
+  return 1000 + speed;
+}
+
+function emptyScore(session_id: string, participant_id: string, now: bigint) {
+  return {
+    score_id: `${session_id}:${participant_id}`,
+    session_id,
+    participant_id,
+    total_score: 0,
+    correct_count: 0,
+    total_response_ms: 0,
+    fastest_response_ms: undefined,
+    current_rank: 1,
+    previous_rank: 1,
+    last_answer_at_ms: undefined,
+    updated_at_ms: now
+  };
+}
+
+function resetSessionTables(ctx: ReducerCtx, session_id: string) {
   ctx.db.participant.session_id.delete(session_id);
-  ctx.db.match.session_id.delete(session_id);
+  ctx.db.topic_vote.session_id.delete(session_id);
   ctx.db.question.session_id.delete(session_id);
-  ctx.db.energy_balance.session_id.delete(session_id);
-  ctx.db.ledger_entry.session_id.delete(session_id);
+  ctx.db.round.session_id.delete(session_id);
+  ctx.db.answer.session_id.delete(session_id);
+  ctx.db.score.session_id.delete(session_id);
+  ctx.db.match_event.session_id.delete(session_id);
   ctx.db.agent_request.session_id.delete(session_id);
   ctx.db.agent_event.session_id.delete(session_id);
   ctx.db.audit_event.session_id.delete(session_id);
   ctx.db.live_stats.session_id.delete(session_id);
-  const current = ctx.db.session.session_id.find(session_id);
-  const now = nowMs();
-  if (current) {
-    ctx.db.session.session_id.update({
-      ...current,
-      topic: "AI + Space + Startups",
-      difficulty: "beginner",
-      question_count: 3,
-      status: "draft",
-      updated_at_ms: now,
-      current_match_id: undefined,
-      lobby_opened_at_ms: undefined
-    });
-  }
-  ctx.db.live_stats.insert(emptyStats(session_id, now));
-  insertAudit(ctx, session_id, sender(ctx), "reset_demo", "Demo reset to a clean deterministic state.", "{}");
-});
-
-function createRound(ctx: ReducerCtx, current: MatchRow, round_number: number) {
-  const existing = Array.from(ctx.db.round.match_id.filter(current.match_id)).find((item) => item.round_number === round_number);
-  const questionRow = Array.from(ctx.db.question.session_id.filter(current.session_id)).find((item) => item.round_number === round_number);
-  if (!questionRow) throw new Error(`Question ${round_number} is not ready.`);
-  const now = nowMs();
-  if (existing) {
-    ctx.db.round.round_id.update({ ...existing, status: "active", starts_at_ms: now, ends_at_ms: now + BigInt(QUESTION_TIME_LIMIT_MS), resolved_at_ms: undefined, winner_player_id: undefined });
-  } else {
-    ctx.db.round.insert({
-      round_id: id("round"),
-      match_id: current.match_id,
-      question_id: questionRow.question_id,
-      round_number,
-      status: "active",
-      starts_at_ms: now,
-      ends_at_ms: now + BigInt(QUESTION_TIME_LIMIT_MS),
-      resolved_at_ms: undefined,
-      winner_player_id: undefined
-    });
-  }
-  ctx.db.match.match_id.update({ ...current, current_round_number: round_number, status: "active" });
 }
-
-type ReducerCtx = Parameters<Parameters<typeof spacetimedb.reducer>[1]>[0];
-type MatchRow = ReturnType<ReducerCtx["db"]["match"]["match_id"]["find"]> extends infer R ? NonNullable<R> : never;
-type SessionRow = ReturnType<ReducerCtx["db"]["session"]["session_id"]["find"]> extends infer R ? NonNullable<R> : never;
-type RoundRow = ReturnType<ReducerCtx["db"]["round"]["round_id"]["find"]> extends infer R ? NonNullable<R> : never;
-type QuestionRow = ReturnType<ReducerCtx["db"]["question"]["question_id"]["find"]> extends infer R ? NonNullable<R> : never;
-type AnswerRow = ReturnType<ReducerCtx["db"]["answer"]["answer_id"]["find"]> extends infer R ? NonNullable<R> : never;
-type ScoreRow = ReturnType<ReducerCtx["db"]["score"]["score_id"]["find"]> extends infer R ? NonNullable<R> : never;
 
 function requireSession(ctx: ReducerCtx, session_id: string): SessionRow {
   const row = ctx.db.session.session_id.find(session_id);
@@ -764,9 +650,9 @@ function requireSession(ctx: ReducerCtx, session_id: string): SessionRow {
   return row;
 }
 
-function requireMatch(ctx: ReducerCtx, match_id: string): MatchRow {
-  const row = ctx.db.match.match_id.find(match_id);
-  if (!row) throw new Error(`Match not found: ${match_id}`);
+function requireSessionByCode(ctx: ReducerCtx, code: string): SessionRow {
+  const row = ctx.db.session.code.find(code);
+  if (!row) throw new Error(`Session not found: ${code}`);
   return row;
 }
 
@@ -782,133 +668,94 @@ function requireQuestion(ctx: ReducerCtx, question_id: string): QuestionRow {
   return row;
 }
 
+function requireParticipantForSender(ctx: ReducerCtx, session_id: string): ParticipantRow {
+  const participantRow = participantForSender(ctx, session_id);
+  if (!participantRow) throw new Error("Join the tournament before acting.");
+  return participantRow;
+}
+
+function participantForSender(ctx: ReducerCtx, session_id: string): ParticipantRow | undefined {
+  const caller = sender(ctx);
+  for (const row of ctx.db.participant.session_id.filter(session_id)) {
+    if (row.identity === caller) return row;
+  }
+  return undefined;
+}
+
+function requireScore(ctx: ReducerCtx, session_id: string, participant_id: string): ScoreRow {
+  const row = ctx.db.score.score_id.find(`${session_id}:${participant_id}`);
+  if (!row) throw new Error(`Score not found: ${participant_id}`);
+  return row;
+}
+
 function requireStats(ctx: ReducerCtx, session_id: string) {
   const row = ctx.db.live_stats.session_id.find(session_id);
   if (!row) throw new Error(`LiveStats not found: ${session_id}`);
   return row;
 }
 
-function participantForSender(ctx: ReducerCtx, session_id: string) {
-  const caller = sender(ctx);
-  for (const item of ctx.db.participant.session_id.filter(session_id)) {
-    if (item.identity === caller) return item;
-  }
-  return undefined;
-}
-
-function answerFor(ctx: ReducerCtx, round_id: string, participant_id: string): AnswerRow | undefined {
-  for (const item of ctx.db.answer.round_id.filter(round_id)) {
-    if (item.participant_id === participant_id) return item;
-  }
-  return undefined;
-}
-
-function totalSupport(ctx: ReducerCtx, round_id: string, player_id: string): number {
-  let total = 0;
-  for (const item of ctx.db.support_event.round_id.filter(round_id)) {
-    if (item.player_id === player_id) total += item.amount;
-  }
-  return total;
-}
-
-function upsertScore(ctx: ReducerCtx, participant_id: string, match_id: string): ScoreRow {
-  const score_id = `${match_id}:${participant_id}`;
-  const existing = ctx.db.score.score_id.find(score_id);
-  if (existing) return existing;
-  const row = {
-    score_id,
-    participant_id,
-    match_id,
-    player_score: 0,
-    supporter_xp: 0,
-    support_accuracy_num: 0,
-    support_accuracy_den: 0,
-    playalong_correct: 0,
-    playalong_total: 0,
-    updated_at_ms: nowMs()
-  };
-  ctx.db.score.insert(row);
-  return row;
-}
-
-function applyPlayerScore(ctx: ReducerCtx, currentMatch: MatchRow, currentRound: RoundRow, participant_id: string, delta: number) {
-  const current = upsertScore(ctx, participant_id, currentMatch.match_id);
-  ctx.db.score.score_id.update({ ...current, player_score: current.player_score + delta, updated_at_ms: nowMs() });
-  insertLedger(ctx, currentMatch.session_id, currentMatch.match_id, currentRound.round_id, participant_id, delta, "player_score", "player_correct", "{}");
-}
-
-function finishMatchInternal(ctx: ReducerCtx, current: MatchRow) {
-  const now = nowMs();
-  ctx.db.match.match_id.update({ ...current, status: "finished", finished_at_ms: now });
-  const currentSession = requireSession(ctx, current.session_id);
-  ctx.db.session.session_id.update({ ...currentSession, status: "finished", updated_at_ms: now });
-  insertAgentEvent(ctx, current.session_id, "Learning Recap Agent", "learning_recap", "Based on this match: reducers kept answers fair, Energy spending consistent, and AI fallback reliable.", 0.9, "complete");
-}
-
-function roundScore(isCorrect: boolean, responseMs: number, support: number): number {
-  const correctness = isCorrect ? 1000 : 0;
-  const speed = isCorrect ? Math.floor(500 * Math.max(0, Math.min(1, 1 - responseMs / QUESTION_TIME_LIMIT_MS))) : 0;
-  const boost = Math.min(200, Math.floor(support / CHEER_AMOUNT) * 10);
-  return correctness + speed + boost;
-}
-
 function recalcStats(ctx: ReducerCtx, session_id: string) {
   const stats = requireStats(ctx, session_id);
+  const now = nowMs();
   const participants = Array.from(ctx.db.participant.session_id.filter(session_id));
+  const answers = Array.from(ctx.db.answer.session_id.filter(session_id));
+  const latencies = participants
+    .map((item) => item.client_latency_ms)
+    .filter((item): item is number => typeof item === "number")
+    .sort((a, b) => a - b);
   ctx.db.live_stats.session_id.update({
     ...stats,
     joined_count: participants.length,
-    player_candidate_count: participants.filter((item) => item.role_requested === "player").length,
-    crowd_count: participants.filter((item) => item.role_assigned === "crowd").length,
-    active_clients: participants.length,
-    p95_sync_latency_ms: 42 + ((stats.reducer_calls_count * 7 + stats.cheer_events_count * 3) % 71),
-    updated_at_ms: nowMs()
+    real_joined_count: participants.filter((item) => !item.is_simulated).length,
+    simulated_joined_count: participants.filter((item) => item.is_simulated).length,
+    answers_count: answers.length,
+    answers_per_sec: answers.filter((item) => now - item.server_received_at_ms <= BigInt(1000)).length,
+    active_clients: participants.filter((item) => now - item.last_seen_ms <= BigInt(15_000)).length,
+    p95_latency_ms: latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] ?? 48 : 48,
+    updated_at_ms: now
   });
 }
 
 function bumpStats(ctx: ReducerCtx, session_id: string) {
   const stats = requireStats(ctx, session_id);
-  ctx.db.live_stats.session_id.update({ ...stats, reducer_calls_count: stats.reducer_calls_count + 1, updated_at_ms: nowMs() });
+  ctx.db.live_stats.session_id.update({ ...stats, reducer_calls: stats.reducer_calls + 1, updated_at_ms: nowMs() });
 }
 
 function emptyStats(session_id: string, now: bigint) {
   return {
     session_id,
     joined_count: 0,
-    player_candidate_count: 0,
-    crowd_count: 0,
-    active_clients: 0,
-    cheer_events_count: 0,
-    cheer_events_per_sec: 0,
-    reducer_calls_count: 0,
+    real_joined_count: 0,
+    simulated_joined_count: 0,
+    answers_count: 0,
+    answers_per_sec: 0,
+    reducer_calls: 0,
     duplicate_answers_rejected: 0,
-    double_spend_attempts_blocked: 0,
-    p95_sync_latency_ms: 42,
+    p95_latency_ms: 48,
+    active_clients: 0,
     updated_at_ms: now
   };
 }
 
-function insertLedger(
+function insertMatchEvent(
   ctx: ReducerCtx,
   session_id: string,
-  match_id: string | undefined,
-  round_id: string | undefined,
-  participant_id: string,
-  delta: number,
-  currency_type: string,
-  reason: string,
-  metadata_json: string
+  participant_id: string | undefined,
+  event_type: string,
+  round_index: number | undefined,
+  score_after: number | undefined,
+  rank_after: number | undefined,
+  payload_json: string
 ) {
-  ctx.db.ledger_entry.insert({
-    ledger_id: id("ledger"),
+  ctx.db.match_event.insert({
+    event_id: id("event"),
     session_id,
-    match_id,
-    round_id,
     participant_id,
-    delta,
-    currency_type,
-    reason,
-    metadata_json,
+    event_type,
+    round_index,
+    score_after,
+    rank_after,
+    payload_json,
     created_at_ms: nowMs()
   });
 }
@@ -926,16 +773,38 @@ function insertAgentEvent(ctx: ReducerCtx, session_id: string, agent_name: strin
   });
 }
 
-function insertAudit(ctx: ReducerCtx, session_id: string, actor_identity: string, event_type: string, message: string, metadata_json: string) {
+function insertAudit(ctx: ReducerCtx, session_id: string, actor_identity: string, event_type: string, message: string) {
   ctx.db.audit_event.insert({
-    event_id: id("audit"),
+    audit_id: id("audit"),
     session_id,
     actor_identity,
     event_type,
     message,
-    metadata_json,
     created_at_ms: nowMs()
   });
+}
+
+function topicFromVotes(ctx: ReducerCtx, session_id: string): string {
+  const counts = new Map<string, number>();
+  for (const vote of ctx.db.topic_vote.session_id.filter(session_id)) {
+    counts.set(vote.topic, (counts.get(vote.topic) ?? 0) + 1);
+  }
+  if (!counts.size) return DEFAULT_TOPIC;
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3)
+    .map(([topic]) => topic)
+    .join(" + ");
+}
+
+function parseTopics(topics_json: string): string[] {
+  const parsed = JSON.parse(topics_json) as unknown;
+  if (!Array.isArray(parsed)) throw new Error("topics_json must be a JSON array.");
+  return Array.from(new Set(parsed.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))).slice(0, 3);
+}
+
+function cleanName(name: string): string {
+  return name.trim().slice(0, 24) || "Player";
 }
 
 function sender(ctx: ReducerCtx): string {

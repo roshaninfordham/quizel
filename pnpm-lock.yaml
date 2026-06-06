@@ -11,12 +11,21 @@ importers:
       '@types/node':
         specifier: ^24.0.0
         version: 24.13.1
+      '@types/qrcode-terminal':
+        specifier: ^0.12.2
+        version: 0.12.2
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
       concurrently:
         specifier: ^9.1.2
         version: 9.2.1
+      effect:
+        specifier: ^3.21.3
+        version: 3.21.3
+      qrcode-terminal:
+        specifier: ^0.12.0
+        version: 0.12.0
       tsx:
         specifier: ^4.19.4
         version: 4.22.4
@@ -32,7 +41,7 @@ importers:
 
   apps/agent-worker:
     dependencies:
-      '@quizduel/shared':
+      '@quizrush/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       dotenv:
@@ -66,7 +75,7 @@ importers:
 
   apps/realtime-server:
     dependencies:
-      '@quizduel/shared':
+      '@quizrush/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       ws:
@@ -85,7 +94,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@quizduel/shared':
+      '@quizrush/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@tailwindcss/vite':
@@ -815,6 +824,9 @@ packages:
   '@types/node@24.13.1':
     resolution: {integrity: sha512-RSpUJGmvsJ1ZeBehQZFhIdpsz+bIpES0nIQXko4Ybq+N+kX6XvOq3Jo+iJ82FWLdblFq85AsMikd3m35jgezYg==}
 
+  '@types/qrcode-terminal@0.12.2':
+    resolution: {integrity: sha512-v+RcIEJ+Uhd6ygSQ0u5YYY7ZM+la7GgPbs0V/7l/kFs2uO4S8BcIUEMoP7za4DNIqNnUD5npf0A/7kBhrCKG5Q==}
+
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
     peerDependencies:
@@ -1200,6 +1212,10 @@ packages:
 
   pure-rand@7.0.1:
     resolution: {integrity: sha512-oTUZM/NAZS8p7ANR3SHh30kXB+zK2r2BPcEn/awJIbOvq82WoMN4p62AWWp3Hhw50G0xMsw1mhIBLqHw64EcNQ==}
+
+  qrcode-terminal@0.12.0:
+    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
+    hasBin: true
 
   qrcode.react@4.2.0:
     resolution: {integrity: sha512-QpgqWi8rD9DsS9EP3z7BT+5lY5SFhsqGjpgW5DY/i3mK4M9DTBNz3ErMi8BWYEfI3L0d8GIbGmcdFAS1uIRGjA==}
@@ -1934,6 +1950,8 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
+  '@types/qrcode-terminal@0.12.2': {}
+
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
       '@types/react': 19.2.17
@@ -2293,6 +2311,8 @@ snapshots:
   pure-rand@6.1.0: {}
 
   pure-rand@7.0.1: {}
+
+  qrcode-terminal@0.12.0: {}
 
   qrcode.react@4.2.0(react@19.2.7):
     dependencies:

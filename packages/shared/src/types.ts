@@ -1,37 +1,29 @@
-export type Difficulty = "beginner" | "intermediate" | "expert";
-export type QuestionCount = 3 | 10;
 export type OptionKey = "A" | "B" | "C" | "D";
-
-export type SessionStatus = "draft" | "lobby" | "selecting" | "active" | "finished" | "reset";
-export type ParticipantRoleRequested = "player" | "crowd";
-export type ParticipantRoleAssigned = "player1" | "player2" | "crowd" | "host";
-export type MatchStatus = "waiting" | "active" | "resolving" | "finished";
-export type RoundStatus = "preview" | "active" | "locked" | "resolved";
+export type SessionStatus = "lobby" | "topic_voting" | "generating" | "ready" | "playing" | "finished" | "replay" | "reset";
+export type RoundStatus = "waiting" | "active" | "resolved";
 export type AgentStatus = "pending" | "running" | "complete" | "failed" | "fallback";
-export type CurrencyType = "energy" | "trust_xp" | "player_score";
-export type LedgerReason =
-  | "initial_grant"
-  | "cheer_spend"
-  | "player_correct"
-  | "speed_bonus"
-  | "crowd_boost"
-  | "supporter_correct_pick"
-  | "playalong_correct"
-  | "demo_seed"
-  | "adjustment";
+export type MatchEventType =
+  | "join"
+  | "topic_vote"
+  | "questions_requested"
+  | "question_start"
+  | "answer"
+  | "score_delta"
+  | "rank_change"
+  | "round_resolved"
+  | "match_finished";
 
 export interface Session {
   sessionId: string;
-  joinCode: string;
-  topic: string;
-  difficulty: Difficulty;
-  questionCount: QuestionCount;
+  code: string;
   status: SessionStatus;
-  createdBy: string;
+  selectedTopic: string | null;
+  questionCount: number;
+  currentRound: number;
+  matchStartedAt: number | null;
+  matchFinishedAt: number | null;
   createdAt: number;
   updatedAt: number;
-  currentMatchId: string | null;
-  lobbyOpenedAt: number | null;
 }
 
 export interface Participant {
@@ -39,43 +31,18 @@ export interface Participant {
   sessionId: string;
   identity: string;
   displayName: string;
-  avatarSeed: string;
-  roleRequested: ParticipantRoleRequested;
-  roleAssigned: ParticipantRoleAssigned;
-  interests: string[];
+  avatar: string;
   joinedAt: number;
   lastSeen: number;
   isSimulated: boolean;
+  clientLatencyMs: number | null;
 }
 
-export interface Match {
-  matchId: string;
+export interface TopicVote {
+  voteId: string;
   sessionId: string;
-  player1Id: string;
-  player2Id: string;
-  status: MatchStatus;
-  currentRoundNumber: number;
-  player1Ready: boolean;
-  player2Ready: boolean;
-  startedAt: number | null;
-  finishedAt: number | null;
-}
-
-export interface Question {
-  questionId: string;
-  sessionId: string;
-  matchId: string | null;
-  roundNumber: number;
-  questionText: string;
-  optionA: string;
-  optionB: string;
-  optionC: string;
-  optionD: string;
-  correctOption: OptionKey;
-  explanation: string;
-  difficulty: Difficulty;
-  sourceAgent: string;
-  fairnessStatus: "approved" | "rejected" | "fallback";
+  participantId: string;
+  topic: string;
   createdAt: number;
 }
 
@@ -84,92 +51,81 @@ export interface QuestionInput {
   options: Record<OptionKey, string>;
   correctOption: OptionKey;
   explanation: string;
-  difficulty: Difficulty;
-  topicTags: string[];
+  topic: string;
+}
+
+export interface Question {
+  questionId: string;
+  sessionId: string;
+  orderIndex: number;
+  questionText: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correctOption: OptionKey;
+  explanation: string;
+  topic: string;
+  generatedBy: string;
+  fairnessStatus: "approved" | "fallback" | "rejected";
+  createdAt: number;
 }
 
 export interface Round {
   roundId: string;
-  matchId: string;
+  sessionId: string;
   questionId: string;
-  roundNumber: number;
+  orderIndex: number;
   status: RoundStatus;
   startsAt: number;
   endsAt: number;
   resolvedAt: number | null;
-  winnerPlayerId: string | null;
 }
 
 export interface Answer {
   answerId: string;
-  roundId: string;
-  participantId: string;
-  selectedOption: OptionKey;
-  serverReceivedAt: number;
-  responseMs: number;
-  isCorrect: boolean;
-  pointsAwarded: number;
-}
-
-export interface PlayAlongAnswer {
-  answerId: string;
-  roundId: string;
-  supporterId: string;
-  selectedOption: OptionKey;
-  serverReceivedAt: number;
-  isCorrect: boolean;
-}
-
-export interface SupportEvent {
-  supportId: string;
-  roundId: string;
-  supporterId: string;
-  playerId: string;
-  amount: number;
-  createdAt: number;
-  clientEventId: string | null;
-}
-
-export interface EnergyBalance {
-  participantId: string;
   sessionId: string;
-  spendableEnergy: number;
-  trustXp: number;
-  updatedAt: number;
+  roundId: string;
+  participantId: string;
+  selectedOption: OptionKey;
+  isCorrect: boolean;
+  responseMs: number;
+  scoreDelta: number;
+  serverReceivedAt: number;
 }
 
 export interface Score {
+  scoreId: string;
+  sessionId: string;
   participantId: string;
-  matchId: string;
-  playerScore: number;
-  supporterXp: number;
-  supportAccuracyNum: number;
-  supportAccuracyDen: number;
-  playalongCorrect: number;
-  playalongTotal: number;
+  totalScore: number;
+  correctCount: number;
+  totalResponseMs: number;
+  fastestResponseMs: number | null;
+  currentRank: number;
+  previousRank: number;
+  lastAnswerAt: number | null;
   updatedAt: number;
 }
 
-export interface LedgerEntry {
-  ledgerId: string;
+export interface MatchEvent {
+  eventId: string;
   sessionId: string;
-  matchId: string | null;
-  roundId: string | null;
-  participantId: string;
-  delta: number;
-  currencyType: CurrencyType;
-  reason: LedgerReason;
-  metadata: Record<string, unknown>;
+  participantId: string | null;
+  eventType: MatchEventType;
+  roundIndex: number | null;
+  scoreAfter: number | null;
+  rankAfter: number | null;
+  payload: Record<string, unknown>;
   createdAt: number;
 }
 
 export interface AgentRequest {
   requestId: string;
   sessionId: string;
-  requestType: "quiz_generation" | "commentary" | "learning_recap";
+  requestType: "quiz_generation" | "recap";
   topic: string;
-  difficulty: Difficulty;
-  questionCount: QuestionCount;
+  questionCount: number;
   status: AgentStatus;
   createdAt: number;
   updatedAt: number;
@@ -190,42 +146,35 @@ export interface AgentEvent {
 export interface LiveStats {
   sessionId: string;
   joinedCount: number;
-  playerCandidateCount: number;
-  crowdCount: number;
-  activeClients: number;
-  realParticipants: number;
-  simulatedSupporters: number;
-  cheerEventsCount: number;
-  cheerEventsPerSec: number;
-  reducerCallsCount: number;
+  realJoinedCount: number;
+  simulatedJoinedCount: number;
+  answersCount: number;
+  answersPerSec: number;
+  reducerCalls: number;
   duplicateAnswersRejected: number;
-  doubleSpendAttemptsBlocked: number;
-  p95SyncLatencyMs: number;
+  p95LatencyMs: number;
+  activeClients: number;
   updatedAt: number;
 }
 
 export interface AuditEvent {
-  eventId: string;
+  auditId: string;
   sessionId: string;
-  actorIdentity: string;
+  actorIdentity: string | null;
   eventType: string;
   message: string;
-  metadata: Record<string, unknown>;
   createdAt: number;
 }
 
-export interface QuizDuelState {
+export interface QuizRushState {
   sessions: Session[];
   participants: Participant[];
-  matches: Match[];
+  topicVotes: TopicVote[];
   questions: Question[];
   rounds: Round[];
   answers: Answer[];
-  playAlongAnswers: PlayAlongAnswer[];
-  supportEvents: SupportEvent[];
-  energyBalances: EnergyBalance[];
   scores: Score[];
-  ledgerEntries: LedgerEntry[];
+  matchEvents: MatchEvent[];
   agentRequests: AgentRequest[];
   agentEvents: AgentEvent[];
   liveStats: LiveStats[];
@@ -250,7 +199,7 @@ export interface ReducerReceipt<T = unknown> {
 
 export interface SnapshotMessage {
   type: "snapshot";
-  state: QuizDuelState;
+  state: QuizRushState;
   stateVersion: number;
   serverTime: number;
 }
@@ -259,11 +208,4 @@ export interface ReceiptMessage<T = unknown> {
   type: "receipt";
   requestId: string | null;
   receipt: ReducerReceipt<T>;
-}
-
-export interface RoundScoreBreakdown {
-  correctnessPoints: number;
-  speedBonus: number;
-  crowdBoost: number;
-  roundScore: number;
 }

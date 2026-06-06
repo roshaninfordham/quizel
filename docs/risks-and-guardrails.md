@@ -1,17 +1,48 @@
-# Risks and Guardrails
+# Risks And Guardrails
 
-- No gambling mechanics: no betting, staking, wagering, odds, payout, or profit language.
-- No real money: Energy and Trust XP are non-redeemable educational game XP.
-- No transfer: users cannot send Energy to other users or withdraw value.
-- Positive Crowd action only: Cheer supports a Champion; there is no negative voting.
-- AI hallucination fallback: model output is schema-validated and replaced with seed content on failure.
-- Duplicate answer prevention: reducer rejects second player answer for the same round.
-- Energy double-spend prevention: reducer checks and deducts Energy atomically before inserting SupportEvent.
-- Server-authoritative timing: response time is calculated from reducer-side round start and receive time.
-- Demo-mode honesty: simulated supporters are marked as simulated in LiveStats.
-- Reconnect behavior: clients show a reconnecting banner and render the latest authoritative snapshot.
-- Prototype scope: local reducer gateway is the default demo transport; the SpacetimeDB module is build-verified and ready for generated binding integration.
+## Product Safety
 
-Required disclaimer:
+- No gambling mechanics.
+- No real money.
+- No purchase.
+- No payout.
+- No stored-value account.
+- No cash prize.
+- No withdrawal or transfer.
+- Educational game scoring only.
 
-QuizDuel Live uses non-redeemable educational game XP only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
+UI disclaimer:
+
+> QuizRush Live uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
+
+## Realtime Integrity
+
+- One answer per participant per round.
+- Server-authoritative timers.
+- Server-authoritative response time.
+- Score and rank calculated in reducers.
+- Duplicate answers rejected and counted in `LiveStats`.
+- Replay generated from `MatchEvent`, not client animation state.
+- Heartbeats update active-client and latency estimates.
+
+## AI Guardrails
+
+- LLM output must be valid JSON.
+- Zod validates every question pack.
+- Fairness Agent checks option count, duplicate options, ambiguity, safety, and explanation quality.
+- Safety Guard can classify content before acceptance.
+- Seed fallback keeps the match playable when API keys are missing, slow, or malformed.
+- AI cannot mutate score or rank.
+
+## Demo Honesty
+
+- Simulated players are marked `is_simulated=true`.
+- The tech overlay shows real and simulated counts separately.
+- The default laptop gateway mirrors the SpacetimeDB reducer contract for reliable local demos.
+- Direct SpacetimeDB module build and reducer/table contract live in `modules/spacetime`.
+
+## Network Risk
+
+- Phones need a reachable public or LAN URL.
+- `PUBLIC_BASE_URL` should be set to a Cloudflare/ngrok URL for rooms outside the laptop network.
+- If the websocket disconnects, the UI shows a reconnecting state.

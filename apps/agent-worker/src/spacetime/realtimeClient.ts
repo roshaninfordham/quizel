@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import { WebSocket } from "ws";
-import type { QuizDuelState, ReducerReceipt, SnapshotMessage } from "@quizduel/shared";
+import type { QuizRushState, ReducerReceipt, SnapshotMessage } from "@quizrush/shared";
 import { SpacetimeWriteError } from "../llm/errors";
 
 export interface RealtimeClient {
-  readonly waitForSnapshot: () => Effect.Effect<QuizDuelState, SpacetimeWriteError>;
+  readonly waitForSnapshot: () => Effect.Effect<QuizRushState, SpacetimeWriteError>;
   readonly callReducer: <T = unknown>(
     reducer: string,
     args: unknown,
@@ -22,10 +22,10 @@ export function makeRealtimeClient(url: string): Effect.Effect<RealtimeClient, S
         socket.once("error", reject);
       });
 
-      let latestSnapshot: { state: QuizDuelState; stateVersion: number } | null = null;
+      let latestSnapshot: { state: QuizRushState; stateVersion: number } | null = null;
       let lastDeliveredVersion = -1;
       const snapshotWaiters = new Set<{
-        resolve: (snapshot: { state: QuizDuelState; stateVersion: number }) => void;
+        resolve: (snapshot: { state: QuizRushState; stateVersion: number }) => void;
         reject: (error: Error) => void;
       }>();
       const pendingReceipts = new Map<
@@ -77,14 +77,14 @@ export function makeRealtimeClient(url: string): Effect.Effect<RealtimeClient, S
         waitForSnapshot: () =>
           Effect.tryPromise({
             try: () =>
-              new Promise<QuizDuelState>((resolve, reject) => {
+              new Promise<QuizRushState>((resolve, reject) => {
                 if (latestSnapshot && latestSnapshot.stateVersion !== lastDeliveredVersion) {
                   lastDeliveredVersion = latestSnapshot.stateVersion;
                   resolve(latestSnapshot.state);
                   return;
                 }
                 const waiter = {
-                  resolve: (snapshot: { state: QuizDuelState; stateVersion: number }) => {
+                  resolve: (snapshot: { state: QuizRushState; stateVersion: number }) => {
                     lastDeliveredVersion = snapshot.stateVersion;
                     resolve(snapshot.state);
                   },

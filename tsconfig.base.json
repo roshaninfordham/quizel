@@ -14,8 +14,8 @@
     "noImplicitOverride": true,
     "baseUrl": ".",
     "paths": {
-      "@quizduel/shared": ["packages/shared/src/index.ts"],
-      "@quizduel/shared/*": ["packages/shared/src/*"]
+      "@quizrush/shared": ["packages/shared/src/index.ts"],
+      "@quizrush/shared/*": ["packages/shared/src/*"]
     }
   }
 }

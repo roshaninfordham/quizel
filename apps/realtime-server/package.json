@@ -1,5 +1,5 @@
 {
-  "name": "@quizduel/realtime-server",
+  "name": "@quizrush/realtime-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@quizduel/shared": "workspace:*",
+    "@quizrush/shared": "workspace:*",
     "ws": "^8.18.3"
   },
   "devDependencies": {

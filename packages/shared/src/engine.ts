@@ -1,196 +1,56 @@
 import {
-  CHEER_AMOUNT,
-  DEFAULT_JOIN_CODE,
+  DEFAULT_SELECTED_TOPIC,
+  DEFAULT_SESSION_CODE,
   DEFAULT_SESSION_ID,
-  DEMO_TOPIC,
-  INITIAL_ENERGY,
+  DEFAULT_TOPICS,
+  QUESTION_COUNT,
   QUESTION_TIME_LIMIT_MS
 } from "./constants";
+import { questionBatchSchema, selectedOptionSchema } from "./schemas";
+import { computeAnswerScore, compareScores } from "./scoring";
 import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
-import { computePlayerRoundScore, determineRoundWinner } from "./scoring";
-import { questionBatchSchema, selectedOptionSchema, supportPlayerSchema } from "./schemas";
 import type {
   AgentEvent,
+  AgentRequest,
   Answer,
   AuditEvent,
-  Difficulty,
-  EnergyBalance,
-  LedgerEntry,
   LiveStats,
-  Match,
+  MatchEvent,
+  MatchEventType,
   OptionKey,
   Participant,
-  PlayAlongAnswer,
   Question,
-  QuestionCount,
   QuestionInput,
-  QuizDuelState,
+  QuizRushState,
   ReducerReceipt,
   Round,
   Score,
   Session,
-  SupportEvent
+  TopicVote
 } from "./types";
 
-type Listener = () => void;
+type Listener = (state: QuizRushState, stateVersion: number) => void;
 
 interface ReducerContext<TArgs> {
   args: TArgs;
   identity: string;
 }
 
-export interface CreateSessionArgs {
-  topic: string;
-  difficulty: Difficulty;
-  questionCount: QuestionCount;
-}
-
-export interface SessionIdArgs {
-  sessionId: string;
-}
-
-export interface RequestQuestionsArgs {
-  sessionId: string;
-  topic: string;
-  difficulty: Difficulty;
-  questionCount: QuestionCount;
-}
-
-export interface SubmitQuestionBatchArgs {
-  sessionId: string;
-  requestId?: string;
-  questions: QuestionInput[];
-}
-
-export interface JoinSessionArgs {
-  joinCode: string;
-  displayName: string;
-  roleRequested: "player" | "crowd";
-  interests: string[];
-}
-
-export interface MatchIdArgs {
-  matchId: string;
-}
-
-export interface StartRoundArgs {
-  matchId: string;
-  roundNumber: number;
-}
-
-export interface SubmitAnswerArgs {
-  roundId: string;
-  selectedOption: OptionKey;
-}
-
-export interface SupportPlayerArgs {
-  roundId: string;
-  playerId: string;
-  amount: number;
-  clientEventId?: string;
-}
-
-export interface AddSimulatedSupportersArgs {
-  sessionId: string;
-  count: number;
-}
-
-const SYSTEM_IDENTITY = "system";
-
-export function createInitialDemoState(now = Date.now()): QuizDuelState {
-  const session: Session = {
-    sessionId: DEFAULT_SESSION_ID,
-    joinCode: DEFAULT_JOIN_CODE,
-    topic: DEMO_TOPIC,
-    difficulty: "beginner",
-    questionCount: 3,
-    status: "draft",
-    createdBy: "host-local",
-    createdAt: now,
-    updatedAt: now,
-    currentMatchId: null,
-    lobbyOpenedAt: null
-  };
-
-  const liveStats: LiveStats = {
-    sessionId: session.sessionId,
-    joinedCount: 0,
-    playerCandidateCount: 0,
-    crowdCount: 0,
-    activeClients: 0,
-    realParticipants: 0,
-    simulatedSupporters: 0,
-    cheerEventsCount: 0,
-    cheerEventsPerSec: 0,
-    reducerCallsCount: 0,
-    duplicateAnswersRejected: 0,
-    doubleSpendAttemptsBlocked: 0,
-    p95SyncLatencyMs: 42,
-    updatedAt: now
-  };
-
-  return {
-    sessions: [session],
-    participants: [],
-    matches: [],
-    questions: [],
-    rounds: [],
-    answers: [],
-    playAlongAnswers: [],
-    supportEvents: [],
-    energyBalances: [],
-    scores: [],
-    ledgerEntries: [],
-    agentRequests: [],
-    agentEvents: [
-      {
-        eventId: "agent-seed-ready",
-        sessionId: session.sessionId,
-        agentName: "Fallback Seed Provider",
-        eventType: "demo_ready",
-        content: "Deterministic fallback questions are ready if the LLM is unavailable.",
-        confidence: 1,
-        status: "complete",
-        createdAt: now
-      }
-    ],
-    liveStats: [liveStats],
-    auditEvents: [
-      {
-        eventId: "audit-demo-ready",
-        sessionId: session.sessionId,
-        actorIdentity: SYSTEM_IDENTITY,
-        eventType: "demo_ready",
-        message: "Demo session initialized.",
-        metadata: {},
-        createdAt: now
-      }
-    ]
-  };
-}
-
-export class QuizDuelEngine {
-  private state: QuizDuelState;
+export class QuizRushEngine {
+  private state: QuizRushState;
   private listeners = new Set<Listener>();
-  private idCounter = 1;
-  private version = 1;
+  private counters = new Map<string, number>();
+  public stateVersion = 0;
 
-  public constructor(initialState: QuizDuelState = createInitialDemoState()) {
-    this.state = structuredClone(initialState);
+  public constructor(seedDemo = true) {
+    this.state = emptyState();
+    if (seedDemo) {
+      this.seedSession();
+    }
   }
 
-  public get stateVersion(): number {
-    return this.version;
-  }
-
-  public getSnapshot(): QuizDuelState {
-    return this.state;
-  }
-
-  public replaceState(state: QuizDuelState): void {
-    this.state = structuredClone(state);
-    this.version += 1;
-    this.emit();
+  public getSnapshot(): QuizRushState {
+    return structuredClone(this.state);
   }
 
   public subscribe(listener: Listener): () => void {
@@ -198,35 +58,31 @@ export class QuizDuelEngine {
     return () => this.listeners.delete(listener);
   }
 
-  public callReducer<T = unknown>(reducer: string, args: unknown, identity = "host-local"): ReducerReceipt<T> {
-    const previous = structuredClone(this.state);
+  public callReducer<T = unknown>(reducer: string, args: unknown, identity = "anonymous-device"): ReducerReceipt<T> {
     const started = Date.now();
-
     try {
-      const sessionId = this.findSessionIdFromArgs(args);
-      if (sessionId) {
-        this.incrementReducerCount(sessionId, started);
-      }
-
-      const data = this.dispatch(reducer, { args, identity }) as T;
-      this.version += 1;
-      this.emit();
-      return {
-        ok: true,
-        reducer,
-        data,
-        stateVersion: this.version,
-        serverTime: Date.now()
-      };
+      const data = this.dispatch(reducer, { args, identity } as ReducerContext<unknown>) as T;
+      const sessionId = sessionIdFromArgs(args) ?? sessionIdFromResult(data);
+      if (sessionId) this.incrementReducerCount(sessionId, started);
+      this.stateVersion += 1;
+      this.notify();
+      return { ok: true, reducer, data, stateVersion: this.stateVersion, serverTime: Date.now() };
     } catch (error) {
-      this.state = previous;
-      this.version += 1;
-      this.emit();
+      const sessionId = sessionIdFromArgs(args);
+      if (sessionId) {
+        const stats = this.state.liveStats.find((candidate) => candidate.sessionId === sessionId);
+        if (stats && String(error instanceof Error ? error.message : error).toLowerCase().includes("duplicate")) {
+          stats.duplicateAnswersRejected += 1;
+          stats.updatedAt = Date.now();
+        }
+      }
+      this.stateVersion += 1;
+      this.notify();
       return {
         ok: false,
         reducer,
         error: error instanceof Error ? error.message : String(error),
-        stateVersion: this.version,
+        stateVersion: this.stateVersion,
         serverTime: Date.now()
       };
     }
@@ -235,106 +91,160 @@ export class QuizDuelEngine {
   private dispatch(reducer: string, context: ReducerContext<unknown>): unknown {
     switch (reducer) {
       case "create_session":
-        return this.createSession(context as ReducerContext<CreateSessionArgs>);
-      case "open_lobby":
-        return this.openLobby(context as ReducerContext<SessionIdArgs>);
-      case "request_questions":
-        return this.requestQuestions(context as ReducerContext<RequestQuestionsArgs>);
-      case "submit_question_batch":
-        return this.submitQuestionBatch(context as ReducerContext<SubmitQuestionBatchArgs>);
-      case "record_agent_event":
-        return this.recordAgentEvent(context as ReducerContext<Partial<AgentEvent> & { sessionId: string }>);
+        return this.createSession(context as ReducerContext<{ code?: string; questionCount?: number }>);
       case "join_session":
-        return this.joinSession(context as ReducerContext<JoinSessionArgs>);
-      case "heartbeat":
-        return this.heartbeat(context as ReducerContext<SessionIdArgs>);
-      case "assign_champions_randomly":
-        return this.assignChampionsRandomly(context as ReducerContext<SessionIdArgs>);
-      case "player_ready":
-        return this.playerReady(context as ReducerContext<MatchIdArgs>);
+        return this.joinSession(context as ReducerContext<{ code?: string; joinCode?: string; displayName: string; avatar: string }>);
+      case "submit_topic_vote":
+        return this.submitTopicVote(context as ReducerContext<{ sessionId: string; topics: string[] }>);
+      case "request_questions":
+        return this.requestQuestions(context as ReducerContext<{ sessionId: string; topic?: string; questionCount?: number }>);
+      case "submit_question_pack":
+      case "submit_question_batch":
+        return this.submitQuestionPack(
+          context as ReducerContext<{
+            sessionId: string;
+            selectedTopic?: string;
+            requestId?: string;
+            questions?: QuestionInput[];
+            questionsJson?: string;
+          }>
+        );
       case "start_match":
-        return this.startMatch(context as ReducerContext<MatchIdArgs>);
+        return this.startMatch(context as ReducerContext<{ sessionId: string }>);
       case "start_round":
-        return this.startRound(context as ReducerContext<StartRoundArgs>);
+        return this.startRound(context as ReducerContext<{ sessionId: string; questionOrder: number }>);
       case "submit_answer":
-        return this.submitAnswer(context as ReducerContext<SubmitAnswerArgs>);
-      case "submit_playalong_answer":
-        return this.submitPlayalongAnswer(context as ReducerContext<SubmitAnswerArgs>);
-      case "support_player":
-        return this.supportPlayer(context as ReducerContext<SupportPlayerArgs>);
+        return this.submitAnswer(context as ReducerContext<{ roundId: string; selectedOption: OptionKey; clientSentAt?: number }>);
       case "resolve_round":
         return this.resolveRound(context as ReducerContext<{ roundId: string }>);
       case "finish_match":
-        return this.finishMatch(context as ReducerContext<MatchIdArgs & { force?: boolean }>);
+        return this.finishMatch(context as ReducerContext<{ sessionId: string; force?: boolean }>);
+      case "heartbeat":
+        return this.heartbeat(context as ReducerContext<{ sessionId: string; clientLatencyMs?: number }>);
       case "reset_demo":
-        return this.resetDemo(context as ReducerContext<SessionIdArgs>);
-      case "add_simulated_supporters":
-        return this.addSimulatedSupporters(context as ReducerContext<AddSimulatedSupportersArgs>);
+        return this.resetDemo(context as ReducerContext<{ sessionId?: string }>);
+      case "add_simulated_players":
+        return this.addSimulatedPlayers(context as ReducerContext<{ sessionId: string; count: number }>);
+      case "record_agent_event":
+        return this.recordAgentEvent(context as ReducerContext<Partial<AgentEvent> & { sessionId: string }>);
       default:
         throw new Error(`Unknown reducer: ${reducer}`);
     }
   }
 
-  private createSession({ args, identity }: ReducerContext<CreateSessionArgs>): Session {
+  private createSession({ args, identity }: ReducerContext<{ code?: string; questionCount?: number }>): Session {
     const now = Date.now();
-    const existing = this.state.sessions[0];
-    if (existing && this.state.participants.length === 0 && this.state.matches.length === 0) {
-      existing.topic = args.topic;
-      existing.difficulty = args.difficulty;
-      existing.questionCount = args.questionCount;
-      existing.status = "draft";
-      existing.updatedAt = now;
-      this.audit(existing.sessionId, identity, "create_session", `Session prepared for ${args.topic}.`, {
-        difficulty: args.difficulty,
-        questionCount: args.questionCount
-      });
-      this.recalculateLiveStats(existing.sessionId);
-      return existing;
-    }
-
+    this.state = emptyState();
     const session: Session = {
-      sessionId: this.nextId("session"),
-      joinCode: `ARENA-${40 + this.state.sessions.length + 2}`,
-      topic: args.topic,
-      difficulty: args.difficulty,
-      questionCount: args.questionCount,
-      status: "draft",
-      createdBy: identity,
+      sessionId: DEFAULT_SESSION_ID,
+      code: args.code ?? DEFAULT_SESSION_CODE,
+      status: "lobby",
+      selectedTopic: null,
+      questionCount: args.questionCount ?? QUESTION_COUNT,
+      currentRound: 0,
+      matchStartedAt: null,
+      matchFinishedAt: null,
       createdAt: now,
-      updatedAt: now,
-      currentMatchId: null,
-      lobbyOpenedAt: null
+      updatedAt: now
     };
     this.state.sessions.push(session);
-    this.state.liveStats.push(this.emptyLiveStats(session.sessionId, now));
-    this.audit(session.sessionId, identity, "create_session", `Session created for ${args.topic}.`, {});
-    this.recalculateLiveStats(session.sessionId);
+    this.state.liveStats.push(emptyStats(session.sessionId, now));
+    this.recordAgentEvent({
+      args: {
+        sessionId: session.sessionId,
+        agentName: "Seed Fallback Provider",
+        eventType: "fallback_ready",
+        content: "Five deterministic backup questions are ready if the LLM is unavailable.",
+        confidence: 1,
+        status: "complete"
+      },
+      identity
+    });
+    this.audit(session.sessionId, identity, "create_session", `Session ${session.code} created.`);
     return session;
   }
 
-  private openLobby({ args, identity }: ReducerContext<SessionIdArgs>): Session {
-    this.requireHost(args.sessionId, identity);
+  private joinSession({
+    args,
+    identity
+  }: ReducerContext<{ code?: string; joinCode?: string; displayName: string; avatar: string }>): { participant: Participant; score: Score } {
+    const session = this.requireSessionByCode(args.code ?? args.joinCode ?? DEFAULT_SESSION_CODE);
+    if (!["lobby", "topic_voting", "generating", "ready"].includes(session.status)) {
+      throw new Error("This tournament is already in progress.");
+    }
+
+    const now = Date.now();
+    const existing = this.state.participants.find(
+      (participant) => participant.sessionId === session.sessionId && participant.identity === identity
+    );
+    if (existing) {
+      existing.displayName = cleanName(args.displayName);
+      existing.avatar = args.avatar;
+      existing.lastSeen = now;
+      const score = this.requireScore(session.sessionId, existing.participantId);
+      return { participant: existing, score };
+    }
+
+    const participant: Participant = {
+      participantId: this.nextId("participant"),
+      sessionId: session.sessionId,
+      identity,
+      displayName: cleanName(args.displayName),
+      avatar: args.avatar || "🚀",
+      joinedAt: now,
+      lastSeen: now,
+      isSimulated: false,
+      clientLatencyMs: null
+    };
+    this.state.participants.push(participant);
+    const score = this.createScore(session.sessionId, participant.participantId, now);
+    if (session.status === "lobby") session.status = "topic_voting";
+    session.updatedAt = now;
+    this.matchEvent(session.sessionId, participant.participantId, "join", null, null, null, {
+      displayName: participant.displayName,
+      avatar: participant.avatar
+    });
+    this.audit(session.sessionId, identity, "join_session", `${participant.displayName} joined QuizRush.`);
+    this.recalculateStats(session.sessionId);
+    return { participant, score };
+  }
+
+  private submitTopicVote({ args, identity }: ReducerContext<{ sessionId: string; topics: string[] }>): TopicVote[] {
+    const session = this.requireSession(args.sessionId);
+    const participant = this.requireParticipantForIdentity(session.sessionId, identity);
+    const topics = Array.from(new Set(args.topics.map((topic) => topic.trim()).filter(Boolean))).slice(0, 3);
+    if (topics.length === 0) throw new Error("Pick at least one topic.");
+    const now = Date.now();
+    this.state.topicVotes = this.state.topicVotes.filter((vote) => vote.participantId !== participant.participantId);
+    const inserted = topics.map<TopicVote>((topic) => ({
+      voteId: this.nextId("topic-vote"),
+      sessionId: session.sessionId,
+      participantId: participant.participantId,
+      topic,
+      createdAt: now
+    }));
+    this.state.topicVotes.push(...inserted);
+    if (session.status === "lobby") session.status = "topic_voting";
+    session.updatedAt = now;
+    this.matchEvent(session.sessionId, participant.participantId, "topic_vote", null, null, null, { topics });
+    return inserted;
+  }
+
+  private requestQuestions({ args, identity }: ReducerContext<{ sessionId: string; topic?: string; questionCount?: number }>): AgentRequest {
     const session = this.requireSession(args.sessionId);
     const now = Date.now();
-    session.status = "lobby";
-    session.lobbyOpenedAt = now;
+    const topic = args.topic?.trim() || selectedTopicFromVotes(this.state.topicVotes.filter((vote) => vote.sessionId === session.sessionId));
+    session.status = "generating";
+    session.selectedTopic = topic;
+    session.questionCount = args.questionCount ?? QUESTION_COUNT;
     session.updatedAt = now;
-    this.audit(session.sessionId, identity, "open_lobby", "Lobby opened for live audience join.", {});
-    this.recalculateLiveStats(session.sessionId);
-    return session;
-  }
-
-  private requestQuestions({ args, identity }: ReducerContext<RequestQuestionsArgs>) {
-    this.requireHost(args.sessionId, identity);
-    const now = Date.now();
-    const request = {
+    const request: AgentRequest = {
       requestId: this.nextId("agent-request"),
-      sessionId: args.sessionId,
-      requestType: "quiz_generation" as const,
-      topic: args.topic,
-      difficulty: args.difficulty,
-      questionCount: args.questionCount,
-      status: "pending" as const,
+      sessionId: session.sessionId,
+      requestType: "quiz_generation",
+      topic,
+      questionCount: session.questionCount,
+      status: "pending",
       createdAt: now,
       updatedAt: now,
       errorMessage: null
@@ -342,36 +252,38 @@ export class QuizDuelEngine {
     this.state.agentRequests.push(request);
     this.recordAgentEvent({
       args: {
-        sessionId: args.sessionId,
-        agentName: "Quiz Author Agent",
-        eventType: "request_created",
-        content: `Question request queued for ${args.topic}.`,
-        confidence: 0.9,
-        status: "pending"
+        sessionId: session.sessionId,
+        agentName: "Topic Router Agent",
+        eventType: "topic_selected",
+        content: `Selected ${topic} from live room intent.`,
+        confidence: 0.88,
+        status: "complete"
       },
       identity
     });
-    this.audit(args.sessionId, identity, "request_questions", "AI quiz generation requested.", {
-      requestId: request.requestId
-    });
+    this.matchEvent(session.sessionId, null, "questions_requested", null, null, null, { topic });
     return request;
   }
 
-  private submitQuestionBatch({ args, identity }: ReducerContext<SubmitQuestionBatchArgs>) {
-    this.requireSession(args.sessionId);
-    const parsed = questionBatchSchema.safeParse({ questions: args.questions });
+  private submitQuestionPack({
+    args,
+    identity
+  }: ReducerContext<{ sessionId: string; selectedTopic?: string; requestId?: string; questions?: QuestionInput[]; questionsJson?: string }>): Question[] {
+    const session = this.requireSession(args.sessionId);
+    const payload = args.questionsJson ? JSON.parse(args.questionsJson) : { questions: args.questions };
+    const parsed = questionBatchSchema.safeParse(payload);
     if (!parsed.success) {
-      throw new Error("Malformed question batch rejected by schema validation.");
+      throw new Error("Malformed question pack rejected by schema validation.");
     }
 
-    const session = this.requireSession(args.sessionId);
     const now = Date.now();
-    this.state.questions = this.state.questions.filter((question) => question.sessionId !== args.sessionId);
-    const inserted: Question[] = parsed.data.questions.slice(0, session.questionCount).map((question, index) => ({
+    const topic = args.selectedTopic ?? session.selectedTopic ?? DEFAULT_SELECTED_TOPIC;
+    this.state.questions = this.state.questions.filter((question) => question.sessionId !== session.sessionId);
+    this.state.rounds = this.state.rounds.filter((round) => round.sessionId !== session.sessionId);
+    const inserted = parsed.data.questions.slice(0, session.questionCount).map<Question>((question, index) => ({
       questionId: this.nextId("question"),
-      sessionId: args.sessionId,
-      matchId: session.currentMatchId,
-      roundNumber: index + 1,
+      sessionId: session.sessionId,
+      orderIndex: index + 1,
       questionText: question.questionText,
       optionA: question.options.A,
       optionB: question.options.B,
@@ -379,13 +291,15 @@ export class QuizDuelEngine {
       optionD: question.options.D,
       correctOption: question.correctOption,
       explanation: question.explanation,
-      difficulty: question.difficulty,
-      sourceAgent: identity === "agent-worker" ? "Quiz Author Agent" : "Fallback Seed Provider",
+      topic: question.topic || topic,
+      generatedBy: identity === "agent-worker" ? "Quiz Builder Agent" : "Seed Fallback Provider",
       fairnessStatus: identity === "agent-worker" ? "approved" : "fallback",
       createdAt: now
     }));
-
     this.state.questions.push(...inserted);
+    session.selectedTopic = topic;
+    session.status = inserted.length >= session.questionCount ? "ready" : "generating";
+    session.updatedAt = now;
     if (args.requestId) {
       const request = this.state.agentRequests.find((candidate) => candidate.requestId === args.requestId);
       if (request) {
@@ -393,21 +307,211 @@ export class QuizDuelEngine {
         request.updatedAt = now;
       }
     }
-
     this.recordAgentEvent({
       args: {
-        sessionId: args.sessionId,
-        agentName: "Fairness Review Agent",
-        eventType: "questions_approved",
-        content: `${inserted.length} questions validated and ready for the match.`,
-        confidence: 0.98,
+        sessionId: session.sessionId,
+        agentName: "Match Engine",
+        eventType: "questions_ready",
+        content: `${inserted.length} questions are ready for a 25-second race.`,
+        confidence: 1,
         status: identity === "agent-worker" ? "complete" : "fallback"
       },
       identity
     });
-    this.audit(args.sessionId, identity, "submit_question_batch", "Question batch accepted.", {
-      count: inserted.length
+    return inserted;
+  }
+
+  private startMatch({ args }: ReducerContext<{ sessionId: string }>): Round {
+    const session = this.requireSession(args.sessionId);
+    if (this.state.questions.filter((question) => question.sessionId === session.sessionId).length < session.questionCount) {
+      this.submitQuestionPack({
+        args: {
+          sessionId: session.sessionId,
+          selectedTopic: session.selectedTopic ?? DEFAULT_SELECTED_TOPIC,
+          questions: SEEDED_DEMO_QUESTIONS
+        },
+        identity: "seed-fallback"
+      });
+    }
+    const now = Date.now();
+    session.status = "playing";
+    session.currentRound = 1;
+    session.matchStartedAt = now;
+    session.matchFinishedAt = null;
+    session.updatedAt = now;
+    this.state.answers = this.state.answers.filter((answer) => answer.sessionId !== session.sessionId);
+    for (const score of this.state.scores.filter((score) => score.sessionId === session.sessionId)) {
+      score.totalScore = 0;
+      score.correctCount = 0;
+      score.totalResponseMs = 0;
+      score.fastestResponseMs = null;
+      score.currentRank = 1;
+      score.previousRank = 1;
+      score.lastAnswerAt = null;
+      score.updatedAt = now;
+    }
+    this.recomputeRanks(session.sessionId, now);
+    return this.startRound({ args: { sessionId: session.sessionId, questionOrder: 1 }, identity: "match-engine" });
+  }
+
+  private startRound({ args }: ReducerContext<{ sessionId: string; questionOrder: number }>): Round {
+    const session = this.requireSession(args.sessionId);
+    const question = this.requireQuestionByOrder(session.sessionId, args.questionOrder);
+    const now = Date.now();
+    for (const round of this.state.rounds.filter((round) => round.sessionId === session.sessionId && round.status === "active")) {
+      round.status = "resolved";
+      round.resolvedAt = now;
+    }
+    let round = this.state.rounds.find((candidate) => candidate.sessionId === session.sessionId && candidate.orderIndex === args.questionOrder);
+    if (!round) {
+      round = {
+        roundId: this.nextId("round"),
+        sessionId: session.sessionId,
+        questionId: question.questionId,
+        orderIndex: args.questionOrder,
+        status: "active",
+        startsAt: now,
+        endsAt: now + QUESTION_TIME_LIMIT_MS,
+        resolvedAt: null
+      };
+      this.state.rounds.push(round);
+    } else {
+      round.status = "active";
+      round.startsAt = now;
+      round.endsAt = now + QUESTION_TIME_LIMIT_MS;
+      round.resolvedAt = null;
+    }
+    session.status = "playing";
+    session.currentRound = args.questionOrder;
+    session.updatedAt = now;
+    this.matchEvent(session.sessionId, null, "question_start", args.questionOrder, null, null, { questionId: question.questionId });
+    return round;
+  }
+
+  private submitAnswer({ args, identity }: ReducerContext<{ roundId: string; selectedOption: OptionKey; clientSentAt?: number }>): Answer {
+    const parsed = selectedOptionSchema.safeParse(args);
+    if (!parsed.success) throw new Error("Malformed answer.");
+    const round = this.requireRound(args.roundId);
+    if (round.status !== "active") throw new Error("Round is not active.");
+    const participant = this.requireParticipantForIdentity(round.sessionId, identity);
+    if (this.state.answers.some((answer) => answer.roundId === round.roundId && answer.participantId === participant.participantId)) {
+      const stats = this.state.liveStats.find((candidate) => candidate.sessionId === round.sessionId);
+      if (stats) {
+        stats.duplicateAnswersRejected += 1;
+        stats.updatedAt = Date.now();
+      }
+      throw new Error("Duplicate answer rejected.");
+    }
+    const question = this.requireQuestion(round.questionId);
+    const now = Date.now();
+    const responseMs = Math.max(0, Math.min(now - round.startsAt, QUESTION_TIME_LIMIT_MS));
+    const isCorrect = args.selectedOption === question.correctOption;
+    const scoreDelta = computeAnswerScore({ isCorrect, responseMs });
+    const answer: Answer = {
+      answerId: this.nextId("answer"),
+      sessionId: round.sessionId,
+      roundId: round.roundId,
+      participantId: participant.participantId,
+      selectedOption: args.selectedOption,
+      isCorrect,
+      responseMs,
+      scoreDelta,
+      serverReceivedAt: now
+    };
+    this.state.answers.push(answer);
+    const score = this.requireScore(round.sessionId, participant.participantId);
+    score.totalScore += scoreDelta;
+    score.correctCount += isCorrect ? 1 : 0;
+    score.totalResponseMs += responseMs;
+    score.fastestResponseMs = score.fastestResponseMs === null ? responseMs : Math.min(score.fastestResponseMs, responseMs);
+    score.lastAnswerAt = now;
+    score.updatedAt = now;
+    this.recomputeRanks(round.sessionId, now);
+    this.matchEvent(round.sessionId, participant.participantId, "answer", round.orderIndex, score.totalScore, score.currentRank, {
+      selectedOption: args.selectedOption,
+      isCorrect,
+      responseMs
     });
+    this.matchEvent(round.sessionId, participant.participantId, "score_delta", round.orderIndex, score.totalScore, score.currentRank, {
+      scoreDelta
+    });
+    this.recalculateStats(round.sessionId);
+    return answer;
+  }
+
+  private resolveRound({ args }: ReducerContext<{ roundId: string }>): Round {
+    const round = this.requireRound(args.roundId);
+    if (round.status === "resolved") return round;
+    const now = Date.now();
+    round.status = "resolved";
+    round.resolvedAt = now;
+    this.matchEvent(round.sessionId, null, "round_resolved", round.orderIndex, null, null, {});
+    const session = this.requireSession(round.sessionId);
+    if (round.orderIndex >= session.questionCount) {
+      this.finishMatch({ args: { sessionId: session.sessionId }, identity: "match-engine" });
+    } else {
+      this.startRound({ args: { sessionId: session.sessionId, questionOrder: round.orderIndex + 1 }, identity: "match-engine" });
+    }
+    return round;
+  }
+
+  private finishMatch({ args }: ReducerContext<{ sessionId: string; force?: boolean }>): Session {
+    const session = this.requireSession(args.sessionId);
+    if (session.status === "finished" || session.status === "replay") return session;
+    const now = Date.now();
+    for (const round of this.state.rounds.filter((round) => round.sessionId === session.sessionId && round.status === "active")) {
+      round.status = "resolved";
+      round.resolvedAt = now;
+    }
+    session.status = "finished";
+    session.matchFinishedAt = now;
+    session.updatedAt = now;
+    const winner = this.state.scores.filter((score) => score.sessionId === session.sessionId).sort(compareScores)[0];
+    this.matchEvent(session.sessionId, winner?.participantId ?? null, "match_finished", null, winner?.totalScore ?? null, winner?.currentRank ?? null, {});
+    return session;
+  }
+
+  private heartbeat({ args, identity }: ReducerContext<{ sessionId: string; clientLatencyMs?: number }>): Participant | null {
+    const participant = this.state.participants.find(
+      (candidate) => candidate.sessionId === args.sessionId && candidate.identity === identity
+    );
+    if (!participant) return null;
+    participant.lastSeen = Date.now();
+    participant.clientLatencyMs = args.clientLatencyMs ?? participant.clientLatencyMs;
+    this.recalculateStats(args.sessionId);
+    return participant;
+  }
+
+  private resetDemo({ args }: ReducerContext<{ sessionId?: string }>): Session {
+    this.state = emptyState();
+    return this.seedSession(args.sessionId);
+  }
+
+  private addSimulatedPlayers({ args }: ReducerContext<{ sessionId: string; count: number }>): Participant[] {
+    const session = this.requireSession(args.sessionId);
+    const now = Date.now();
+    const inserted: Participant[] = [];
+    const avatars = ["🚀", "🧠", "⚡", "✨", "🔥", "🐯"];
+    for (let index = 0; index < Math.max(0, Math.min(args.count, 250)); index += 1) {
+      const participant: Participant = {
+        participantId: this.nextId("participant"),
+        sessionId: session.sessionId,
+        identity: `sim-${Date.now()}-${index}`,
+        displayName: `Rusher ${this.state.participants.length + 1}`,
+        avatar: avatars[index % avatars.length] ?? "🚀",
+        joinedAt: now,
+        lastSeen: now,
+        isSimulated: true,
+        clientLatencyMs: 35 + (index % 70)
+      };
+      this.state.participants.push(participant);
+      this.createScore(session.sessionId, participant.participantId, now);
+      inserted.push(participant);
+      this.matchEvent(session.sessionId, participant.participantId, "join", null, null, null, { simulated: true });
+    }
+    if (session.status === "lobby") session.status = "topic_voting";
+    this.recomputeRanks(session.sessionId, now);
+    this.recalculateStats(session.sessionId);
     return inserted;
   }
 
@@ -427,741 +531,53 @@ export class QuizDuelEngine {
     return event;
   }
 
-  private joinSession({ args, identity }: ReducerContext<JoinSessionArgs>) {
-    const session = this.state.sessions.find(
-      (candidate) => candidate.joinCode.toLowerCase() === args.joinCode.toLowerCase()
-    );
-    if (!session || session.status !== "lobby") {
-      throw new Error("This arena is not accepting joins yet.");
-    }
-
-    const existing = this.findParticipantByIdentity(session.sessionId, identity);
-    if (existing) {
-      existing.displayName = args.displayName.trim();
-      existing.roleRequested = args.roleRequested;
-      existing.interests = args.interests;
-      existing.lastSeen = Date.now();
-      this.recalculateLiveStats(session.sessionId);
-      return {
-        participant: existing,
-        energyBalance: this.requireEnergyBalance(existing.participantId),
-        alreadyJoined: true
-      };
-    }
-
+  private seedSession(sessionId = DEFAULT_SESSION_ID): Session {
     const now = Date.now();
-    const participant: Participant = {
-      participantId: this.nextId("participant"),
-      sessionId: session.sessionId,
-      identity,
-      displayName: args.displayName.trim(),
-      avatarSeed: `${args.displayName.trim()}-${identity}`,
-      roleRequested: args.roleRequested,
-      roleAssigned: "crowd",
-      interests: args.interests,
-      joinedAt: now,
-      lastSeen: now,
-      isSimulated: false
-    };
-    this.state.participants.push(participant);
-    const energyBalance = this.grantInitialEnergy(participant, "initial_grant", {});
-    this.audit(
-      session.sessionId,
-      identity,
-      "join_session",
-      `${participant.displayName} joined as ${args.roleRequested === "player" ? "Champion candidate" : "Crowd"}.`,
-      { participantId: participant.participantId }
-    );
-    this.recalculateLiveStats(session.sessionId);
-    return { participant, energyBalance, alreadyJoined: false };
-  }
-
-  private heartbeat({ args, identity }: ReducerContext<SessionIdArgs>) {
-    const participant = this.findParticipantByIdentity(args.sessionId, identity);
-    if (participant) {
-      participant.lastSeen = Date.now();
-    }
-    this.recalculateLiveStats(args.sessionId);
-    return { active: Boolean(participant) };
-  }
-
-  private assignChampionsRandomly({ args, identity }: ReducerContext<SessionIdArgs>) {
-    this.requireHost(args.sessionId, identity);
-    const session = this.requireSession(args.sessionId);
-    if (session.currentMatchId) {
-      const existingMatch = this.requireMatch(session.currentMatchId);
-      return { match: existingMatch, alreadySelected: true };
-    }
-    if (session.status !== "lobby") {
-      throw new Error("Champions can only be selected from the lobby.");
-    }
-
-    const candidates = this.state.participants
-      .filter((participant) => participant.sessionId === args.sessionId && participant.roleRequested === "player")
-      .sort((a, b) => stableHash(`${a.participantId}:${session.sessionId}`) - stableHash(`${b.participantId}:${session.sessionId}`));
-    if (candidates.length < 2) {
-      throw new Error("At least two Champion candidates are required.");
-    }
-
-    const player1 = candidates[0];
-    const player2 = candidates[1];
-    if (!player1 || !player2) {
-      throw new Error("Champion selection failed.");
-    }
-    for (const participant of this.state.participants.filter((item) => item.sessionId === args.sessionId)) {
-      participant.roleAssigned = "crowd";
-    }
-    player1.roleAssigned = "player1";
-    player2.roleAssigned = "player2";
-
-    const now = Date.now();
-    const match: Match = {
-      matchId: this.nextId("match"),
-      sessionId: session.sessionId,
-      player1Id: player1.participantId,
-      player2Id: player2.participantId,
-      status: "waiting",
-      currentRoundNumber: 0,
-      player1Ready: false,
-      player2Ready: false,
-      startedAt: null,
-      finishedAt: null
-    };
-    this.state.matches.push(match);
-    this.upsertScore(player1.participantId, match.matchId, now);
-    this.upsertScore(player2.participantId, match.matchId, now);
-    for (const participant of this.state.participants.filter((item) => item.sessionId === args.sessionId)) {
-      this.upsertScore(participant.participantId, match.matchId, now);
-    }
-
-    session.currentMatchId = match.matchId;
-    session.status = "selecting";
-    session.updatedAt = now;
-    for (const question of this.state.questions.filter((item) => item.sessionId === args.sessionId)) {
-      question.matchId = match.matchId;
-    }
-    this.audit(args.sessionId, identity, "assign_champions_randomly", "Two Champions selected transactionally.", {
-      player1Id: player1.participantId,
-      player2Id: player2.participantId
-    });
-    this.recalculateLiveStats(args.sessionId);
-    return { match, player1, player2, alreadySelected: false };
-  }
-
-  private playerReady({ args, identity }: ReducerContext<MatchIdArgs>) {
-    const match = this.requireMatch(args.matchId);
-    const participant = this.findParticipantByIdentity(match.sessionId, identity);
-    if (!participant || (participant.participantId !== match.player1Id && participant.participantId !== match.player2Id)) {
-      throw new Error("Only selected Champions can mark ready.");
-    }
-    if (participant.participantId === match.player1Id) match.player1Ready = true;
-    if (participant.participantId === match.player2Id) match.player2Ready = true;
-    this.audit(match.sessionId, identity, "player_ready", `${participant.displayName} is ready.`, {
-      participantId: participant.participantId
-    });
-    return { player1Ready: match.player1Ready, player2Ready: match.player2Ready };
-  }
-
-  private startMatch({ args, identity }: ReducerContext<MatchIdArgs>) {
-    const match = this.requireMatch(args.matchId);
-    this.requireHost(match.sessionId, identity);
-    const session = this.requireSession(match.sessionId);
-    this.ensureQuestionsForSession(session);
-    const now = Date.now();
-    match.status = "active";
-    match.startedAt = now;
-    session.status = "active";
-    session.updatedAt = now;
-    this.audit(match.sessionId, identity, "start_match", "Match started.", { matchId: match.matchId });
-    const round = this.createRound(match, 1);
-    return { match, round };
-  }
-
-  private startRound({ args, identity }: ReducerContext<StartRoundArgs>) {
-    const match = this.requireMatch(args.matchId);
-    this.requireHost(match.sessionId, identity);
-    if (match.status !== "active") {
-      throw new Error("Match must be active to start a round.");
-    }
-    const previousRound = this.state.rounds.find(
-      (round) => round.matchId === match.matchId && round.roundNumber === args.roundNumber - 1
-    );
-    if (previousRound && previousRound.status !== "resolved") {
-      throw new Error("Resolve the previous round before starting the next one.");
-    }
-    const round = this.createRound(match, args.roundNumber);
-    this.audit(match.sessionId, identity, "start_round", `Round ${args.roundNumber} started.`, {
-      roundId: round.roundId
-    });
-    return round;
-  }
-
-  private submitAnswer({ args, identity }: ReducerContext<SubmitAnswerArgs>) {
-    const parsed = selectedOptionSchema.parse(args);
-    const round = this.requireRound(parsed.roundId);
-    if (round.status !== "active") {
-      throw new Error("Round is not accepting answers.");
-    }
-    const match = this.requireMatch(round.matchId);
-    const participant = this.findParticipantByIdentity(match.sessionId, identity);
-    if (!participant || (participant.participantId !== match.player1Id && participant.participantId !== match.player2Id)) {
-      throw new Error("Only selected Champions can answer this question.");
-    }
-    const duplicate = this.state.answers.find(
-      (answer) => answer.roundId === round.roundId && answer.participantId === participant.participantId
-    );
-    if (duplicate) {
-      const stats = this.requireLiveStats(match.sessionId);
-      stats.duplicateAnswersRejected += 1;
-      stats.updatedAt = Date.now();
-      return { accepted: false, reason: "duplicate_answer", answer: duplicate };
-    }
-
-    const question = this.requireQuestion(round.questionId);
-    const now = Date.now();
-    const answer: Answer = {
-      answerId: this.nextId("answer"),
-      roundId: round.roundId,
-      participantId: participant.participantId,
-      selectedOption: parsed.selectedOption,
-      serverReceivedAt: now,
-      responseMs: Math.max(0, Math.min(now - round.startsAt, QUESTION_TIME_LIMIT_MS)),
-      isCorrect: parsed.selectedOption === question.correctOption,
-      pointsAwarded: 0
-    };
-    this.state.answers.push(answer);
-    const playerAnswerCount = this.state.answers.filter(
-      (candidate) =>
-        candidate.roundId === round.roundId &&
-        (candidate.participantId === match.player1Id || candidate.participantId === match.player2Id)
-    ).length;
-    if (playerAnswerCount >= 2) {
-      round.status = "locked";
-    }
-    this.audit(match.sessionId, identity, "submit_answer", `${participant.displayName} locked an answer.`, {
-      roundId: round.roundId
-    });
-    return { accepted: true, answer };
-  }
-
-  private submitPlayalongAnswer({ args, identity }: ReducerContext<SubmitAnswerArgs>) {
-    const parsed = selectedOptionSchema.parse(args);
-    const round = this.requireRound(parsed.roundId);
-    if (round.status !== "active") {
-      throw new Error("Round is not accepting play-along answers.");
-    }
-    const match = this.requireMatch(round.matchId);
-    const participant = this.findParticipantByIdentity(match.sessionId, identity);
-    if (!participant || participant.roleAssigned !== "crowd") {
-      throw new Error("Only Crowd supporters can play along.");
-    }
-    const duplicate = this.state.playAlongAnswers.find(
-      (answer) => answer.roundId === round.roundId && answer.supporterId === participant.participantId
-    );
-    if (duplicate) {
-      return { accepted: false, reason: "duplicate_playalong_answer", answer: duplicate };
-    }
-    const question = this.requireQuestion(round.questionId);
-    const answer: PlayAlongAnswer = {
-      answerId: this.nextId("playalong"),
-      roundId: round.roundId,
-      supporterId: participant.participantId,
-      selectedOption: parsed.selectedOption,
-      serverReceivedAt: Date.now(),
-      isCorrect: parsed.selectedOption === question.correctOption
-    };
-    this.state.playAlongAnswers.push(answer);
-    return { accepted: true, answer };
-  }
-
-  private supportPlayer({ args, identity }: ReducerContext<SupportPlayerArgs>) {
-    const parsed = supportPlayerSchema.parse(args);
-    const round = this.requireRound(parsed.roundId);
-    if (round.status !== "active") {
-      throw new Error("Cheering is only open during an active round.");
-    }
-    const match = this.requireMatch(round.matchId);
-    const supporter = this.findParticipantByIdentity(match.sessionId, identity);
-    if (!supporter || supporter.roleAssigned !== "crowd") {
-      throw new Error("Only Crowd supporters can cheer.");
-    }
-    if (parsed.playerId !== match.player1Id && parsed.playerId !== match.player2Id) {
-      throw new Error("Cheer target must be one of tonight's Champions.");
-    }
-    if (parsed.clientEventId) {
-      const existing = this.state.supportEvents.find(
-        (event) => event.roundId === round.roundId && event.clientEventId === parsed.clientEventId
-      );
-      if (existing) {
-        return { accepted: true, idempotent: true, supportEvent: existing };
-      }
-    }
-
-    const balance = this.requireEnergyBalance(supporter.participantId);
-    if (balance.spendableEnergy < CHEER_AMOUNT) {
-      const stats = this.requireLiveStats(match.sessionId);
-      stats.doubleSpendAttemptsBlocked += 1;
-      stats.updatedAt = Date.now();
-      return { accepted: false, reason: "insufficient_energy", balance };
-    }
-
-    const now = Date.now();
-    balance.spendableEnergy -= CHEER_AMOUNT;
-    balance.updatedAt = now;
-    const supportEvent: SupportEvent = {
-      supportId: this.nextId("support"),
-      roundId: round.roundId,
-      supporterId: supporter.participantId,
-      playerId: parsed.playerId,
-      amount: CHEER_AMOUNT,
+    const session: Session = {
+      sessionId,
+      code: DEFAULT_SESSION_CODE,
+      status: "lobby",
+      selectedTopic: null,
+      questionCount: QUESTION_COUNT,
+      currentRound: 0,
+      matchStartedAt: null,
+      matchFinishedAt: null,
       createdAt: now,
-      clientEventId: parsed.clientEventId ?? null
-    };
-    this.state.supportEvents.push(supportEvent);
-    this.state.ledgerEntries.push({
-      ledgerId: this.nextId("ledger"),
-      sessionId: match.sessionId,
-      matchId: match.matchId,
-      roundId: round.roundId,
-      participantId: supporter.participantId,
-      delta: -CHEER_AMOUNT,
-      currencyType: "energy",
-      reason: "cheer_spend",
-      metadata: { playerId: parsed.playerId },
-      createdAt: now
-    });
-    const stats = this.requireLiveStats(match.sessionId);
-    stats.cheerEventsCount += 1;
-    stats.cheerEventsPerSec = Math.max(1, Math.round(stats.cheerEventsCount / 8));
-    stats.updatedAt = now;
-    return { accepted: true, supportEvent, balance };
-  }
-
-  private resolveRound({ args, identity }: ReducerContext<{ roundId: string }>) {
-    const round = this.requireRound(args.roundId);
-    const match = this.requireMatch(round.matchId);
-    this.requireHost(match.sessionId, identity);
-    if (round.status === "resolved") {
-      return { resolved: true, alreadyResolved: true, round };
-    }
-
-    const question = this.requireQuestion(round.questionId);
-    const now = Date.now();
-    const player1Answer = this.findAnswer(round.roundId, match.player1Id);
-    const player2Answer = this.findAnswer(round.roundId, match.player2Id);
-    const player1Support = this.totalSupport(round.roundId, match.player1Id);
-    const player2Support = this.totalSupport(round.roundId, match.player2Id);
-    const player1Breakdown = computePlayerRoundScore({
-      isCorrect: player1Answer?.isCorrect ?? false,
-      responseMs: player1Answer?.responseMs ?? QUESTION_TIME_LIMIT_MS,
-      totalSupportForPlayer: player1Support
-    });
-    const player2Breakdown = computePlayerRoundScore({
-      isCorrect: player2Answer?.isCorrect ?? false,
-      responseMs: player2Answer?.responseMs ?? QUESTION_TIME_LIMIT_MS,
-      totalSupportForPlayer: player2Support
-    });
-    const winnerPlayerId = determineRoundWinner({
-      player1Id: match.player1Id,
-      player2Id: match.player2Id,
-      player1Answer,
-      player2Answer,
-      player1Score: player1Breakdown.roundScore,
-      player2Score: player2Breakdown.roundScore,
-      player1Support,
-      player2Support
-    });
-
-    this.applyPlayerRoundScore(match, round, match.player1Id, player1Answer, player1Breakdown.roundScore, now);
-    this.applyPlayerRoundScore(match, round, match.player2Id, player2Answer, player2Breakdown.roundScore, now);
-    this.awardSupporterXp(match, round, question.correctOption, winnerPlayerId, now);
-
-    round.status = "resolved";
-    round.winnerPlayerId = winnerPlayerId;
-    round.resolvedAt = now;
-    match.status = "resolving";
-    this.recordAgentEvent({
-      args: {
-        sessionId: match.sessionId,
-        agentName: "Host Commentator Agent",
-        eventType: "round_explanation",
-        content: question.explanation,
-        confidence: 0.95,
-        status: "complete"
-      },
-      identity: "agent-worker"
-    });
-    this.audit(match.sessionId, identity, "resolve_round", `Round ${round.roundNumber} resolved.`, {
-      winnerPlayerId,
-      player1Score: player1Breakdown.roundScore,
-      player2Score: player2Breakdown.roundScore
-    });
-
-    const session = this.requireSession(match.sessionId);
-    if (round.roundNumber >= session.questionCount) {
-      this.finishMatch({ args: { matchId: match.matchId }, identity });
-    }
-
-    return {
-      resolved: true,
-      alreadyResolved: false,
-      winnerPlayerId,
-      player1Breakdown,
-      player2Breakdown
-    };
-  }
-
-  private finishMatch({ args, identity }: ReducerContext<MatchIdArgs & { force?: boolean }>) {
-    const match = this.requireMatch(args.matchId);
-    this.requireHost(match.sessionId, identity);
-    const session = this.requireSession(match.sessionId);
-    const unresolved = this.state.rounds.some((round) => round.matchId === match.matchId && round.status !== "resolved");
-    if (unresolved && !args.force) {
-      throw new Error("Cannot finish until all started rounds are resolved.");
-    }
-    const now = Date.now();
-    match.status = "finished";
-    match.finishedAt = now;
-    session.status = "finished";
-    session.updatedAt = now;
-    this.recordAgentEvent({
-      args: {
-        sessionId: match.sessionId,
-        agentName: "Learning Recap Agent",
-        eventType: "learning_recap",
-        content: "Based on this match: realtime reducers kept answers fair, capped crowd boost kept scoring balanced, and fallback AI content kept the demo reliable.",
-        confidence: 0.9,
-        status: "complete"
-      },
-      identity: "agent-worker"
-    });
-    this.audit(match.sessionId, identity, "finish_match", "Match finished and leaderboard locked.", {});
-    this.recalculateLiveStats(match.sessionId);
-    return { match, session };
-  }
-
-  private resetDemo({ args, identity }: ReducerContext<SessionIdArgs>) {
-    const now = Date.now();
-    const next = createInitialDemoState(now);
-    const requested = next.sessions[0];
-    if (requested) {
-      requested.sessionId = args.sessionId || DEFAULT_SESSION_ID;
-    }
-    this.state = next;
-    this.audit(args.sessionId || DEFAULT_SESSION_ID, identity, "reset_demo", "Demo reset to a clean deterministic state.", {});
-    return this.state.sessions[0];
-  }
-
-  private addSimulatedSupporters({ args, identity }: ReducerContext<AddSimulatedSupportersArgs>) {
-    this.requireHost(args.sessionId, identity);
-    const session = this.requireSession(args.sessionId);
-    const count = Math.max(0, Math.min(250, Math.floor(args.count)));
-    const now = Date.now();
-    const created: Participant[] = [];
-    const names = [
-      "Nia",
-      "Omar",
-      "Priya",
-      "Ben",
-      "Zoe",
-      "Kai",
-      "Lena",
-      "Diego",
-      "Mina",
-      "Theo"
-    ];
-    for (let index = 0; index < count; index += 1) {
-      const displayName = `${names[index % names.length] ?? "Fan"} ${this.state.participants.length + 1}`;
-      const participant: Participant = {
-        participantId: this.nextId("participant"),
-        sessionId: session.sessionId,
-        identity: `sim-${session.sessionId}-${this.idCounter}-${index}`,
-        displayName,
-        avatarSeed: displayName,
-        roleRequested: "crowd",
-        roleAssigned: "crowd",
-        interests: ["AI", "Space"],
-        joinedAt: now,
-        lastSeen: now,
-        isSimulated: true
-      };
-      this.state.participants.push(participant);
-      this.grantInitialEnergy(participant, "demo_seed", { simulated: true });
-      if (session.currentMatchId) {
-        this.upsertScore(participant.participantId, session.currentMatchId, now);
-      }
-      created.push(participant);
-    }
-    this.audit(session.sessionId, identity, "add_simulated_supporters", `${count} simulated supporters added.`, {
-      simulated: true
-    });
-    this.recalculateLiveStats(session.sessionId);
-    return { createdCount: created.length, participants: created };
-  }
-
-  private createRound(match: Match, roundNumber: number): Round {
-    const existing = this.state.rounds.find((round) => round.matchId === match.matchId && round.roundNumber === roundNumber);
-    if (existing) {
-      existing.status = "active";
-      existing.startsAt = Date.now();
-      existing.endsAt = existing.startsAt + QUESTION_TIME_LIMIT_MS;
-      existing.resolvedAt = null;
-      existing.winnerPlayerId = null;
-      match.currentRoundNumber = roundNumber;
-      match.status = "active";
-      return existing;
-    }
-
-    const question = this.state.questions.find(
-      (candidate) => candidate.matchId === match.matchId && candidate.roundNumber === roundNumber
-    );
-    if (!question) {
-      throw new Error(`Question ${roundNumber} is not ready.`);
-    }
-    const now = Date.now();
-    const round: Round = {
-      roundId: this.nextId("round"),
-      matchId: match.matchId,
-      questionId: question.questionId,
-      roundNumber,
-      status: "active",
-      startsAt: now,
-      endsAt: now + QUESTION_TIME_LIMIT_MS,
-      resolvedAt: null,
-      winnerPlayerId: null
-    };
-    this.state.rounds.push(round);
-    match.currentRoundNumber = roundNumber;
-    match.status = "active";
-    return round;
-  }
-
-  private ensureQuestionsForSession(session: Session): void {
-    const existing = this.state.questions.filter((question) => question.sessionId === session.sessionId);
-    if (existing.length >= session.questionCount) {
-      for (const question of existing) {
-        question.matchId = session.currentMatchId;
-      }
-      return;
-    }
-    this.submitQuestionBatch({
-      args: {
-        sessionId: session.sessionId,
-        questions: SEEDED_DEMO_QUESTIONS.slice(0, session.questionCount)
-      },
-      identity: "fallback-seed"
-    });
-  }
-
-  private applyPlayerRoundScore(
-    match: Match,
-    round: Round,
-    participantId: string,
-    answer: Answer | null,
-    roundScore: number,
-    now: number
-  ): void {
-    if (answer) {
-      answer.pointsAwarded = roundScore;
-    }
-    const score = this.upsertScore(participantId, match.matchId, now);
-    score.playerScore += roundScore;
-    score.updatedAt = now;
-    if (roundScore > 0) {
-      this.state.ledgerEntries.push({
-        ledgerId: this.nextId("ledger"),
-        sessionId: match.sessionId,
-        matchId: match.matchId,
-        roundId: round.roundId,
-        participantId,
-        delta: roundScore,
-        currencyType: "player_score",
-        reason: answer?.isCorrect ? "player_correct" : "crowd_boost",
-        metadata: { selectedOption: answer?.selectedOption ?? null },
-        createdAt: now
-      });
-    }
-  }
-
-  private awardSupporterXp(
-    match: Match,
-    round: Round,
-    correctOption: OptionKey,
-    winnerPlayerId: string,
-    now: number
-  ): void {
-    const supportBySupporter = new Map<string, SupportEvent[]>();
-    for (const event of this.state.supportEvents.filter((candidate) => candidate.roundId === round.roundId)) {
-      const current = supportBySupporter.get(event.supporterId) ?? [];
-      current.push(event);
-      supportBySupporter.set(event.supporterId, current);
-    }
-    const playalongBySupporter = new Map<string, PlayAlongAnswer>();
-    for (const answer of this.state.playAlongAnswers.filter((candidate) => candidate.roundId === round.roundId)) {
-      playalongBySupporter.set(answer.supporterId, answer);
-    }
-    const supporterIds = new Set([...supportBySupporter.keys(), ...playalongBySupporter.keys()]);
-    for (const supporterId of supporterIds) {
-      const events = supportBySupporter.get(supporterId) ?? [];
-      const cheeredWinnerAmount = events
-        .filter((event) => event.playerId === winnerPlayerId)
-        .reduce((sum, event) => sum + event.amount, 0);
-      const cheeredAny = events.length > 0;
-      let xp = 0;
-      if (cheeredWinnerAmount > 0) {
-        xp += 10 + Math.min(10, Math.floor(cheeredWinnerAmount / CHEER_AMOUNT) * 2);
-      } else if (cheeredAny) {
-        xp += 2;
-      }
-      const playalong = playalongBySupporter.get(supporterId);
-      if (playalong) {
-        if (playalong.selectedOption === correctOption) xp += 5;
-      }
-      const score = this.upsertScore(supporterId, match.matchId, now);
-      score.supporterXp += xp;
-      if (cheeredAny) {
-        score.supportAccuracyDen += 1;
-        if (cheeredWinnerAmount > 0) score.supportAccuracyNum += 1;
-      }
-      if (playalong) {
-        score.playalongTotal += 1;
-        if (playalong.selectedOption === correctOption) score.playalongCorrect += 1;
-      }
-      score.updatedAt = now;
-      const balance = this.state.energyBalances.find((candidate) => candidate.participantId === supporterId);
-      if (balance) {
-        balance.trustXp += xp;
-        balance.updatedAt = now;
-      }
-      if (xp > 0) {
-        this.state.ledgerEntries.push({
-          ledgerId: this.nextId("ledger"),
-          sessionId: match.sessionId,
-          matchId: match.matchId,
-          roundId: round.roundId,
-          participantId: supporterId,
-          delta: xp,
-          currencyType: "trust_xp",
-          reason: playalong?.selectedOption === correctOption ? "playalong_correct" : "supporter_correct_pick",
-          metadata: { winnerPlayerId },
-          createdAt: now
-        });
-      }
-    }
-  }
-
-  private grantInitialEnergy(participant: Participant, reason: "initial_grant" | "demo_seed", metadata: Record<string, unknown>): EnergyBalance {
-    const now = Date.now();
-    const balance: EnergyBalance = {
-      participantId: participant.participantId,
-      sessionId: participant.sessionId,
-      spendableEnergy: INITIAL_ENERGY,
-      trustXp: 0,
       updatedAt: now
     };
-    this.state.energyBalances.push(balance);
-    this.state.ledgerEntries.push({
-      ledgerId: this.nextId("ledger"),
-      sessionId: participant.sessionId,
-      matchId: null,
-      roundId: null,
-      participantId: participant.participantId,
-      delta: INITIAL_ENERGY,
-      currencyType: "energy",
-      reason,
-      metadata,
-      createdAt: now
+    this.state.sessions.push(session);
+    this.state.liveStats.push(emptyStats(session.sessionId, now));
+    this.recordAgentEvent({
+      args: {
+        sessionId: session.sessionId,
+        agentName: "Seed Fallback Provider",
+        eventType: "fallback_ready",
+        content: "Five deterministic backup questions are ready if the LLM is unavailable.",
+        confidence: 1,
+        status: "complete"
+      },
+      identity: "system"
     });
-    return balance;
+    return session;
   }
 
-  private upsertScore(participantId: string, matchId: string, now: number): Score {
-    const existing = this.state.scores.find(
-      (score) => score.participantId === participantId && score.matchId === matchId
-    );
-    if (existing) return existing;
+  private createScore(sessionId: string, participantId: string, now: number): Score {
     const score: Score = {
+      scoreId: this.nextId("score"),
+      sessionId,
       participantId,
-      matchId,
-      playerScore: 0,
-      supporterXp: 0,
-      supportAccuracyNum: 0,
-      supportAccuracyDen: 0,
-      playalongCorrect: 0,
-      playalongTotal: 0,
+      totalScore: 0,
+      correctCount: 0,
+      totalResponseMs: 0,
+      fastestResponseMs: null,
+      currentRank: 1,
+      previousRank: 1,
+      lastAnswerAt: null,
       updatedAt: now
     };
     this.state.scores.push(score);
+    this.recomputeRanks(sessionId, now);
     return score;
-  }
-
-  private audit(
-    sessionId: string,
-    actorIdentity: string,
-    eventType: string,
-    message: string,
-    metadata: Record<string, unknown>
-  ): AuditEvent {
-    const event: AuditEvent = {
-      eventId: this.nextId("audit"),
-      sessionId,
-      actorIdentity,
-      eventType,
-      message,
-      metadata,
-      createdAt: Date.now()
-    };
-    this.state.auditEvents.push(event);
-    return event;
-  }
-
-  private recalculateLiveStats(sessionId: string): void {
-    const stats = this.requireLiveStats(sessionId);
-    const now = Date.now();
-    const participants = this.state.participants.filter((participant) => participant.sessionId === sessionId);
-    stats.joinedCount = participants.length;
-    stats.playerCandidateCount = participants.filter((participant) => participant.roleRequested === "player").length;
-    stats.crowdCount = participants.filter((participant) => participant.roleAssigned === "crowd").length;
-    stats.activeClients = participants.filter((participant) => now - participant.lastSeen < 45_000).length;
-    stats.realParticipants = participants.filter((participant) => !participant.isSimulated).length;
-    stats.simulatedSupporters = participants.filter((participant) => participant.isSimulated).length;
-    stats.p95SyncLatencyMs = 38 + ((stats.reducerCallsCount * 7 + stats.cheerEventsCount * 3) % 74);
-    stats.updatedAt = now;
-  }
-
-  private incrementReducerCount(sessionId: string, now: number): void {
-    const stats = this.requireLiveStats(sessionId);
-    stats.reducerCallsCount += 1;
-    stats.updatedAt = now;
-  }
-
-  private findSessionIdFromArgs(args: unknown): string | null {
-    if (!args || typeof args !== "object") return null;
-    const maybe = args as Record<string, unknown>;
-    if (typeof maybe.sessionId === "string") return maybe.sessionId;
-    if (typeof maybe.matchId === "string") {
-      return this.state.matches.find((match) => match.matchId === maybe.matchId)?.sessionId ?? null;
-    }
-    if (typeof maybe.roundId === "string") {
-      const round = this.state.rounds.find((candidate) => candidate.roundId === maybe.roundId);
-      if (!round) return null;
-      return this.state.matches.find((match) => match.matchId === round.matchId)?.sessionId ?? null;
-    }
-    if (typeof maybe.joinCode === "string") {
-      return (
-        this.state.sessions.find(
-          (session) => session.joinCode.toLowerCase() === String(maybe.joinCode).toLowerCase()
-        )?.sessionId ?? null
-      );
-    }
-    return this.state.sessions[0]?.sessionId ?? null;
-  }
-
-  private requireHost(sessionId: string, identity: string): void {
-    if (identity.startsWith("host") || identity === "agent-worker" || identity === "fallback-seed") return;
-    const participant = this.findParticipantByIdentity(sessionId, identity);
-    if (participant?.roleAssigned === "host") return;
-    throw new Error("Host action required.");
   }
 
   private requireSession(sessionId: string): Session {
@@ -1170,16 +586,24 @@ export class QuizDuelEngine {
     return session;
   }
 
-  private requireMatch(matchId: string): Match {
-    const match = this.state.matches.find((candidate) => candidate.matchId === matchId);
-    if (!match) throw new Error(`Match not found: ${matchId}`);
-    return match;
+  private requireSessionByCode(code: string): Session {
+    const session = this.state.sessions.find((candidate) => candidate.code === code || candidate.sessionId === code);
+    if (!session) throw new Error(`Session not found: ${code}`);
+    return session;
   }
 
-  private requireRound(roundId: string): Round {
-    const round = this.state.rounds.find((candidate) => candidate.roundId === roundId);
-    if (!round) throw new Error(`Round not found: ${roundId}`);
-    return round;
+  private requireParticipantForIdentity(sessionId: string, identity: string): Participant {
+    const participant = this.state.participants.find(
+      (candidate) => candidate.sessionId === sessionId && candidate.identity === identity
+    );
+    if (!participant) throw new Error("Join the tournament before acting.");
+    return participant;
+  }
+
+  private requireScore(sessionId: string, participantId: string): Score {
+    const score = this.state.scores.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
+    if (!score) throw new Error(`Score not found for participant: ${participantId}`);
+    return score;
   }
 
   private requireQuestion(questionId: string): Question {
@@ -1188,73 +612,172 @@ export class QuizDuelEngine {
     return question;
   }
 
-  private requireEnergyBalance(participantId: string): EnergyBalance {
-    const balance = this.state.energyBalances.find((candidate) => candidate.participantId === participantId);
-    if (!balance) throw new Error(`Energy balance not found: ${participantId}`);
-    return balance;
+  private requireQuestionByOrder(sessionId: string, orderIndex: number): Question {
+    const question = this.state.questions.find((candidate) => candidate.sessionId === sessionId && candidate.orderIndex === orderIndex);
+    if (!question) throw new Error(`Question ${orderIndex} not found.`);
+    return question;
   }
 
-  private requireLiveStats(sessionId: string): LiveStats {
-    let stats = this.state.liveStats.find((candidate) => candidate.sessionId === sessionId);
-    if (!stats) {
-      stats = this.emptyLiveStats(sessionId, Date.now());
-      this.state.liveStats.push(stats);
-    }
-    return stats;
+  private requireRound(roundId: string): Round {
+    const round = this.state.rounds.find((candidate) => candidate.roundId === roundId);
+    if (!round) throw new Error(`Round not found: ${roundId}`);
+    return round;
   }
 
-  private findParticipantByIdentity(sessionId: string, identity: string): Participant | undefined {
-    return this.state.participants.find(
-      (participant) => participant.sessionId === sessionId && participant.identity === identity
-    );
+  private recomputeRanks(sessionId: string, now: number): void {
+    const sorted = this.state.scores.filter((score) => score.sessionId === sessionId).sort(compareScores);
+    sorted.forEach((score, index) => {
+      const nextRank = index + 1;
+      if (score.currentRank !== nextRank) {
+        score.previousRank = score.currentRank;
+        score.currentRank = nextRank;
+        this.matchEvent(sessionId, score.participantId, "rank_change", null, score.totalScore, score.currentRank, {
+          previousRank: score.previousRank,
+          currentRank: score.currentRank
+        });
+      } else {
+        score.previousRank = score.currentRank;
+      }
+      score.updatedAt = now;
+    });
   }
 
-  private findAnswer(roundId: string, participantId: string): Answer | null {
-    return this.state.answers.find((answer) => answer.roundId === roundId && answer.participantId === participantId) ?? null;
-  }
-
-  private totalSupport(roundId: string, playerId: string): number {
-    return this.state.supportEvents
-      .filter((event) => event.roundId === roundId && event.playerId === playerId)
-      .reduce((sum, event) => sum + event.amount, 0);
-  }
-
-  private emptyLiveStats(sessionId: string, now: number): LiveStats {
-    return {
+  private matchEvent(
+    sessionId: string,
+    participantId: string | null,
+    eventType: MatchEventType,
+    roundIndex: number | null,
+    scoreAfter: number | null,
+    rankAfter: number | null,
+    payload: Record<string, unknown>
+  ): MatchEvent {
+    const event: MatchEvent = {
+      eventId: this.nextId("match-event"),
       sessionId,
-      joinedCount: 0,
-      playerCandidateCount: 0,
-      crowdCount: 0,
-      activeClients: 0,
-      realParticipants: 0,
-      simulatedSupporters: 0,
-      cheerEventsCount: 0,
-      cheerEventsPerSec: 0,
-      reducerCallsCount: 0,
-      duplicateAnswersRejected: 0,
-      doubleSpendAttemptsBlocked: 0,
-      p95SyncLatencyMs: 42,
-      updatedAt: now
+      participantId,
+      eventType,
+      roundIndex,
+      scoreAfter,
+      rankAfter,
+      payload,
+      createdAt: Date.now()
     };
+    this.state.matchEvents.push(event);
+    return event;
+  }
+
+  private audit(sessionId: string, actorIdentity: string | null, eventType: string, message: string): AuditEvent {
+    const event: AuditEvent = {
+      auditId: this.nextId("audit"),
+      sessionId,
+      actorIdentity,
+      eventType,
+      message,
+      createdAt: Date.now()
+    };
+    this.state.auditEvents.push(event);
+    return event;
+  }
+
+  private recalculateStats(sessionId: string): void {
+    const now = Date.now();
+    const stats = this.state.liveStats.find((candidate) => candidate.sessionId === sessionId) ?? emptyStats(sessionId, now);
+    if (!this.state.liveStats.includes(stats)) this.state.liveStats.push(stats);
+    const participants = this.state.participants.filter((participant) => participant.sessionId === sessionId);
+    const answers = this.state.answers.filter((answer) => answer.sessionId === sessionId);
+    stats.joinedCount = participants.length;
+    stats.realJoinedCount = participants.filter((participant) => !participant.isSimulated).length;
+    stats.simulatedJoinedCount = participants.filter((participant) => participant.isSimulated).length;
+    stats.answersCount = answers.length;
+    stats.answersPerSec = answers.filter((answer) => now - answer.serverReceivedAt <= 1000).length;
+    stats.activeClients = participants.filter((participant) => now - participant.lastSeen <= 15_000).length;
+    const latencies = participants
+      .map((participant) => participant.clientLatencyMs)
+      .filter((latency): latency is number => typeof latency === "number")
+      .sort((a, b) => a - b);
+    stats.p95LatencyMs = latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] ?? 0 : 48;
+    stats.updatedAt = now;
+  }
+
+  private incrementReducerCount(sessionId: string, started: number): void {
+    const stats = this.state.liveStats.find((candidate) => candidate.sessionId === sessionId);
+    if (!stats) return;
+    stats.reducerCalls += 1;
+    stats.p95LatencyMs = Math.max(24, Math.min(220, stats.p95LatencyMs || Date.now() - started));
+    stats.updatedAt = Date.now();
   }
 
   private nextId(prefix: string): string {
-    const id = `${prefix}-${this.idCounter}`;
-    this.idCounter += 1;
-    return id;
+    const next = (this.counters.get(prefix) ?? 0) + 1;
+    this.counters.set(prefix, next);
+    return `${prefix}-${next}`;
   }
 
-  private emit(): void {
-    for (const listener of this.listeners) {
-      listener();
-    }
+  private notify(): void {
+    const snapshot = this.getSnapshot();
+    for (const listener of this.listeners) listener(snapshot, this.stateVersion);
   }
 }
 
-function stableHash(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+
+function emptyState(): QuizRushState {
+  return {
+    sessions: [],
+    participants: [],
+    topicVotes: [],
+    questions: [],
+    rounds: [],
+    answers: [],
+    scores: [],
+    matchEvents: [],
+    agentRequests: [],
+    agentEvents: [],
+    liveStats: [],
+    auditEvents: []
+  };
+}
+
+function emptyStats(sessionId: string, now: number): LiveStats {
+  return {
+    sessionId,
+    joinedCount: 0,
+    realJoinedCount: 0,
+    simulatedJoinedCount: 0,
+    answersCount: 0,
+    answersPerSec: 0,
+    reducerCalls: 0,
+    duplicateAnswersRejected: 0,
+    p95LatencyMs: 48,
+    activeClients: 0,
+    updatedAt: now
+  };
+}
+
+function selectedTopicFromVotes(votes: TopicVote[]): string {
+  if (!votes.length) return DEFAULT_SELECTED_TOPIC;
+  const counts = new Map<string, number>();
+  for (const vote of votes) counts.set(vote.topic, (counts.get(vote.topic) ?? 0) + 1);
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || DEFAULT_TOPICS.indexOf(a[0]) - DEFAULT_TOPICS.indexOf(b[0]));
+  return top.slice(0, 3).map(([topic]) => topic).join(" + ") || DEFAULT_SELECTED_TOPIC;
+}
+
+function cleanName(name: string): string {
+  return name.trim().slice(0, 24) || "Player";
+}
+
+function sessionIdFromArgs(args: unknown): string | null {
+  if (!args || typeof args !== "object") return null;
+  const record = args as Record<string, unknown>;
+  return typeof record.sessionId === "string" ? record.sessionId : null;
+}
+
+function sessionIdFromResult(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  if (typeof record.sessionId === "string") return record.sessionId;
+  if ("participant" in record && record.participant && typeof record.participant === "object") {
+    const participant = record.participant as Record<string, unknown>;
+    return typeof participant.sessionId === "string" ? participant.sessionId : null;
   }
-  return hash;
+  return null;
 }

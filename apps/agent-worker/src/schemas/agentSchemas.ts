@@ -1,20 +1,34 @@
 import { z } from "zod";
-import { questionInputSchema } from "@quizduel/shared";
+import { questionInputSchema } from "@quizrush/shared";
+
+export const topicRouterSchema = z.object({
+  selected_topic: z.string().min(2).max(80),
+  reason: z.string().min(8).max(240),
+  topic_weights: z
+    .array(
+      z.object({
+        topic: z.string().min(2).max(40),
+        weight: z.number().min(0).max(1)
+      })
+    )
+    .min(1)
+    .max(6)
+});
 
 export const fairnessReviewSchema = z.object({
   approved: z.boolean(),
-  rejectedCount: z.number().int().min(0).max(10),
+  rejectedCount: z.number().int().min(0).max(5),
   issues: z
     .array(
       z.object({
-        roundNumber: z.number().int().min(1).max(10),
+        roundNumber: z.number().int().min(1).max(5),
         severity: z.enum(["low", "medium", "high"]),
         issue: z.string().min(1).max(240),
         suggestedFix: z.string().min(1).max(240)
       })
     )
-    .max(10),
-  fixedQuestions: z.array(questionInputSchema).max(10)
+    .max(5),
+  fixedQuestions: z.array(questionInputSchema).max(5)
 });
 
 export const safetyGuardReviewSchema = z.object({
@@ -39,3 +53,4 @@ export const learningRecapSchema = z.object({
 export type HostCommentaryOutput = z.infer<typeof hostCommentarySchema>;
 export type LearningRecapOutput = z.infer<typeof learningRecapSchema>;
 export type SafetyGuardReviewOutput = z.infer<typeof safetyGuardReviewSchema>;
+export type TopicRouterOutput = z.infer<typeof topicRouterSchema>;

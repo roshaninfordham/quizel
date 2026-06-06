@@ -1,5 +1,4 @@
 import { Config, Context, Layer } from "effect";
-import type { Difficulty, QuestionCount } from "@quizduel/shared";
 
 export interface WorkerConfig {
   readonly llm: {
@@ -44,26 +43,21 @@ export interface WorkerConfig {
   };
   readonly demo: {
     readonly topic: string;
-    readonly difficulty: Difficulty;
-    readonly questionCount: QuestionCount;
+    readonly questionCount: number;
   };
 }
 
-export class WorkerConfigService extends Context.Tag("quizduel/WorkerConfig")<
+export class WorkerConfigService extends Context.Tag("quizrush/WorkerConfig")<
   WorkerConfigService,
   WorkerConfig
 >() {}
 
 const questionCountConfig = Config.integer("QUIZ_QUESTION_COUNT").pipe(
-  Config.withDefault(3),
+  Config.withDefault(5),
   Config.validate({
-    message: "QUIZ_QUESTION_COUNT must be 3 or 10.",
-    validation: (value): value is QuestionCount => value === 3 || value === 10
+    message: "QUIZ_QUESTION_COUNT must be 5 for the QuizRush demo.",
+    validation: (value) => value === 5
   })
-);
-
-const difficultyConfig = Config.literal("beginner", "intermediate", "expert")("QUIZ_DIFFICULTY").pipe(
-  Config.withDefault("beginner" as const)
 );
 
 export const workerConfig = Config.all({
@@ -119,7 +113,6 @@ export const workerConfig = Config.all({
   }),
   demo: Config.all({
     topic: Config.string("QUIZ_TOPIC").pipe(Config.withDefault("AI + Space + Startups")),
-    difficulty: difficultyConfig,
     questionCount: questionCountConfig
   })
 });
