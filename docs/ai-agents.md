@@ -29,6 +29,13 @@ Implemented providers:
 - `MockLlmProvider`
 - `FallbackSeedProvider`
 
+Effect runtime structure:
+
+- `WorkerConfigService`: typed environment configuration loaded with `Config`.
+- `LlmProviderService`: provider-neutral LLM interface exposed through `Context.Tag`.
+- `AgentWorkerLive`: layer composition for config plus provider construction.
+- `QuizGenerationProgram`: runnable Effect program for quiz generation and fallback handling.
+
 Failure path:
 
 1. Missing credentials or provider failure.

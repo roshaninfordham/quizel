@@ -105,6 +105,8 @@ The worker package lives in `apps/agent-worker` and defines:
 - Host Commentator Agent
 - Learning Recap Agent
 
+Effect is used as the TypeScript runtime pattern for external/async workflows: typed config, service layers, retries, timeouts, schema validation, fallback, and structured logs. See `docs/effect-adoption.md`.
+
 Configuration is provider-neutral:
 
 ```bash
