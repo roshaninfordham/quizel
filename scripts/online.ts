@@ -204,8 +204,36 @@ function prefixLines(name: string, input: string): string {
   return input
     .split(/\n/)
     .filter(Boolean)
+    .filter((line) => !isBenignWebProxyNoise(name, line))
     .map((line) => `[${name}] ${line}\n`)
     .join("");
+}
+
+function isBenignWebProxyNoise(name: string, line: string): boolean {
+  if (name !== "web") return false;
+  const trimmed = line.trim();
+  return (
+    trimmed.includes("[vite] ws proxy socket error") ||
+    trimmed === "Error: write EPIPE" ||
+    trimmed === "Error: read ECONNRESET" ||
+    trimmed.startsWith("at afterWriteDispatched") ||
+    trimmed.startsWith("at writeGeneric") ||
+    trimmed.startsWith("at Socket._write") ||
+    trimmed.startsWith("at writeOrBuffer") ||
+    trimmed.startsWith("at _write") ||
+    trimmed.startsWith("at Writable.write") ||
+    trimmed.startsWith("at Socket.ondata") ||
+    trimmed.startsWith("at Socket.emit") ||
+    trimmed.startsWith("at addChunk") ||
+    trimmed.startsWith("at readableAddChunk") ||
+    trimmed.startsWith("at Readable.push") ||
+    trimmed.startsWith("at TCP.onStreamRead") ||
+    trimmed.startsWith("at Readable.read") ||
+    trimmed.startsWith("at Socket.read") ||
+    trimmed.startsWith("at flow") ||
+    trimmed.startsWith("at emitReadable_") ||
+    trimmed.startsWith("at process.processTicksAndRejections")
+  );
 }
 
 function findLanHost(): string | null {
