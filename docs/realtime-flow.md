@@ -22,12 +22,13 @@ Phone submits freeform expertise text
 -> TopicVote rows replaced for participant
 -> MatchEvent(topic_vote)
 -> projector recomputes live bars
+-> request_questions reducer starts immediately from the phone confirmation
 ```
 
 ## Question Generation
 
 ```text
-5-second expertise window closes
+phone confirmation or 5-second expertise window closes
 -> request_questions reducer
 -> AgentRequest pending
 -> Effect worker routes topic + generates quiz
@@ -37,7 +38,7 @@ Phone submits freeform expertise text
 -> Session status ready
 ```
 
-The projector starts this automatically after the expertise window. It also starts a deterministic 700ms fallback timer. If approved LLM questions are not committed quickly, seed questions are submitted so the judged flow never waits on model latency. Late LLM packs are ignored once a match has already started with an existing question pack.
+The phone starts the agent request as soon as the player confirms the arena, while the projector keeps a backup automation after the expertise window. It also starts a deterministic 700ms fallback timer. If approved LLM questions are not committed quickly, topic-specific fallback questions are submitted so the judged flow never waits on model latency or falls back to an unrelated quiz. Late LLM packs are ignored once a match has already started with an existing question pack.
 
 ## 25-Second Match
 

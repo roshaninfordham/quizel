@@ -10,7 +10,7 @@ import {
 } from "./constants";
 import { questionBatchSchema, selectedOptionSchema } from "./schemas";
 import { computeAnswerScore, compareScores } from "./scoring";
-import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
+import { buildTopicFallbackQuestions } from "./topicFallbackQuestions";
 import type {
   AgentEvent,
   AgentRequest,
@@ -160,7 +160,7 @@ export class QuizRushEngine {
         sessionId: session.sessionId,
         agentName: "Seed Fallback Provider",
         eventType: "fallback_ready",
-        content: "Five deterministic backup questions are ready if the LLM is unavailable.",
+        content: "Topic-specific deterministic backup questions are ready if the LLM is unavailable.",
         confidence: 1,
         status: "complete"
       },
@@ -231,6 +231,7 @@ export class QuizRushEngine {
     }));
     this.state.topicVotes.push(...inserted);
     if (session.status === "lobby") session.status = "topic_voting";
+    session.selectedTopic = selectedTopicFromVotes(this.state.topicVotes.filter((vote) => vote.sessionId === session.sessionId));
     session.updatedAt = now;
     this.matchEvent(session.sessionId, participant.participantId, "topic_vote", null, null, null, { topics });
     return inserted;
@@ -240,16 +241,32 @@ export class QuizRushEngine {
     const session = this.requireSession(args.sessionId);
     const now = Date.now();
     const topic = args.topic?.trim() || selectedTopicFromVotes(this.state.topicVotes.filter((vote) => vote.sessionId === session.sessionId));
+    const questionCount = args.questionCount ?? QUESTION_COUNT;
+    const pendingSameTopic = this.state.agentRequests.find(
+      (request) => request.sessionId === session.sessionId && request.status === "pending" && request.topic === topic
+    );
+    if (pendingSameTopic) return pendingSameTopic;
+    for (const request of this.state.agentRequests.filter(
+      (candidate) => candidate.sessionId === session.sessionId && candidate.status === "pending"
+    )) {
+      request.status = "failed";
+      request.updatedAt = now;
+      request.errorMessage = `Superseded by newer quiz request for ${topic}.`;
+    }
+    if (!["playing", "finished", "replay"].includes(session.status)) {
+      this.state.questions = this.state.questions.filter((question) => question.sessionId !== session.sessionId);
+      this.state.rounds = this.state.rounds.filter((round) => round.sessionId !== session.sessionId);
+    }
     session.status = "generating";
     session.selectedTopic = topic;
-    session.questionCount = args.questionCount ?? QUESTION_COUNT;
+    session.questionCount = questionCount;
     session.updatedAt = now;
     const request: AgentRequest = {
       requestId: this.nextId("agent-request"),
       sessionId: session.sessionId,
       requestType: "quiz_generation",
       topic,
-      questionCount: session.questionCount,
+      questionCount,
       status: "pending",
       createdAt: now,
       updatedAt: now,
@@ -268,6 +285,14 @@ export class QuizRushEngine {
       identity
     });
     this.matchEvent(session.sessionId, null, "questions_requested", null, null, null, { topic });
+    this.submitQuestionPack({
+      args: {
+        sessionId: session.sessionId,
+        selectedTopic: topic,
+        questions: buildTopicFallbackQuestions(topic, questionCount)
+      },
+      identity: "seed-fallback"
+    });
     return request;
   }
 
@@ -377,7 +402,7 @@ export class QuizRushEngine {
         args: {
           sessionId: session.sessionId,
           selectedTopic: session.selectedTopic ?? DEFAULT_SELECTED_TOPIC,
-          questions: SEEDED_DEMO_QUESTIONS
+          questions: buildTopicFallbackQuestions(session.selectedTopic ?? DEFAULT_SELECTED_TOPIC, session.questionCount)
         },
         identity: "seed-fallback"
       });
@@ -672,7 +697,7 @@ export class QuizRushEngine {
         sessionId: session.sessionId,
         agentName: "Seed Fallback Provider",
         eventType: "fallback_ready",
-        content: "Five deterministic backup questions are ready if the LLM is unavailable.",
+        content: "Topic-specific deterministic backup questions are ready if the LLM is unavailable.",
         confidence: 1,
         status: "complete"
       },

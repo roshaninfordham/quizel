@@ -28,7 +28,7 @@ export const joinTournamentSchema = z.object({
 
 export const topicVoteSchema = z.object({
   sessionId: z.string().min(1),
-  topics: z.array(z.string().min(1).max(24)).min(1).max(3)
+  topics: z.array(z.string().min(1).max(48)).min(1).max(3)
 });
 
 export const selectedOptionSchema = z.object({

@@ -22,7 +22,7 @@ Optional backup: press `A` to stream 100 marked simulated players if the room is
 
 0:40-0:55
 
-“The Effect worker routes the room’s expertise intent, calls the LLM, validates the JSON, runs fairness/safety guardrails, and falls back to seed questions if anything fails.”
+“The Effect worker routes the room’s expertise intent, calls the LLM, validates the JSON, runs fairness/safety guardrails, and falls back to topic-specific questions if anything fails.”
 
 0:55-1:20
 

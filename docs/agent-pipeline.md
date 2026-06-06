@@ -21,9 +21,9 @@ flowchart LR
 - Phone typing is primary.
 - Web Speech API is optional and never required.
 - Raw audio is not stored or sent to the realtime backend.
-- Freeform text is deterministically mapped to compact topics such as `AI Agents`, `Space Tech`, and `Database Systems`.
+- Freeform text is deterministically mapped to compact topics such as `AI Agents`, `Space Tech`, and `Database Systems`; unmatched spoken topics such as `US visa system` are preserved as custom arena topics instead of being forced into a default science/tech bucket.
 - The Effect worker uses those live topic signals to route the quiz topic and generate questions.
-- If the model is slow or invalid, deterministic fallback questions keep the sprint live.
+- If the model is slow or invalid, deterministic topic-specific fallback questions keep the sprint live without reverting to the static demo pack.
 
 ## Agent Guardrails
 

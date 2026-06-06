@@ -54,30 +54,32 @@ describe("agent fallback behavior", () => {
     expect(result.selectedTopic).toContain("AI");
   });
 
-  it("missing LLM_API_KEY triggers fallback seed questions", async () => {
+  it("missing LLM_API_KEY triggers topic-specific fallback questions", async () => {
     const result = await Effect.runPromise(
       generateQuizQuestions(new FailingProvider(), { timeoutMs: 100, maxRetries: 0 }, {
-        topic: "AI + Space + Startups",
+        topic: "US Visa System",
         questionCount: 5
       })
     );
 
     expect(result.status).toBe("fallback");
     expect(result.questions).toHaveLength(5);
+    expect(result.questions[0]?.topic).toBe("US Visa System");
+    expect(result.questions.map((question) => question.questionText).join(" ").toLowerCase()).toContain("visa");
     expect(result.events[0]?.eventType).toBe("fallback_used");
   });
 
-  it("malformed LLM JSON triggers fallback seed questions", async () => {
+  it("malformed LLM JSON triggers topic-specific fallback questions", async () => {
     const result = await Effect.runPromise(
       generateQuizQuestions(new MalformedProvider(), { timeoutMs: 100, maxRetries: 0 }, {
-        topic: "AI + Space + Startups",
+        topic: "US Visa System",
         questionCount: 5
       })
     );
 
     expect(result.status).toBe("fallback");
     expect(result.questions).toHaveLength(5);
-    expect(result.questions[0]?.options.B).toBe("SpacetimeDB");
+    expect(result.questions[0]?.questionText.toLowerCase()).toContain("visa");
   });
 
   it("records Safety Guard approval when guard is enabled", async () => {

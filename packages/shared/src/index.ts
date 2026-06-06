@@ -3,4 +3,5 @@ export * from "./types";
 export * from "./schemas";
 export * from "./scoring";
 export * from "./demoQuestions";
+export * from "./topicFallbackQuestions";
 export * from "./engine";

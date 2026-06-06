@@ -1,7 +1,6 @@
 import { Duration, Effect, Schedule } from "effect";
-import { DEFAULT_SELECTED_TOPIC, QUESTION_COUNT, questionBatchSchema } from "@quizrush/shared";
+import { buildTopicFallbackQuestions, DEFAULT_SELECTED_TOPIC, QUESTION_COUNT, questionBatchSchema } from "@quizrush/shared";
 import type { QuestionInput } from "@quizrush/shared";
-import { demoQuestions } from "../fallbacks/demoQuestions";
 import { ValidationError, type LlmError } from "../llm/errors";
 import type { LlmProvider } from "../llm/provider";
 import {
@@ -212,20 +211,20 @@ export function generateQuizQuestions(
       ),
       Effect.catchAll((error) =>
         Effect.succeed({
-          questions: demoQuestions.slice(0, requestedCount),
+          questions: buildTopicFallbackQuestions(input.topic, requestedCount),
           status: "fallback" as const,
           events: [
             {
               agentName: "Quiz Builder Agent",
               eventType: "fallback_used",
-              content: `Using deterministic seed questions because ${error.name} occurred.`,
+              content: `Using deterministic ${input.topic} questions because ${error.name} occurred.`,
               confidence: 1,
               status: "fallback" as const
             },
             {
               agentName: "Fairness Agent",
               eventType: "fallback_approved",
-              content: "Seeded QuizRush questions are pre-reviewed for a public hackathon audience.",
+              content: "Topic-specific fallback questions are schema-valid and pre-reviewed for a public hackathon audience.",
               confidence: 1,
               status: "fallback" as const
             }

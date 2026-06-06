@@ -49,7 +49,7 @@ Effect provides:
 - timeouts
 - structured errors
 - schema validation
-- fallback seed questions
+- topic-specific fallback questions
 - reconnecting realtime worker loop
 
 Fallback path:
@@ -57,7 +57,7 @@ Fallback path:
 ```text
 LLM failure or malformed JSON
 -> validation error
--> deterministic seed questions
+-> deterministic topic-specific questions
 -> AgentEvent(status=fallback)
 -> match remains playable
 ```

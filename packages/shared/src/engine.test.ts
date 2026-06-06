@@ -3,6 +3,7 @@ import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT, QUESTION_TIME
 import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
 import { QuizRushEngine } from "./engine";
 import { computeAnswerScore, percentile } from "./scoring";
+import { buildTopicFallbackQuestions } from "./topicFallbackQuestions";
 
 function prepareReadyMatch() {
   const engine = new QuizRushEngine();
@@ -58,6 +59,15 @@ describe("QuizRush reducer invariants", () => {
     expect(votes[0]?.topic).toBe("Startups");
   });
 
+  it("builds topic-specific fallback questions for a voice intent like US visa system", () => {
+    const questions = buildTopicFallbackQuestions("US visa system", QUESTION_COUNT);
+
+    expect(questions).toHaveLength(QUESTION_COUNT);
+    expect(questions[0]?.topic).toBe("US Visa System");
+    expect(questions.map((question) => question.questionText).join(" ")).toContain("visa");
+    expect(questions.map((question) => Object.values(question.options).join(" ")).join(" ")).not.toContain("SpacetimeDB");
+  });
+
   it("submit_question_pack validates the LLM JSON shape and readies the match", () => {
     const engine = new QuizRushEngine();
     const bad = engine.callReducer("submit_question_pack", {
@@ -99,6 +109,34 @@ describe("QuizRush reducer invariants", () => {
     expect(started.ok).toBe(false);
     expect(started.error).toContain("At least one participant");
     expect(engine.getSnapshot().sessions[0]?.status).toBe("ready");
+  });
+
+  it("start_match emergency seed uses the selected live intent topic", () => {
+    const engine = new QuizRushEngine();
+    engine.callReducer("join_session", { code: DEFAULT_SESSION_CODE, displayName: "Maya", avatar: "🚀" }, "device-maya");
+    engine.callReducer("submit_topic_vote", { sessionId: DEFAULT_SESSION_ID, topics: ["US Visa System"] }, "device-maya");
+    engine.callReducer("request_questions", { sessionId: DEFAULT_SESSION_ID, topic: "US Visa System" }, "device-maya");
+
+    const started = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const state = engine.getSnapshot();
+
+    expect(started.ok).toBe(true);
+    expect(state.sessions[0]?.selectedTopic).toBe("US Visa System");
+    expect(state.questions[0]?.questionText.toLowerCase()).toContain("visa");
+    expect(state.questions[0]?.generatedBy).toBe("Seed Fallback Provider");
+  });
+
+  it("request_questions immediately commits a topic-specific fallback pack", () => {
+    const engine = new QuizRushEngine();
+    engine.callReducer("join_session", { code: DEFAULT_SESSION_CODE, displayName: "Maya", avatar: "🚀" }, "device-maya");
+    const request = engine.callReducer("request_questions", { sessionId: DEFAULT_SESSION_ID, topic: "US Visa System" }, "device-maya");
+    const state = engine.getSnapshot();
+
+    expect(request.ok).toBe(true);
+    expect(state.agentRequests[0]?.status).toBe("pending");
+    expect(state.sessions[0]?.status).toBe("ready");
+    expect(state.questions).toHaveLength(QUESTION_COUNT);
+    expect(state.questions[0]?.questionText.toLowerCase()).toContain("visa");
   });
 
   it("rounds advance immediately while staying inside the 25-second match budget", () => {

@@ -1,28 +1,27 @@
 import { Effect } from "effect";
-import { demoQuestions } from "../../fallbacks/demoQuestions";
+import { buildTopicFallbackQuestions } from "@quizrush/shared";
 import type { LlmError } from "../errors";
 import type { GenerateJsonInput, LlmProvider } from "../provider";
 
 export class FallbackSeedProvider implements LlmProvider {
   public generateJson<T>(input: GenerateJsonInput): Effect.Effect<T, LlmError> {
+    const topic = topicFromInput(input);
+    const questions = buildTopicFallbackQuestions(topic, questionCountFromInput(input));
+
     if (input.schemaName === "FairnessReview") {
       return Effect.succeed({
         approved: true,
         rejectedCount: 0,
         issues: [],
-        fixedQuestions: demoQuestions
+        fixedQuestions: []
       } as T);
     }
 
     if (input.schemaName === "TopicRouter") {
       return Effect.succeed({
-        selected_topic: "AI + Space + Startups",
-        reason: "Seed fallback selects the demo topic for a reliable room-scale race.",
-        topic_weights: [
-          { topic: "AI", weight: 0.34 },
-          { topic: "Space", weight: 0.33 },
-          { topic: "Startups", weight: 0.33 }
-        ]
+        selected_topic: topic,
+        reason: `Seed fallback selected ${topic} from the current room intent.`,
+        topic_weights: [{ topic, weight: 1 }]
       } as T);
     }
 
@@ -53,7 +52,25 @@ export class FallbackSeedProvider implements LlmProvider {
     }
 
     return Effect.succeed({
-      questions: demoQuestions
+      questions
     } as T);
+  }
+}
+
+function topicFromInput(input: GenerateJsonInput): string {
+  try {
+    const parsed = JSON.parse(input.user) as { topic?: string; default_topic?: string; topic_counts?: Array<{ topic?: string }> };
+    return parsed.topic || parsed.default_topic || parsed.topic_counts?.[0]?.topic || "General Knowledge";
+  } catch {
+    return "General Knowledge";
+  }
+}
+
+function questionCountFromInput(input: GenerateJsonInput): number {
+  try {
+    const parsed = JSON.parse(input.user) as { question_count?: number };
+    return parsed.question_count || 7;
+  } catch {
+    return 7;
   }
 }

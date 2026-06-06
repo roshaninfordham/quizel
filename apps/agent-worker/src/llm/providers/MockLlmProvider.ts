@@ -1,28 +1,27 @@
 import { Effect } from "effect";
-import { demoQuestions } from "../../fallbacks/demoQuestions";
+import { buildTopicFallbackQuestions } from "@quizrush/shared";
 import type { LlmError } from "../errors";
 import type { GenerateJsonInput, LlmProvider } from "../provider";
 
 export class MockLlmProvider implements LlmProvider {
   public generateJson<T>(input: GenerateJsonInput): Effect.Effect<T, LlmError> {
+    const topic = topicFromInput(input);
+    const questions = buildTopicFallbackQuestions(topic, questionCountFromInput(input));
+
     if (input.schemaName === "FairnessReview") {
       return Effect.succeed({
         approved: true,
         rejectedCount: 0,
         issues: [],
-        fixedQuestions: demoQuestions.slice(0, 5)
+        fixedQuestions: []
       } as T);
     }
 
     if (input.schemaName === "TopicRouter") {
       return Effect.succeed({
-        selected_topic: "AI + Space + Startups",
-        reason: "Most players selected AI, Space, and Startups.",
-        topic_weights: [
-          { topic: "AI", weight: 0.44 },
-          { topic: "Space", weight: 0.31 },
-          { topic: "Startups", weight: 0.25 }
-        ]
+        selected_topic: topic,
+        reason: `Most live expertise signals point to ${topic}.`,
+        topic_weights: [{ topic, weight: 1 }]
       } as T);
     }
 
@@ -52,7 +51,25 @@ export class MockLlmProvider implements LlmProvider {
     }
 
     return Effect.succeed({
-      questions: demoQuestions.slice(0, 5)
+      questions
     } as T);
+  }
+}
+
+function topicFromInput(input: GenerateJsonInput): string {
+  try {
+    const parsed = JSON.parse(input.user) as { topic?: string; default_topic?: string; topic_counts?: Array<{ topic?: string }> };
+    return parsed.topic || parsed.default_topic || parsed.topic_counts?.[0]?.topic || "General Knowledge";
+  } catch {
+    return "General Knowledge";
+  }
+}
+
+function questionCountFromInput(input: GenerateJsonInput): number {
+  try {
+    const parsed = JSON.parse(input.user) as { question_count?: number };
+    return parsed.question_count || 7;
+  } catch {
+    return 7;
   }
 }

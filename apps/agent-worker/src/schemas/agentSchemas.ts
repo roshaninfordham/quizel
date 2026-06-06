@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { questionInputSchema } from "@quizrush/shared";
+import { QUESTION_COUNT, questionInputSchema } from "@quizrush/shared";
 
 export const topicRouterSchema = z.object({
   selected_topic: z.string().min(2).max(80),
@@ -17,18 +17,18 @@ export const topicRouterSchema = z.object({
 
 export const fairnessReviewSchema = z.object({
   approved: z.boolean(),
-  rejectedCount: z.number().int().min(0).max(5),
+  rejectedCount: z.number().int().min(0).max(QUESTION_COUNT),
   issues: z
     .array(
       z.object({
-        roundNumber: z.number().int().min(1).max(5),
+        roundNumber: z.number().int().min(1).max(QUESTION_COUNT),
         severity: z.enum(["low", "medium", "high"]),
         issue: z.string().min(1).max(240),
         suggestedFix: z.string().min(1).max(240)
       })
     )
-    .max(5),
-  fixedQuestions: z.array(questionInputSchema).max(5)
+    .max(QUESTION_COUNT),
+  fixedQuestions: z.array(questionInputSchema).max(QUESTION_COUNT)
 });
 
 export const safetyGuardReviewSchema = z.object({

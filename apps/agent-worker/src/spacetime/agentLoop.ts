@@ -21,6 +21,7 @@ export function runRealtimeAgentWorker(config: WorkerConfig, provider: LlmProvid
 
 function runConnectedLoop(client: RealtimeClient, config: WorkerConfig, provider: LlmProvider): Effect.Effect<void, never> {
   const processedRequests = new Set<string>();
+  const inFlightRequests = new Set<string>();
   const processedRounds = new Set<string>();
   const processedSessions = new Set<string>();
   const providerSelection = selectLlmProvider(config);
@@ -30,7 +31,7 @@ function runConnectedLoop(client: RealtimeClient, config: WorkerConfig, provider
       Effect.flatMap((state) =>
         Effect.gen(function* () {
           const pendingRequests = state.agentRequests.filter(
-            (request) => request.status === "pending" && !processedRequests.has(request.requestId)
+            (request) => request.status === "pending" && !processedRequests.has(request.requestId) && !inFlightRequests.has(request.requestId)
           );
           const resolvedRounds = state.rounds.filter((round) => round.status === "resolved" && !processedRounds.has(round.roundId));
           const finishedSessions = state.sessions.filter(
@@ -48,8 +49,14 @@ function runConnectedLoop(client: RealtimeClient, config: WorkerConfig, provider
           yield* Effect.all(
             [
               ...pendingRequests.map((request) =>
-                processAgentRequest(client, provider, config, state, request, providerSelection.providerName).pipe(
-                  Effect.tap(() => Effect.sync(() => processedRequests.add(request.requestId)))
+                Effect.sync(() => inFlightRequests.add(request.requestId)).pipe(
+                  Effect.zipRight(processAgentRequest(client, provider, config, state, request, providerSelection.providerName)),
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      inFlightRequests.delete(request.requestId);
+                      processedRequests.add(request.requestId);
+                    })
+                  )
                 )
               ),
               ...resolvedRounds.map((round) =>

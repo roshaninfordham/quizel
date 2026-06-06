@@ -18,7 +18,7 @@ QuizRush Arena turns a room into a live multiplayer quiz race. The presenter run
 4. Everyone types or speaks what they know; fixed topic chips are no longer the main UX.
 5. The phone shows a detected arena such as `AI Agents x Space Tech x Database Systems`.
 6. The 5-second intent window closes automatically.
-7. The Effect worker requests LLM questions and falls back to seed questions after 700ms if needed.
+7. The phone immediately starts `request_questions`; the Effect worker requests LLM questions and falls back to topic-specific deterministic questions after 700ms if needed.
 8. The match starts automatically and phones answer seven rapid questions inside one 25-second race clock.
 9. Projector updates leaderboard and top-16 fixture lanes from committed state.
 10. Winner screen shows champion, score, fastest answer, sound, and confetti.
@@ -128,9 +128,9 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Server-authoritative response time and score calculation.
 - Duplicate answer rejection and metric tracking.
 - `MatchEvent` replay ledger.
-- Effect-based LLM worker with provider routing, retries, validation, safety guard support, and seed fallback.
+- Effect-based LLM worker with provider routing, retries, validation, safety guard support, and topic-specific deterministic fallback.
 - NVIDIA model routing through environment variables in `.env.local`.
-- Deterministic fallback questions if LLM calls fail.
+- Deterministic topic-specific fallback questions if LLM calls fail or arrive too late.
 
 ## What Is Prototype Scope
 
@@ -217,7 +217,7 @@ pnpm --filter @quizrush/web build
 Manual golden path:
 
 - Join from two browser tabs or phones.
-- Type expertise such as `AI agents, space startups, and databases`.
+- Type or say expertise such as `US visa system` or `AI agents, space startups, and databases`.
 - Confirm the detected arena.
 - The expertise window, generation/fallback, and match start run automatically.
 - Press `A` only when you want to stream 100 marked simulated players for load.

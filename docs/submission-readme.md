@@ -26,7 +26,7 @@ Judges should remember: “The whole room scanned one QR code, shared expertise,
 - Reducer-owned joins, expertise-derived topic votes, answers, scoring, rank recomputation, duplicate rejection, and reset.
 - Realtime websocket subscriptions for the laptop demo.
 - SpacetimeDB TypeScript module with the same public table/reducer contract.
-- Effect worker with provider-neutral LLM adapter, NVIDIA routing, validation, safety guard support, and fallback seed questions.
+- Effect worker with provider-neutral LLM adapter, NVIDIA routing, validation, safety guard support, and topic-specific fallback questions.
 - MatchEvent ledger used by replay.
 
 ## What Is Prototype Scope
@@ -43,5 +43,5 @@ If LLM or network fails:
 
 1. Press `R`.
 2. Press `A` to add simulated players.
-3. Press `S`; `start_match` uses deterministic fallback questions if needed.
+3. Press `S`; `start_match` uses deterministic questions for the selected live topic if needed.
 4. Press `T` to show duplicate rejection and reducer metrics.

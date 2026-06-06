@@ -264,6 +264,8 @@ export const submit_topic_vote = spacetimedb.reducer({ session_id: t.string(), t
       created_at_ms: now
     });
   }
+  const current = requireSession(ctx, session_id);
+  ctx.db.session.session_id.update({ ...current, status: current.status === "lobby" ? "topic_voting" : current.status, selected_topic: topicFromVotes(ctx, session_id), updated_at_ms: now });
   insertMatchEvent(ctx, session_id, participantRow.participant_id, "topic_vote", undefined, undefined, undefined, JSON.stringify({ topics }));
   bumpStats(ctx, session_id);
 });
@@ -272,11 +274,33 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
   const current = requireSession(ctx, session_id);
   const now = nowMs();
   const selected_topic = topic || topicFromVotes(ctx, session_id);
+  const requestedCount = question_count || QUESTION_COUNT;
+  const pendingSame = Array.from(ctx.db.agent_request.session_id.filter(session_id)).find(
+    (request) => request.status === "pending" && request.topic === selected_topic
+  );
+  if (pendingSame) {
+    bumpStats(ctx, session_id);
+    return;
+  }
+  for (const request of ctx.db.agent_request.session_id.filter(session_id)) {
+    if (request.status === "pending") {
+      ctx.db.agent_request.request_id.update({
+        ...request,
+        status: "failed",
+        updated_at_ms: now,
+        error_message: `Superseded by newer quiz request for ${selected_topic}.`
+      });
+    }
+  }
+  if (current.status !== "playing" && current.status !== "finished" && current.status !== "replay") {
+    ctx.db.question.session_id.delete(session_id);
+    ctx.db.round.session_id.delete(session_id);
+  }
   ctx.db.session.session_id.update({
     ...current,
     status: "generating",
     selected_topic,
-    question_count: question_count || QUESTION_COUNT,
+    question_count: requestedCount,
     updated_at_ms: now
   });
   ctx.db.agent_request.insert({
@@ -284,7 +308,7 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
     session_id,
     request_type: "quiz_generation",
     topic: selected_topic,
-    question_count: question_count || QUESTION_COUNT,
+    question_count: requestedCount,
     status: "pending",
     created_at_ms: now,
     updated_at_ms: now,
@@ -292,6 +316,7 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
   });
   insertAgentEvent(ctx, session_id, "Topic Router Agent", "topic_selected", `Selected ${selected_topic} from live topic votes.`, 0.88, "complete");
   insertMatchEvent(ctx, session_id, undefined, "questions_requested", undefined, undefined, undefined, JSON.stringify({ selected_topic }));
+  submitQuestionPackInternal(ctx, session_id, selected_topic, JSON.stringify({ questions: fallbackQuestionsForTopic(selected_topic, requestedCount) }), undefined);
   bumpStats(ctx, session_id);
 });
 
@@ -549,7 +574,7 @@ function createSessionRow(ctx: ReducerCtx, code: string, question_count: number)
     updated_at_ms: now
   });
   ctx.db.live_stats.insert(emptyStats("session-demo", now));
-  insertAgentEvent(ctx, "session-demo", "Seed Fallback Provider", "fallback_ready", "Five deterministic backup questions are ready if the LLM is unavailable.", 1, "complete");
+  insertAgentEvent(ctx, "session-demo", "Seed Fallback Provider", "fallback_ready", "Topic-specific deterministic backup questions are ready if the LLM is unavailable.", 1, "complete");
 }
 
 function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selected_topic: string, questions_json: string, request_id?: string) {
@@ -881,6 +906,65 @@ function topicFromVotes(ctx: ReducerCtx, session_id: string): string {
     .slice(0, 3)
     .map(([topic]) => topic)
     .join(" + ");
+}
+
+function fallbackQuestionsForTopic(topic: string, count: number) {
+  const normalized = normalizeTopic(topic);
+  const lower = normalized.toLowerCase();
+  const pack = lower.includes("visa") || lower.includes("immigration")
+    ? [
+        fq("In the {topic}, what is a visa generally used for?", ["Requesting entry", "Owning property", "Paying taxes", "Voting"], "A", "A visa is generally used to request permission to travel to a country for a stated purpose.", normalized),
+        fq("Which document is a visa usually linked with?", ["Passport", "School ID", "Receipt", "Boarding pass"], "A", "Visas are usually placed in or electronically linked to a passport.", normalized),
+        fq("What does a visa category usually describe?", ["Travel purpose", "Favorite city", "Phone model", "Hotel rating"], "A", "A visa category usually describes the purpose of travel.", normalized),
+        fq("Who commonly reviews visa applications abroad?", ["Consular officer", "Airline pilot", "Hotel manager", "Bank teller"], "A", "Consular officers review many visa applications at embassies or consulates.", normalized),
+        fq("What does overstaying usually mean?", ["Staying too long", "Booking early", "Flying direct", "Packing light"], "A", "Overstaying means remaining beyond the authorized period of stay.", normalized),
+        fq("At a US port of entry, who decides admission?", ["Border officer", "Taxi driver", "Tour guide", "Travel blogger"], "A", "A border officer makes the final admission decision at the port of entry.", normalized),
+        fq("Why do forms ask for travel purpose?", ["Match the visa", "Pick an airline", "Choose a meal", "Rate a hotel"], "A", "Travel purpose helps match a person to the correct visa category.", normalized)
+      ]
+    : [
+        fq("In {topic}, what helps make answers reliable?", ["Clear definitions", "Random guesses", "Hidden rules", "Long delays"], "A", "Clear definitions make a fast quiz on {topic} fair and answerable.", normalized),
+        fq("What is the best first step when learning {topic}?", ["Know key terms", "Skip basics", "Ignore context", "Avoid examples"], "A", "Key terms give players a shared starting point for {topic}.", normalized),
+        fq("A good {topic} question should be...", ["Unambiguous", "Tricky only", "Personal", "Unverifiable"], "A", "Unambiguous questions keep a rapid tournament fair.", normalized),
+        fq("Which signal should shape this arena?", ["Player intent", "Screen size", "Join order", "Button color"], "A", "QuizRush uses submitted expertise intent to shape the arena topic.", normalized),
+        fq("For a fair {topic} sprint, scoring should reward...", ["Accuracy and speed", "Random taps", "Slow loading", "Duplicate answers"], "A", "The race rewards correct answers and fast server-received response time.", normalized),
+        fq("What should an AI quiz avoid in {topic}?", ["Unsafe claims", "Clear options", "Short text", "One answer"], "A", "Agent guardrails avoid unsafe claims and ambiguous answer choices.", normalized),
+        fq("Why keep {topic} questions short?", ["Fast reading", "More scrolling", "Harder tapping", "Less fairness"], "A", "Short questions fit phone screens and keep the 25-second sprint moving.", normalized)
+      ];
+  const questions = [];
+  for (let index = 0; index < count; index += 1) questions.push(pack[index % pack.length]);
+  return questions;
+}
+
+function fq(questionText: string, options: [string, string, string, string], correctOption: string, explanation: string, topic: string) {
+  return {
+    questionText: questionText.replace(/\{topic\}/g, topic),
+    options: { A: options[0], B: options[1], C: options[2], D: options[3] },
+    correctOption,
+    explanation: explanation.replace(/\{topic\}/g, topic),
+    topic
+  };
+}
+
+function normalizeTopic(topic: string): string {
+  const cleaned = topic.trim().replace(/\s+/g, " ");
+  if (!cleaned) return DEFAULT_TOPIC;
+  return cleaned
+    .split(" + ")
+    .map((part) =>
+      part
+        .trim()
+        .split(/\s+/)
+        .map((word) => {
+          const lower = word.toLowerCase();
+          return ["us", "usa", "uk", "ai", "llm", "db", "sql", "api"].includes(lower)
+            ? lower.toUpperCase()
+            : lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join(" ")
+    )
+    .slice(0, 3)
+    .join(" + ")
+    .slice(0, 80);
 }
 
 function parseTopics(topics_json: string): string[] {

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { nanoid } from "nanoid";
-import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, SEEDED_DEMO_QUESTIONS, type OptionKey } from "@quizrush/shared";
+import { buildTopicFallbackQuestions, DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT, type OptionKey } from "@quizrush/shared";
 import { getDeviceIdentity, setJoinedParticipantId, useSpacetime } from "../lib/spacetime/client";
 
 interface ActionState {
@@ -104,7 +104,7 @@ export function useSeedQuestions() {
       runner.run("Fallback questions ready", async () => {
         const receipt = await callReducer(
           "submit_question_pack",
-          { sessionId, selectedTopic, questions: SEEDED_DEMO_QUESTIONS },
+          { sessionId, selectedTopic, questions: buildTopicFallbackQuestions(selectedTopic, QUESTION_COUNT) },
           "seed-fallback"
         );
         if (!receipt.ok) throw new Error(receipt.error);

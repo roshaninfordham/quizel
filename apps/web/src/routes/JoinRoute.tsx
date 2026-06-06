@@ -10,7 +10,7 @@ import {
 } from "@quizrush/shared";
 import { AnswerButton, Button, ConnectionBadge, Panel, PhoneShell, ReconnectingOverlay, SoundToggle, cn } from "../components/ui";
 import { useSpeechIntent } from "../hooks/useSpeechIntent";
-import { useJoinTournament, useSubmitAnswer, useSubmitTopicVote } from "../hooks/useArenaActions";
+import { useJoinTournament, useRequestQuestions, useSubmitAnswer, useSubmitTopicVote } from "../hooks/useArenaActions";
 import {
   getJoinedParticipantId,
   useCurrentQuestion,
@@ -56,6 +56,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const parsedIntent = useMemo(() => parseIntentPreview(intentText), [intentText]);
   const { joinTournament, loading: joining, error: joinError } = useJoinTournament(code);
   const { submitTopicVote, loading: voting, message: voteMessage, error: voteError } = useSubmitTopicVote();
+  const { requestQuestions, loading: requesting, error: requestError } = useRequestQuestions();
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
   const speech = useSpeechIntent((value) => {
     setIntentText((current) => (current ? `${current} ${value}` : value));
@@ -109,6 +110,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     if (result?.participant.participantId) {
       setParticipantId(result.participant.participantId);
       await submitTopicVote(sessionId, parsedIntent.topics);
+      await requestQuestions(sessionId, parsedIntent.topics.join(" + "));
       playArenaAssigned();
     }
   };
@@ -243,13 +245,13 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
                 </span>
               ))}
             </div>
-            {joinError || voteError ? <ErrorMessage>{joinError || voteError}</ErrorMessage> : null}
+            {joinError || voteError || requestError ? <ErrorMessage>{joinError || voteError || requestError}</ErrorMessage> : null}
             <div className="mt-7 grid grid-cols-[0.42fr_0.58fr] gap-3">
               <Button onClick={() => setStep("intent")} variant="secondary" icon={<Pencil className="size-5" />}>
                 Edit
               </Button>
-              <Button onClick={enterArena} disabled={joining || voting} icon={<Check className="size-5" />}>
-                Enter Arena
+              <Button onClick={enterArena} disabled={joining || voting || requesting} icon={<Check className="size-5" />}>
+                {requesting ? "Starting Agent" : "Enter Arena"}
               </Button>
             </div>
           </Panel>
