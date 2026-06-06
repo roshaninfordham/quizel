@@ -203,6 +203,18 @@ export function QRHeroCard({
           <span>Scan to join</span>
         </div>
         <p className="mt-2 text-2xl font-black text-violet-700">Session: {sessionCode}</p>
+        <p className="mt-4 max-w-[420px] break-all rounded-2xl bg-slate-100 px-4 py-3 text-center text-base font-black text-slate-700">
+          {joinUrl}
+        </p>
+        {isLocalOnlyUrl(joinUrl) ? (
+          <p className="mt-3 max-w-[420px] rounded-2xl bg-rose-50 px-4 py-3 text-center text-sm font-black text-rose-700">
+            This QR only works on this laptop. Restart with a LAN host or public tunnel.
+          </p>
+        ) : (
+          <p className="mt-3 max-w-[420px] rounded-2xl bg-emerald-50 px-4 py-3 text-center text-sm font-black text-emerald-700">
+            Phone-ready link
+          </p>
+        )}
       </div>
       <div className="flex flex-col justify-center">
         <p className="text-3xl font-black text-slate-500">Players Joined</p>
@@ -219,6 +231,15 @@ export function QRHeroCard({
       </div>
     </Panel>
   );
+}
+
+function isLocalOnlyUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
 }
 
 export function TopicSwarm({

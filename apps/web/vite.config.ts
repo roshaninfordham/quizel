@@ -6,6 +6,13 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: "0.0.0.0",
-    port: 5173
+    port: 5173,
+    proxy: {
+      "/quizrush-ws": {
+        target: `ws://127.0.0.1:${process.env.REALTIME_PORT ?? 8787}`,
+        ws: true,
+        changeOrigin: true
+      }
+    }
   }
 });

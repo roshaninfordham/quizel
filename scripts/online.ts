@@ -8,18 +8,19 @@ import { DEFAULT_SESSION_CODE, QUESTION_COUNT } from "../packages/shared/src/ind
 
 const REALTIME_PORT = Number(process.env.REALTIME_PORT ?? 8787);
 const WEB_PORT = Number(process.env.WEB_PORT ?? 5173);
+const TUNNEL_PROVIDER = (process.env.TUNNEL_PROVIDER ?? "none").toLowerCase();
 const lanHost = process.env.QUIZRUSH_LAN_HOST ?? findLanHost() ?? "localhost";
 const agentRealtimeUrl = process.env.AGENT_REALTIME_URL ?? `ws://127.0.0.1:${REALTIME_PORT}`;
 const localBaseUrl = `http://localhost:${WEB_PORT}`;
 const lanBaseUrl = `http://${lanHost}:${WEB_PORT}`;
-const publicBaseUrl = (process.env.PUBLIC_BASE_URL || process.env.VITE_PUBLIC_APP_URL || lanBaseUrl).replace(/\/$/, "");
-const browserRealtimeUrl = (
+let publicBaseUrl = (process.env.PUBLIC_BASE_URL || process.env.VITE_PUBLIC_APP_URL || lanBaseUrl).replace(/\/$/, "");
+let browserRealtimeUrl = (
   process.env.PUBLIC_REALTIME_URL ||
   process.env.VITE_REALTIME_URL ||
-  `ws://${lanHost}:${REALTIME_PORT}`
+  realtimeUrlFromBase(publicBaseUrl)
 ).replace(/\/$/, "");
-const joinUrl = `${publicBaseUrl}/join/${DEFAULT_SESSION_CODE}`;
-const projectorUrl = `${localBaseUrl}/arena/${DEFAULT_SESSION_CODE}`;
+let joinUrl = `${publicBaseUrl}/join/${DEFAULT_SESSION_CODE}`;
+let projectorUrl = `${localBaseUrl}/arena/${DEFAULT_SESSION_CODE}`;
 
 interface ManagedProcess {
   name: string;
@@ -30,8 +31,8 @@ const program = Effect.gen(function* () {
   yield* Effect.logInfo("Starting QuizRush Live local arena");
   const processes: ManagedProcess[] = [];
 
-  const start = (name: string, args: string[], env: Record<string, string> = {}) => {
-    const child = spawn("pnpm", args, {
+  const startProcess = (name: string, command: string, args: string[], env: Record<string, string> = {}) => {
+    const child = spawn(command, args, {
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -40,6 +41,7 @@ const program = Effect.gen(function* () {
     processes.push({ name, process: child });
     return child;
   };
+  const start = (name: string, args: string[], env: Record<string, string> = {}) => startProcess(name, "pnpm", args, env);
 
   const cleanup = () => {
     for (const item of processes) {
@@ -59,6 +61,16 @@ const program = Effect.gen(function* () {
   yield* waitForHttp(`http://localhost:${REALTIME_PORT}/health`, "realtime server");
 
   yield* resetSession();
+
+  if (!process.env.PUBLIC_BASE_URL && !process.env.VITE_PUBLIC_APP_URL && (TUNNEL_PROVIDER === "auto" || TUNNEL_PROVIDER === "ngrok")) {
+    const tunnelUrl = yield* maybeStartNgrokTunnel(startProcess);
+    if (tunnelUrl) {
+      publicBaseUrl = tunnelUrl;
+      browserRealtimeUrl = (process.env.PUBLIC_REALTIME_URL || process.env.VITE_REALTIME_URL || realtimeUrlFromBase(publicBaseUrl)).replace(/\/$/, "");
+      joinUrl = `${publicBaseUrl}/join/${DEFAULT_SESSION_CODE}`;
+      projectorUrl = `${publicBaseUrl}/arena/${DEFAULT_SESSION_CODE}`;
+    }
+  }
 
   start("agent", ["--filter", "@quizrush/agent-worker", "start"], {
     AGENT_REALTIME_URL: agentRealtimeUrl,
@@ -162,6 +174,25 @@ function printReadyBlock() {
   console.log("");
 }
 
+function maybeStartNgrokTunnel(
+  startProcess: (name: string, command: string, args: string[], env?: Record<string, string>) => ChildProcessWithoutNullStreams
+): Effect.Effect<string | null, never> {
+  return Effect.promise(async () => {
+    try {
+      if (!commandExists("ngrok")) return null;
+      const child = startProcess("ngrok", "ngrok", ["http", `http://localhost:${WEB_PORT}`, "--log=stdout"]);
+      const url = await waitForNgrokUrl();
+      if (!url) {
+        if (!child.killed) child.kill("SIGTERM");
+        return null;
+      }
+      return url.replace(/\/$/, "");
+    } catch {
+      return null;
+    }
+  });
+}
+
 function openProjector(url: string): Effect.Effect<void> {
   return Effect.sync(() => {
     const child = spawn("open", [url], { stdio: "ignore", detached: true });
@@ -225,4 +256,43 @@ function isLocalOnly(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function realtimeUrlFromBase(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/quizrush-ws";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function commandExists(command: string): boolean {
+  try {
+    execFileSync("which", [command], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForNgrokUrl(): Promise<string | null> {
+  for (let attempt = 0; attempt < 35; attempt += 1) {
+    try {
+      const response = await fetch("http://127.0.0.1:4040/api/tunnels");
+      if (response.ok) {
+        const payload = (await response.json()) as {
+          tunnels?: Array<{ public_url?: string; proto?: string }>;
+        };
+        const tunnel =
+          payload.tunnels?.find((item) => item.public_url?.startsWith("https://")) ??
+          payload.tunnels?.find((item) => item.public_url?.startsWith("http://"));
+        if (tunnel?.public_url) return tunnel.public_url;
+      }
+    } catch {
+      // ngrok API is still booting.
+    }
+    await sleep(300);
+  }
+  return null;
 }

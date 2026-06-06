@@ -47,7 +47,7 @@ Default local URLs:
 - Projector: http://localhost:5173/arena/ARENA-42
 - Phone QR: `make online` prints a LAN URL such as `http://YOUR_LAPTOP_IP:5173/join/ARENA-42`
 - Tech proof: http://localhost:5173/tech/ARENA-42
-- Phone realtime gateway: `ws://YOUR_LAPTOP_IP:8787`
+- Phone realtime gateway: `ws://YOUR_LAPTOP_IP:5173/quizrush-ws`
 - Worker realtime gateway: ws://127.0.0.1:8787
 
 For room phones on the same Wi-Fi, use the printed QR. If the detected IP is wrong, set it explicitly:
@@ -56,13 +56,21 @@ For room phones on the same Wi-Fi, use the printed QR. If the detected IP is wro
 QUIZRUSH_LAN_HOST=192.168.1.23 make online
 ```
 
-For phones outside the LAN, expose both the web app and websocket gateway with tunnels and run:
+If venue Wi-Fi blocks phone-to-laptop traffic, use the public tunnel target:
 
 ```bash
-PUBLIC_BASE_URL=https://your-web-tunnel.example \
-PUBLIC_REALTIME_URL=wss://your-realtime-tunnel.example \
-make online
+make online-public
 ```
+
+Free ngrok/localtunnel URLs may show a one-time provider warning before the app. For a polished public demo, use a trusted tunnel/domain or a laptop hotspot.
+
+For a manual tunnel, expose the web app and set `PUBLIC_BASE_URL`. The websocket rides through the same public origin by default:
+
+```bash
+PUBLIC_BASE_URL=https://your-web-tunnel.example make online
+```
+
+Only set `PUBLIC_REALTIME_URL` if you intentionally run a separate websocket tunnel.
 
 ## Architecture
 
@@ -111,7 +119,7 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 
 - Production auth, payments, stored-value accounts, profiles, chat, and content marketplace are intentionally omitted.
 - The default judged laptop transport is the local realtime gateway for reliability. The SpacetimeDB module builds and exposes the same public reducers/tables for direct integration.
-- Cloudflare/ngrok tunnel startup is not automated; set `PUBLIC_BASE_URL` and `PUBLIC_REALTIME_URL` after starting tunnels.
+- Cloudflare/ngrok tunnel startup is not automated; set `PUBLIC_BASE_URL` after starting a tunnel. The phone websocket defaults to `PUBLIC_BASE_URL` plus `/quizrush-ws`.
 
 ## AI Agents
 

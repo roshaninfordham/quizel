@@ -45,5 +45,5 @@ UI disclaimer:
 
 - Phones need a reachable public or LAN URL.
 - `make online` auto-detects a LAN IP; set `QUIZRUSH_LAN_HOST` if the printed QR is not reachable from phones.
-- For rooms outside the laptop network, set both `PUBLIC_BASE_URL` and `PUBLIC_REALTIME_URL` to tunnel URLs.
+- If venue Wi-Fi blocks laptop-to-phone traffic, run `make online-public` or set `PUBLIC_BASE_URL` to a tunnel URL. Browser realtime defaults to the same origin at `/quizrush-ws`.
 - If the websocket disconnects, the UI shows a reconnecting state.

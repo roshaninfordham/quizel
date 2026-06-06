@@ -74,7 +74,10 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const simulatedAnswerInFlightRef = useRef(false);
 
   const joinUrl = useMemo(() => {
-    const base = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
+    const configuredBase = String(import.meta.env.VITE_PUBLIC_APP_URL ?? "").trim();
+    const projectorIsLocal =
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname === "::1";
+    const base = projectorIsLocal ? configuredBase || window.location.origin : window.location.origin;
     return `${base.replace(/\/$/, "")}/join/${session?.code ?? code}`;
   }, [code, session?.code]);
   const phase = session?.status ?? "lobby";

@@ -38,9 +38,17 @@ export function connectToSpacetime(): {
   const host = import.meta.env.VITE_SPACETIMEDB_HOST ?? "ws://localhost:3000";
   const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizrush-live";
   const configuredRealtimeUrl = String(import.meta.env.VITE_REALTIME_URL ?? "").trim();
-  const realtimeUrl =
-    configuredRealtimeUrl || `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8787`;
+  const realtimeUrl = configuredRealtimeUrl || browserRealtimeUrlFrom(window.location.origin);
   return { host, module, realtimeUrl };
+}
+
+export function browserRealtimeUrlFrom(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/quizrush-ws";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }): React.ReactElement {

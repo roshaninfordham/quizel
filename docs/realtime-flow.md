@@ -6,7 +6,7 @@
 Phone scans QR
 -> /join/ARENA-42
 -> browser opens laptop LAN/tunnel URL, not localhost
--> websocket connects to ws://LAPTOP_IP:8787 or PUBLIC_REALTIME_URL
+-> websocket connects to the same origin at /quizrush-ws
 -> join_session reducer
 -> Participant + Score row inserted
 -> LiveStats joined_count updates

@@ -1,7 +1,10 @@
-.PHONY: online reset seed test typecheck build spacetime-build
+.PHONY: online online-public reset seed test typecheck build spacetime-build
 
 online:
 	pnpm online
+
+online-public:
+	TUNNEL_PROVIDER=ngrok pnpm online
 
 reset:
 	pnpm reset:demo

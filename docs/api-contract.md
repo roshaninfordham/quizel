@@ -29,10 +29,10 @@ The web app calls domain hooks, which call reducers through `apps/web/src/lib/sp
 
 ```text
 Phone join QR: http://YOUR_LAPTOP_IP:5173/join/ARENA-42
-Phone realtime websocket: ws://YOUR_LAPTOP_IP:8787
+Phone realtime websocket: ws://YOUR_LAPTOP_IP:5173/quizrush-ws
 ```
 
-The worker uses `ws://127.0.0.1:8787` locally, but browser clients must not use `localhost` unless they run on the laptop. For tunnel demos, set both `PUBLIC_BASE_URL` and `PUBLIC_REALTIME_URL`.
+The worker uses `ws://127.0.0.1:8787` locally, but browser clients use the web origin plus `/quizrush-ws`. For tunnel demos, set `PUBLIC_BASE_URL`; set `PUBLIC_REALTIME_URL` only if using a separate websocket tunnel.
 
 ## LLM Schemas
 
