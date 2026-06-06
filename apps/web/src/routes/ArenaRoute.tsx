@@ -70,6 +70,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const { resolveRound } = useResolveRound();
   const { finishMatch } = useFinishMatch();
   const { resetDemo } = useResetDemo();
+  const phase = session?.status ?? "lobby";
   const questionCountRef = useRef(0);
   questionCountRef.current = state.questions.filter((candidate) => candidate.sessionId === sessionId).length;
   const tickInFlightRef = useRef(false);
@@ -77,6 +78,12 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const autoRequestRef = useRef(false);
   const autoSeedRef = useRef(false);
   const autoStartRef = useRef(false);
+  const phaseRef = useRef(phase);
+  const participantCountRef = useRef(participants.length);
+  const sessionCreatedAtRef = useRef(session?.createdAt ?? 0);
+  phaseRef.current = phase;
+  participantCountRef.current = participants.length;
+  sessionCreatedAtRef.current = session?.createdAt ?? 0;
 
   const joinUrl = useMemo(() => {
     const configuredBase = String(import.meta.env.VITE_PUBLIC_APP_URL ?? "").trim();
@@ -85,7 +92,6 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     const base = projectorIsLocal ? configuredBase || window.location.origin : window.location.origin;
     return `${base.replace(/\/$/, "")}/join/${session?.code ?? code}`;
   }, [code, session?.code]);
-  const phase = session?.status ?? "lobby";
   const firstJoinAt = participants.length ? Math.min(...participants.map((participant) => participant.joinedAt)) : null;
   const topicWindowSeconds = firstJoinAt
     ? Math.max(0, Math.ceil((firstJoinAt + TOPIC_COLLECTION_SECONDS * 1000 - now) / 1000))
@@ -148,16 +154,29 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
 
     if (participants.length > 0 && (phase === "lobby" || phase === "topic_voting") && topicWindowSeconds <= 0 && !autoRequestRef.current) {
       autoRequestRef.current = true;
+      const automationSessionCreatedAt = session?.createdAt ?? 0;
       void requestQuestions(sessionId, selectedTopic);
       window.setTimeout(() => {
-        if (!autoSeedRef.current && questionCountRef.current < QUESTION_COUNT) {
+        const stillSameSession = sessionCreatedAtRef.current === automationSessionCreatedAt;
+        const stillGenerating = phaseRef.current === "generating" || phaseRef.current === "topic_voting";
+        if (
+          stillSameSession &&
+          stillGenerating &&
+          participantCountRef.current > 0 &&
+          !autoSeedRef.current &&
+          questionCountRef.current < QUESTION_COUNT
+        ) {
           autoSeedRef.current = true;
           void seedQuestions(sessionId, selectedTopic);
         }
       }, QUESTION_GENERATION_FALLBACK_MS);
     }
 
-    if ((phase === "ready" || (phase === "generating" && questionCountRef.current >= QUESTION_COUNT)) && !autoStartRef.current) {
+    if (
+      participants.length > 0 &&
+      (phase === "ready" || (phase === "generating" && questionCountRef.current >= QUESTION_COUNT)) &&
+      !autoStartRef.current
+    ) {
       autoStartRef.current = true;
       window.setTimeout(() => void startMatch(sessionId), 450);
     }
@@ -168,6 +187,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     requestQuestions,
     seedQuestions,
     selectedTopic,
+    session?.createdAt,
     sessionId,
     startMatch,
     topicWindowSeconds

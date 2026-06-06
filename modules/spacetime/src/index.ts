@@ -307,6 +307,9 @@ export const submit_question_batch = spacetimedb.reducer(
 
 export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
   const current = requireSession(ctx, session_id);
+  if (Array.from(ctx.db.participant.session_id.filter(session_id)).length === 0) {
+    throw new Error("At least one participant must join before the match starts.");
+  }
   if (Array.from(ctx.db.question.session_id.filter(session_id)).length < current.question_count) {
     throw new Error("Question pack is not ready.");
   }
@@ -551,6 +554,14 @@ function createSessionRow(ctx: ReducerCtx, code: string, question_count: number)
 
 function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selected_topic: string, questions_json: string, request_id?: string) {
   const current = requireSession(ctx, session_id);
+  if (request_id) {
+    const request = ctx.db.agent_request.request_id.find(request_id);
+    if (!request || request.session_id !== session_id || request.status !== "pending") {
+      insertAgentEvent(ctx, session_id, "Match Engine", "stale_question_pack_ignored", "A question pack from an older generation request arrived after reset and was ignored.", 1, "complete");
+      bumpStats(ctx, session_id);
+      return;
+    }
+  }
   if ((current.status === "playing" || current.status === "finished" || current.status === "replay") && Array.from(ctx.db.question.session_id.filter(session_id)).length > 0) {
     if (request_id) {
       const request = ctx.db.agent_request.request_id.find(request_id);

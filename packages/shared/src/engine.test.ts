@@ -87,6 +87,20 @@ describe("QuizRush reducer invariants", () => {
     expect(engine.getSnapshot().sessions[0]?.currentRound).toBe(1);
   });
 
+  it("start_match rejects a zero-player race", () => {
+    const engine = new QuizRushEngine();
+    engine.callReducer("submit_question_pack", {
+      sessionId: DEFAULT_SESSION_ID,
+      selectedTopic: "AI + Space + Startups",
+      questions: SEEDED_DEMO_QUESTIONS
+    }, "agent-worker");
+    const started = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+
+    expect(started.ok).toBe(false);
+    expect(started.error).toContain("At least one participant");
+    expect(engine.getSnapshot().sessions[0]?.status).toBe("ready");
+  });
+
   it("rounds advance immediately while staying inside the 25-second match budget", () => {
     const engine = prepareReadyMatch();
     const first = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
@@ -181,5 +195,27 @@ describe("QuizRush reducer invariants", () => {
     expect(state.participants).toHaveLength(0);
     expect(state.questions).toHaveLength(0);
     expect(state.liveStats[0]?.joinedCount).toBe(0);
+  });
+
+  it("ignores stale LLM question packs that return after reset", () => {
+    const engine = new QuizRushEngine();
+    const request = engine.callReducer<{ requestId: string }>("request_questions", {
+      sessionId: DEFAULT_SESSION_ID,
+      topic: "AI + Space"
+    }, "operator");
+    engine.callReducer("reset_demo", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const latePack = engine.callReducer("submit_question_pack", {
+      sessionId: DEFAULT_SESSION_ID,
+      requestId: request.data?.requestId,
+      selectedTopic: "AI + Space",
+      questions: SEEDED_DEMO_QUESTIONS
+    }, "agent-worker");
+    const state = engine.getSnapshot();
+
+    expect(request.ok).toBe(true);
+    expect(latePack.ok).toBe(true);
+    expect(state.sessions[0]?.status).toBe("lobby");
+    expect(state.questions).toHaveLength(0);
+    expect(state.agentEvents.some((event) => event.eventType === "stale_question_pack_ignored")).toBe(true);
   });
 });

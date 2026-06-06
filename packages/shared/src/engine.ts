@@ -276,6 +276,25 @@ export class QuizRushEngine {
     identity
   }: ReducerContext<{ sessionId: string; selectedTopic?: string; requestId?: string; questions?: QuestionInput[]; questionsJson?: string }>): Question[] {
     const session = this.requireSession(args.sessionId);
+    if (args.requestId) {
+      const request = this.state.agentRequests.find(
+        (candidate) => candidate.requestId === args.requestId && candidate.sessionId === session.sessionId
+      );
+      if (!request || request.status !== "pending") {
+        this.recordAgentEvent({
+          args: {
+            sessionId: session.sessionId,
+            agentName: "Match Engine",
+            eventType: "stale_question_pack_ignored",
+            content: "A question pack from an older generation request arrived after reset and was ignored.",
+            confidence: 1,
+            status: "complete"
+          },
+          identity
+        });
+        return this.state.questions.filter((question) => question.sessionId === session.sessionId);
+      }
+    }
     if ((session.status === "playing" || session.status === "finished" || session.status === "replay") && this.state.questions.some((question) => question.sessionId === session.sessionId)) {
       if (args.requestId) {
         const request = this.state.agentRequests.find((candidate) => candidate.requestId === args.requestId);
@@ -350,6 +369,9 @@ export class QuizRushEngine {
 
   private startMatch({ args }: ReducerContext<{ sessionId: string }>): Round {
     const session = this.requireSession(args.sessionId);
+    if (!this.state.participants.some((participant) => participant.sessionId === session.sessionId)) {
+      throw new Error("At least one participant must join before the match starts.");
+    }
     if (this.state.questions.filter((question) => question.sessionId === session.sessionId).length < session.questionCount) {
       this.submitQuestionPack({
         args: {
