@@ -1,4 +1,5 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { lookup } from "node:dns/promises";
 import { networkInterfaces } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Effect } from "effect";
@@ -72,6 +73,16 @@ const program = Effect.gen(function* () {
     }
   }
 
+  if (TUNNEL_PROVIDER !== "none" && !process.env.PUBLIC_BASE_URL && !process.env.VITE_PUBLIC_APP_URL && !isPublicUrl(publicBaseUrl)) {
+    cleanup();
+    return yield* Effect.fail(
+      new Error(
+        "No public tunnel provider produced a reachable URL. Try make online-localhostrun, make online-cloudflare on a different DNS/network, " +
+          "make online-ngrok with available quota, or set PUBLIC_BASE_URL to a trusted tunnel/domain."
+      )
+    );
+  }
+
   start("agent", ["--filter", "@quizrush/agent-worker", "start"], {
     AGENT_REALTIME_URL: agentRealtimeUrl,
     VITE_PUBLIC_APP_URL: publicBaseUrl,
@@ -83,6 +94,18 @@ const program = Effect.gen(function* () {
     VITE_PUBLIC_APP_URL: publicBaseUrl
   });
   yield* waitForHttp(localBaseUrl, "Vite web app");
+  if (isPublicUrl(publicBaseUrl)) {
+    const verified = yield* verifyPublicTunnel(publicBaseUrl);
+    if (!verified) {
+      cleanup();
+      return yield* Effect.fail(
+        new Error(
+          `Public tunnel did not pass HTTP/WebSocket verification: ${publicBaseUrl}. ` +
+            "Try make online-localhostrun, make online-cloudflare on a different DNS/network, or set PUBLIC_BASE_URL to a trusted tunnel/domain."
+        )
+      );
+    }
+  }
 
   printReadyBlock();
   yield* openProjector(projectorUrl);
@@ -183,6 +206,9 @@ function printReadyBlock() {
   if (publicBaseUrl.includes("ngrok")) {
     console.log("Public tunnel note: ngrok free links may show a browser warning. Tap Visit Site once, then join works.");
   }
+  if (publicBaseUrl.includes("lhr.life") || publicBaseUrl.includes("localhost.run")) {
+    console.log("Public tunnel: localhost.run SSH tunnel. This QR was verified with HTTP and WebSocket preflight.");
+  }
   console.log("");
 }
 
@@ -193,6 +219,21 @@ function maybeStartPublicTunnel(
     if ((TUNNEL_PROVIDER === "auto" || TUNNEL_PROVIDER === "cloudflare" || TUNNEL_PROVIDER === "cloudflared") && commandExists("cloudflared")) {
       try {
         const url = await startCloudflareTunnel(startProcess);
+        if (url) return url;
+      } catch {
+        // Fall through to another provider or LAN mode.
+      }
+    }
+
+    if (
+      (TUNNEL_PROVIDER === "auto" ||
+        TUNNEL_PROVIDER === "localhostrun" ||
+        TUNNEL_PROVIDER === "localhost.run" ||
+        TUNNEL_PROVIDER === "ssh") &&
+      commandExists("ssh")
+    ) {
+      try {
+        const url = await startLocalhostRunTunnel(startProcess);
         if (url) return url;
       } catch {
         // Fall through to another provider or LAN mode.
@@ -217,7 +258,38 @@ async function startCloudflareTunnel(
   const child = startProcess("cloudflared", "cloudflared", ["tunnel", "--url", `http://localhost:${WEB_PORT}`, "--no-autoupdate"]);
   const url = await waitForProcessUrl(child, /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
   if (!url && !child.killed) child.kill("SIGTERM");
-  return url ? url.replace(/\/$/, "") : null;
+  if (!url) return null;
+  const normalized = url.replace(/\/$/, "");
+  if (!(await waitForDns(normalized, 8_000))) {
+    if (!child.killed) child.kill("SIGTERM");
+    return null;
+  }
+  return normalized;
+}
+
+async function startLocalhostRunTunnel(
+  startProcess: (name: string, command: string, args: string[], env?: Record<string, string>) => ChildProcessWithoutNullStreams
+): Promise<string | null> {
+  const child = startProcess("localhost.run", "ssh", [
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-o",
+    "StrictHostKeyChecking=no",
+    "-o",
+    "ServerAliveInterval=30",
+    "-R",
+    `80:localhost:${WEB_PORT}`,
+    "nokey@localhost.run"
+  ]);
+  const url = await waitForProcessUrl(child, /https:\/\/[a-zA-Z0-9-]+\.lhr\.life/, 45_000);
+  if (!url && !child.killed) child.kill("SIGTERM");
+  if (!url) return null;
+  const normalized = url.replace(/\/$/, "");
+  if (!(await waitForDns(normalized, 8_000))) {
+    if (!child.killed) child.kill("SIGTERM");
+    return null;
+  }
+  return normalized;
 }
 
 async function startNgrokTunnel(
@@ -229,15 +301,20 @@ async function startNgrokTunnel(
     if (!child.killed) child.kill("SIGTERM");
     return null;
   }
-  return url.replace(/\/$/, "");
+  const normalized = url.replace(/\/$/, "");
+  if (!(await waitForDns(normalized, 8_000))) {
+    if (!child.killed) child.kill("SIGTERM");
+    return null;
+  }
+  return normalized;
 }
 
-async function waitForProcessUrl(child: ChildProcessWithoutNullStreams, pattern: RegExp): Promise<string | null> {
+async function waitForProcessUrl(child: ChildProcessWithoutNullStreams, pattern: RegExp, timeoutMs = 20_000): Promise<string | null> {
   return await new Promise((resolve) => {
     const timer = setTimeout(() => {
       cleanup();
       resolve(null);
-    }, 20_000);
+    }, timeoutMs);
     const onData = (chunk: Buffer) => {
       const match = String(chunk).match(pattern);
       if (match?.[0]) {
@@ -253,6 +330,69 @@ async function waitForProcessUrl(child: ChildProcessWithoutNullStreams, pattern:
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
   });
+}
+
+function verifyPublicTunnel(baseUrl: string): Effect.Effect<boolean, never> {
+  return Effect.promise(async () => {
+    const arenaUrl = `${baseUrl.replace(/\/$/, "")}/arena/${DEFAULT_SESSION_CODE}`;
+    const realtimeUrl = realtimeUrlFromBase(baseUrl);
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const httpOk = await verifyHttpApp(arenaUrl);
+      const websocketOk = httpOk ? await verifyWebSocketSnapshot(realtimeUrl) : false;
+      if (httpOk && websocketOk) return true;
+      await sleep(1_000);
+    }
+    return false;
+  });
+}
+
+async function verifyHttpApp(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+    if (!response.ok) return false;
+    const body = await response.text();
+    return body.includes("QuizRush Live");
+  } catch {
+    return false;
+  }
+}
+
+async function verifyWebSocketSnapshot(url: string): Promise<boolean> {
+  return await new Promise((resolve) => {
+    const ws = new WebSocket(url);
+    const timer = setTimeout(() => {
+      ws.close();
+      resolve(false);
+    }, 5_000);
+    ws.once("message", (raw) => {
+      clearTimeout(timer);
+      ws.close();
+      try {
+        const payload = JSON.parse(String(raw)) as { type?: string; state?: unknown };
+        resolve(payload.type === "snapshot" && Boolean(payload.state));
+      } catch {
+        resolve(false);
+      }
+    });
+    ws.once("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+  });
+}
+
+async function waitForDns(url: string, timeoutMs: number): Promise<boolean> {
+  const hostname = new URL(url).hostname;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await lookup(hostname);
+      return true;
+    } catch {
+      await sleep(500);
+    }
+  }
+  return false;
 }
 
 function openProjector(url: string): Effect.Effect<void> {
@@ -358,6 +498,10 @@ function isLanOnly(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isPublicUrl(url: string): boolean {
+  return !isLocalOnly(url) && !isLanOnly(url);
 }
 
 function realtimeUrlFromBase(baseUrl: string): string {

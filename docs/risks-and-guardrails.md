@@ -46,6 +46,7 @@ UI disclaimer:
 - Phones need a reachable public or LAN URL.
 - `make online` auto-detects a LAN IP; set `QUIZRUSH_LAN_HOST` if the printed QR is not reachable from phones.
 - If venue Wi-Fi blocks laptop-to-phone traffic, or participants are on different networks, run `make online-public`.
-- `make online-public` prefers Cloudflare Tunnel when `cloudflared` is installed and falls back to ngrok. Ngrok free URLs can show provider warnings or hit account bandwidth limits, so Cloudflare is the safer room-demo default.
+- `make online-public` verifies the public page and websocket before printing the QR. It tries Cloudflare Tunnel, `localhost.run`, then ngrok.
+- Cloudflare quick tunnels have no uptime SLA and a 200 in-flight request limit. Ngrok free URLs can show provider warnings or hit account bandwidth limits. `localhost.run` is the practical fallback when venue DNS blocks fresh `trycloudflare.com` names.
 - For a trusted domain or a manually managed tunnel, set `PUBLIC_BASE_URL`. Browser realtime defaults to the same origin at `/quizrush-ws`.
 - If the websocket disconnects, the UI shows a reconnecting state.

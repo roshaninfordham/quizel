@@ -1,4 +1,4 @@
-.PHONY: online online-public online-cloudflare online-ngrok reset seed test typecheck build spacetime-build
+.PHONY: online online-public online-cloudflare online-localhostrun online-ngrok reset seed test typecheck build spacetime-build
 
 online:
 	pnpm online
@@ -8,6 +8,9 @@ online-public:
 
 online-cloudflare:
 	TUNNEL_PROVIDER=cloudflare pnpm online
+
+online-localhostrun:
+	TUNNEL_PROVIDER=localhostrun pnpm online
 
 online-ngrok:
 	TUNNEL_PROVIDER=ngrok pnpm online

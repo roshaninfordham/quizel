@@ -62,7 +62,7 @@ If venue Wi-Fi blocks phone-to-laptop traffic or friends are on different networ
 make online-public
 ```
 
-`make online-public` uses `cloudflared` first when installed and falls back to ngrok. Install Cloudflare Tunnel once with:
+`make online-public` tries verified public tunnels in this order: Cloudflare Tunnel, `localhost.run`, then ngrok. It only prints the QR after the public page and websocket both pass preflight. Install Cloudflare Tunnel once with:
 
 ```bash
 brew install cloudflared
@@ -72,10 +72,11 @@ You can force a provider during rehearsal:
 
 ```bash
 make online-cloudflare
+make online-localhostrun
 make online-ngrok
 ```
 
-Ngrok free URLs can hit provider warnings or account bandwidth limits. Cloudflare quick tunnels are preferred for room demos.
+Ngrok free URLs can hit provider warnings or account bandwidth limits. Cloudflare quick tunnels have a 200 in-flight request limit and no uptime SLA. `localhost.run` is useful when venue DNS blocks fresh `trycloudflare.com` hostnames.
 
 For a manual tunnel, expose the web app and set `PUBLIC_BASE_URL`. The websocket rides through the same public origin by default:
 
@@ -151,6 +152,7 @@ Real keys belong only in `.env.local`. `.env.example` contains placeholders.
 make online
 make online-public
 make online-cloudflare
+make online-localhostrun
 make online-ngrok
 make reset
 make seed
