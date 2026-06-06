@@ -62,13 +62,13 @@ const program = Effect.gen(function* () {
 
   yield* resetSession();
 
-  if (!process.env.PUBLIC_BASE_URL && !process.env.VITE_PUBLIC_APP_URL && (TUNNEL_PROVIDER === "auto" || TUNNEL_PROVIDER === "ngrok")) {
-    const tunnelUrl = yield* maybeStartNgrokTunnel(startProcess);
+  if (!process.env.PUBLIC_BASE_URL && !process.env.VITE_PUBLIC_APP_URL && TUNNEL_PROVIDER !== "none") {
+    const tunnelUrl = yield* maybeStartPublicTunnel(startProcess);
     if (tunnelUrl) {
       publicBaseUrl = tunnelUrl;
       browserRealtimeUrl = (process.env.PUBLIC_REALTIME_URL || process.env.VITE_REALTIME_URL || realtimeUrlFromBase(publicBaseUrl)).replace(/\/$/, "");
       joinUrl = `${publicBaseUrl}/join/${DEFAULT_SESSION_CODE}`;
-      projectorUrl = `${publicBaseUrl}/arena/${DEFAULT_SESSION_CODE}`;
+      projectorUrl = `${localBaseUrl}/arena/${DEFAULT_SESSION_CODE}`;
     }
   }
 
@@ -171,25 +171,87 @@ function printReadyBlock() {
   if (isLocalOnly(publicBaseUrl) || isLocalOnly(browserRealtimeUrl)) {
     console.log("Warning: the QR or websocket points at localhost. Phones need a LAN IP or public tunnel URL.");
   }
+  if (isLanOnly(publicBaseUrl) && TUNNEL_PROVIDER === "none" && !process.env.PUBLIC_BASE_URL && !process.env.VITE_PUBLIC_APP_URL) {
+    console.log("Network scope: same Wi-Fi/LAN only. For friends on any network, stop this and run: make online-public");
+  }
+  if (isLanOnly(publicBaseUrl) && TUNNEL_PROVIDER !== "none" && !process.env.PUBLIC_BASE_URL && !process.env.VITE_PUBLIC_APP_URL) {
+    console.log("Public tunnel did not start. Install cloudflared or configure ngrok, then rerun make online-public.");
+  }
+  if (publicBaseUrl.includes("trycloudflare.com")) {
+    console.log("Public tunnel: Cloudflare quick tunnel. This QR is intended for phones on any network.");
+  }
+  if (publicBaseUrl.includes("ngrok")) {
+    console.log("Public tunnel note: ngrok free links may show a browser warning. Tap Visit Site once, then join works.");
+  }
   console.log("");
 }
 
-function maybeStartNgrokTunnel(
+function maybeStartPublicTunnel(
   startProcess: (name: string, command: string, args: string[], env?: Record<string, string>) => ChildProcessWithoutNullStreams
 ): Effect.Effect<string | null, never> {
   return Effect.promise(async () => {
-    try {
-      if (!commandExists("ngrok")) return null;
-      const child = startProcess("ngrok", "ngrok", ["http", `http://localhost:${WEB_PORT}`, "--log=stdout"]);
-      const url = await waitForNgrokUrl();
-      if (!url) {
-        if (!child.killed) child.kill("SIGTERM");
+    if ((TUNNEL_PROVIDER === "auto" || TUNNEL_PROVIDER === "cloudflare" || TUNNEL_PROVIDER === "cloudflared") && commandExists("cloudflared")) {
+      try {
+        const url = await startCloudflareTunnel(startProcess);
+        if (url) return url;
+      } catch {
+        // Fall through to another provider or LAN mode.
+      }
+    }
+
+    if ((TUNNEL_PROVIDER === "auto" || TUNNEL_PROVIDER === "ngrok") && commandExists("ngrok")) {
+      try {
+        return await startNgrokTunnel(startProcess);
+      } catch {
         return null;
       }
-      return url.replace(/\/$/, "");
-    } catch {
-      return null;
     }
+
+    return null;
+  });
+}
+
+async function startCloudflareTunnel(
+  startProcess: (name: string, command: string, args: string[], env?: Record<string, string>) => ChildProcessWithoutNullStreams
+): Promise<string | null> {
+  const child = startProcess("cloudflared", "cloudflared", ["tunnel", "--url", `http://localhost:${WEB_PORT}`, "--no-autoupdate"]);
+  const url = await waitForProcessUrl(child, /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+  if (!url && !child.killed) child.kill("SIGTERM");
+  return url ? url.replace(/\/$/, "") : null;
+}
+
+async function startNgrokTunnel(
+  startProcess: (name: string, command: string, args: string[], env?: Record<string, string>) => ChildProcessWithoutNullStreams
+): Promise<string | null> {
+  const child = startProcess("ngrok", "ngrok", ["http", `http://localhost:${WEB_PORT}`, "--log=stdout"]);
+  const url = await waitForNgrokUrl();
+  if (!url) {
+    if (!child.killed) child.kill("SIGTERM");
+    return null;
+  }
+  return url.replace(/\/$/, "");
+}
+
+async function waitForProcessUrl(child: ChildProcessWithoutNullStreams, pattern: RegExp): Promise<string | null> {
+  return await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(null);
+    }, 20_000);
+    const onData = (chunk: Buffer) => {
+      const match = String(chunk).match(pattern);
+      if (match?.[0]) {
+        cleanup();
+        resolve(match[0]);
+      }
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.stdout.off("data", onData);
+      child.stderr.off("data", onData);
+    };
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
   });
 }
 
@@ -281,6 +343,18 @@ function isLocalOnly(url: string): boolean {
   try {
     const hostname = new URL(url).hostname;
     return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function isLanOnly(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    const parts = hostname.split(".").map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return false;
+    const [first, second] = parts;
+    return first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
   } catch {
     return false;
   }

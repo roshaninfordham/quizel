@@ -1,7 +1,8 @@
 import { schema, table, t } from "spacetimedb/server";
 
-const QUESTION_COUNT = 5;
-const QUESTION_TIME_LIMIT_MS = 5_000;
+const QUESTION_COUNT = 7;
+const TOTAL_MATCH_MS = 25_000;
+const QUESTION_TIME_LIMIT_MS = Math.floor(TOTAL_MATCH_MS / QUESTION_COUNT);
 const SIMULATED_ANSWER_BURST_SIZE = 8;
 const DEFAULT_TOPIC = "AI + Space + Startups";
 const DEFAULT_CODE = "ARENA-42";
@@ -361,6 +362,7 @@ export const submit_answer = spacetimedb.reducer({ round_id: t.string(), selecte
   }
   const currentQuestion = requireQuestion(ctx, currentRound.question_id);
   const now = nowMs();
+  if (now > currentRound.ends_at_ms) throw new Error("Round has ended.");
   const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms), QUESTION_TIME_LIMIT_MS));
   const is_correct = selected_option === currentQuestion.correct_option;
   const score_delta = computeAnswerScore(is_correct, response_ms);
@@ -566,7 +568,7 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
       topic?: string;
     }>;
   };
-  if (!Array.isArray(parsed.questions) || parsed.questions.length < QUESTION_COUNT) {
+  if (!Array.isArray(parsed.questions) || parsed.questions.length < current.question_count) {
     throw new Error("Malformed question pack.");
   }
   ctx.db.question.session_id.delete(session_id);
@@ -596,7 +598,7 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
     const request = ctx.db.agent_request.request_id.find(request_id);
     if (request) ctx.db.agent_request.request_id.update({ ...request, status: "complete", updated_at_ms: now });
   }
-  insertAgentEvent(ctx, session_id, "Match Engine", "questions_ready", "Five questions are ready for a 25-second race.", 1, "complete");
+  insertAgentEvent(ctx, session_id, "Match Engine", "questions_ready", `${current.question_count} questions are ready for a 25-second race.`, 1, "complete");
   bumpStats(ctx, session_id);
 }
 
@@ -606,8 +608,10 @@ function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order:
   if (!questionRow) throw new Error(`Question ${question_order} is not ready.`);
   const now = nowMs();
   const matchStartedAt = current.match_started_at_ms ?? now;
-  const startsAt = matchStartedAt + BigInt((question_order - 1) * QUESTION_TIME_LIMIT_MS);
-  const endsAt = matchStartedAt + BigInt(question_order * QUESTION_TIME_LIMIT_MS);
+  const matchDeadline = matchStartedAt + BigInt(TOTAL_MATCH_MS);
+  const startsAt = now < matchStartedAt ? matchStartedAt : now > matchDeadline ? matchDeadline : now;
+  const candidateEndsAt = startsAt + BigInt(QUESTION_TIME_LIMIT_MS);
+  const endsAt = candidateEndsAt > matchDeadline ? matchDeadline : candidateEndsAt;
   for (const active of ctx.db.round.session_id.filter(session_id)) {
     if (active.status === "active") ctx.db.round.round_id.update({ ...active, status: "resolved", resolved_at_ms: now });
   }

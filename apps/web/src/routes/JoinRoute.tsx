@@ -51,7 +51,10 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
 
   const join = async () => {
     const result = await joinTournament({ displayName: displayName.trim() || "Player", avatar });
-    if (result?.participant.participantId) setParticipantId(result.participant.participantId);
+    if (result?.participant.participantId) {
+      setParticipantId(result.participant.participantId);
+      await submitTopicVote(sessionId, topics.length ? topics : ["AI"]);
+    }
   };
 
   const toggleTopic = (topic: string) => {
@@ -68,7 +71,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         <ReconnectingOverlay state={connectionState} />
         <Panel className="mt-auto">
           <p className="text-sm font-black uppercase text-violet-700">QuizRush Live</p>
-          <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">Join the 25-second tournament</h1>
+          <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">Enter the sprint</h1>
           <label className="mt-8 block text-sm font-black uppercase text-slate-500">Your name</label>
           <input
             value={displayName}
@@ -77,14 +80,14 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
             className="mt-2 h-14 w-full rounded-[20px] border-2 border-slate-200 bg-white px-4 text-xl font-black outline-none focus:border-violet-500"
           />
           <p className="mt-6 text-sm font-black uppercase text-slate-500">Pick avatar</p>
-          <div className="mt-3 grid grid-cols-4 gap-3">
+          <div className="mt-3 grid grid-cols-4 gap-2">
             {AVATAR_CHOICES.map((choice) => (
               <button
                 key={choice}
                 type="button"
                 onClick={() => setAvatar(choice)}
                 className={cn(
-                  "grid aspect-square place-items-center rounded-[22px] border-2 text-4xl transition active:scale-95",
+                  "grid aspect-square place-items-center rounded-2xl border-2 text-3xl transition active:scale-95",
                   avatar === choice ? "border-violet-500 bg-violet-50" : "border-slate-200 bg-white"
                 )}
               >
@@ -92,9 +95,25 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
               </button>
             ))}
           </div>
+          <p className="mt-6 text-sm font-black uppercase text-slate-500">Pick up to 3 topics</p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {DEFAULT_TOPICS.map((topic) => (
+              <button
+                key={topic}
+                type="button"
+                onClick={() => toggleTopic(topic)}
+                className={cn(
+                  "min-h-12 rounded-2xl border-2 px-3 text-base font-black transition active:scale-95",
+                  topics.includes(topic) ? "border-violet-500 bg-violet-50 text-violet-800" : "border-slate-200 bg-white text-slate-900"
+                )}
+              >
+                {topic}
+              </button>
+            ))}
+          </div>
           {joinError ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{joinError}</p> : null}
           <Button onClick={join} disabled={joining} className="mt-7 w-full">
-            Join Tournament
+            Enter Race
           </Button>
         </Panel>
         <div className="mt-auto" />
@@ -167,8 +186,13 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     <PhoneShell>
       <ConnectionBadge state={connectionState} lastSyncAt={lastSyncAt} />
       <Panel className="mt-auto">
-        <p className="text-sm font-black uppercase text-violet-700">Welcome, {participant.displayName}</p>
-        <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">What do you want to compete in?</h1>
+        <p className="text-sm font-black uppercase text-violet-700">You're in, {participant.displayName}</p>
+        <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">
+          {session?.status === "generating" || session?.status === "ready" ? "Quiz is loading" : "Topic window is open"}
+        </h1>
+        <p className="mt-3 text-base font-bold text-slate-500">
+          Your choices sync live to the arena. The match starts automatically.
+        </p>
         <div className="mt-6 grid grid-cols-2 gap-3">
           {DEFAULT_TOPICS.map((topic) => (
             <button
@@ -185,10 +209,10 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           ))}
         </div>
         <Button onClick={() => void submitTopicVote(sessionId, topics.length ? topics : ["AI"])} disabled={voting} className="mt-7 w-full">
-          Lock Topics
+          Update Topics
         </Button>
         <p className="mt-4 text-center text-sm font-bold text-slate-500">
-          {voteMessage ? "Topics locked. Watch the projector." : "Match starts when the projector countdown ends."}
+          {voteMessage ? "Saved. Watch the projector." : "Stay ready. Questions appear automatically."}
         </p>
       </Panel>
       <div className="mt-auto" />

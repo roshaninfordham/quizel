@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_SELECTED_TOPIC,
   DEFAULT_SESSION_CODE,
   DEFAULT_SESSION_ID,
   QUESTION_COUNT,
   QUESTION_GENERATION_FALLBACK_MS,
   SIMULATED_ANSWER_BURST_SIZE,
   SIMULATED_JOIN_BATCH_SIZE,
+  TOPIC_COLLECTION_SECONDS,
   TOTAL_MATCH_SECONDS
 } from "@quizrush/shared";
 import {
@@ -72,6 +74,9 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   questionCountRef.current = state.questions.filter((candidate) => candidate.sessionId === sessionId).length;
   const tickInFlightRef = useRef(false);
   const simulatedAnswerInFlightRef = useRef(false);
+  const autoRequestRef = useRef(false);
+  const autoSeedRef = useRef(false);
+  const autoStartRef = useRef(false);
 
   const joinUrl = useMemo(() => {
     const configuredBase = String(import.meta.env.VITE_PUBLIC_APP_URL ?? "").trim();
@@ -81,6 +86,11 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     return `${base.replace(/\/$/, "")}/join/${session?.code ?? code}`;
   }, [code, session?.code]);
   const phase = session?.status ?? "lobby";
+  const firstJoinAt = participants.length ? Math.min(...participants.map((participant) => participant.joinedAt)) : null;
+  const topicWindowSeconds = firstJoinAt
+    ? Math.max(0, Math.ceil((firstJoinAt + TOPIC_COLLECTION_SECONDS * 1000 - now) / 1000))
+    : TOPIC_COLLECTION_SECONDS;
+  const selectedTopic = session?.selectedTopic ?? (topics.slice(0, 3).map((topic) => topic.topic).join(" + ") || DEFAULT_SELECTED_TOPIC);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
@@ -117,9 +127,51 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
 
   useEffect(() => {
     if (!round || round.status !== "active") return;
-    if (now < round.endsAt) return;
+    const currentAnswersForRound = answers.filter((answer) => answer.roundId === round.roundId);
+    const answeredIds = new Set(currentAnswersForRound.map((answer) => answer.participantId));
+    const realParticipants = participants.filter((participant) => !participant.isSimulated);
+    const realAnswered = realParticipants.filter((participant) => answeredIds.has(participant.participantId)).length;
+    const enoughRealAnswers = realParticipants.length > 0 && realAnswered >= realParticipants.length;
+    const enoughRoomAnswers = participants.length > 0 && currentAnswersForRound.length / participants.length >= 0.85;
+    const canAdvanceEarly = now >= round.startsAt + 650 && currentAnswersForRound.length > 0 && (enoughRealAnswers || enoughRoomAnswers);
+    if (now < round.endsAt && !canAdvanceEarly) return;
     void resolveRound(round.roundId);
-  }, [now, resolveRound, round]);
+  }, [answers, now, participants, resolveRound, round]);
+
+  useEffect(() => {
+    if (phase === "lobby" && participants.length === 0) {
+      autoRequestRef.current = false;
+      autoSeedRef.current = false;
+      autoStartRef.current = false;
+      return;
+    }
+
+    if (participants.length > 0 && (phase === "lobby" || phase === "topic_voting") && topicWindowSeconds <= 0 && !autoRequestRef.current) {
+      autoRequestRef.current = true;
+      void requestQuestions(sessionId, selectedTopic);
+      window.setTimeout(() => {
+        if (!autoSeedRef.current && questionCountRef.current < QUESTION_COUNT) {
+          autoSeedRef.current = true;
+          void seedQuestions(sessionId, selectedTopic);
+        }
+      }, QUESTION_GENERATION_FALLBACK_MS);
+    }
+
+    if ((phase === "ready" || (phase === "generating" && questionCountRef.current >= QUESTION_COUNT)) && !autoStartRef.current) {
+      autoStartRef.current = true;
+      window.setTimeout(() => void startMatch(sessionId), 450);
+    }
+  }, [
+    participants.length,
+    phase,
+    questionCountRef,
+    requestQuestions,
+    seedQuestions,
+    selectedTopic,
+    sessionId,
+    startMatch,
+    topicWindowSeconds
+  ]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -133,13 +185,13 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       if (key === "g") {
         void requestQuestions(sessionId);
         window.setTimeout(() => {
-          if (questionCountRef.current < QUESTION_COUNT) void seedQuestions(sessionId, session?.selectedTopic ?? "AI + Space + Startups");
+          if (questionCountRef.current < QUESTION_COUNT) void seedQuestions(sessionId, selectedTopic);
         }, QUESTION_GENERATION_FALLBACK_MS);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [callReducer, finishMatch, requestQuestions, resetDemo, seedQuestions, session?.selectedTopic, sessionId, startMatch]);
+  }, [callReducer, finishMatch, requestQuestions, resetDemo, seedQuestions, selectedTopic, sessionId, startMatch]);
 
   const currentAnswers = round ? answers.filter((answer) => answer.roundId === round.roundId).length : 0;
   const secondsRemaining = round ? Math.ceil(Math.max(0, round.endsAt - now) / 1000) : 25;
@@ -189,7 +241,12 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       ) : (
         <div className="grid flex-1 grid-cols-[1.08fr_0.92fr] gap-5">
           <div className="flex flex-col gap-5">
-            <QRHeroCard joinUrl={joinUrl} sessionCode={session?.code ?? code} joinedCount={participants.length} countdownSeconds={TOTAL_MATCH_SECONDS} />
+            <QRHeroCard
+              joinUrl={joinUrl}
+              sessionCode={session?.code ?? code}
+              joinedCount={participants.length}
+              countdownSeconds={participants.length ? topicWindowSeconds : TOTAL_MATCH_SECONDS}
+            />
             <FloatingAvatarCloud participants={participants} />
           </div>
           <div className="flex flex-col gap-5">

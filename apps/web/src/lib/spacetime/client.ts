@@ -38,7 +38,8 @@ export function connectToSpacetime(): {
   const host = import.meta.env.VITE_SPACETIMEDB_HOST ?? "ws://localhost:3000";
   const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizrush-live";
   const configuredRealtimeUrl = String(import.meta.env.VITE_REALTIME_URL ?? "").trim();
-  const realtimeUrl = configuredRealtimeUrl || browserRealtimeUrlFrom(window.location.origin);
+  const sameOriginRealtimeUrl = browserRealtimeUrlFrom(window.location.origin);
+  const realtimeUrl = isPrivateBrowserOrigin(window.location.hostname) ? sameOriginRealtimeUrl : configuredRealtimeUrl || sameOriginRealtimeUrl;
   return { host, module, realtimeUrl };
 }
 
@@ -49,6 +50,15 @@ export function browserRealtimeUrlFrom(baseUrl: string): string {
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+function isPrivateBrowserOrigin(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
+  const parts = hostname.split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return false;
+  const first = parts[0] ?? 0;
+  const second = parts[1] ?? 0;
+  return first === 10 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
 }
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }): React.ReactElement {

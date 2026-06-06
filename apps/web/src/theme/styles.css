@@ -31,10 +31,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background:
-    linear-gradient(135deg, rgba(255, 183, 3, 0.18), transparent 26%),
-    linear-gradient(225deg, rgba(34, 211, 238, 0.14), transparent 24%),
-    #fffdf7;
+  background: #f8fafc;
 }
 
 button,
@@ -65,7 +62,7 @@ button:disabled {
 
 .projector-grid {
   background-image:
-    linear-gradient(rgba(17, 24, 39, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(17, 24, 39, 0.04) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
 }

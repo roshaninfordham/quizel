@@ -53,10 +53,10 @@ export class WorkerConfigService extends Context.Tag("quizrush/WorkerConfig")<
 >() {}
 
 const questionCountConfig = Config.integer("QUIZ_QUESTION_COUNT").pipe(
-  Config.withDefault(5),
+  Config.withDefault(7),
   Config.validate({
-    message: "QUIZ_QUESTION_COUNT must be 5 for the QuizRush demo.",
-    validation: (value) => value === 5
+    message: "QUIZ_QUESTION_COUNT must be between 5 and 9 for the QuizRush sprint demo.",
+    validation: (value) => value >= 5 && value <= 9
   })
 );
 

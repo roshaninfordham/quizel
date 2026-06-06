@@ -26,7 +26,7 @@ Phone locks topics
 ## Question Generation
 
 ```text
-Projector key G
+5-second topic window closes
 -> request_questions reducer
 -> AgentRequest pending
 -> Effect worker routes topic + generates quiz
@@ -36,14 +36,14 @@ Projector key G
 -> Session status ready
 ```
 
-The projector also starts a deterministic fallback timer. If approved LLM questions are not committed quickly, seed questions are submitted so the judged flow never waits on model latency. Late LLM packs are ignored once a match has already started with an existing question pack.
+The projector starts this automatically after the topic window. It also starts a deterministic 700ms fallback timer. If approved LLM questions are not committed quickly, seed questions are submitted so the judged flow never waits on model latency. Late LLM packs are ignored once a match has already started with an existing question pack.
 
 ## 25-Second Match
 
 ```text
-Projector key S
+questions ready
 -> start_match reducer
--> round 1 starts with server starts_at/ends_at anchored to match_started_at
+-> round 1 starts with server starts_at/ends_at inside the match deadline
 -> phones render current question
 -> submit_answer reducer per tap
 -> duplicate check
@@ -54,14 +54,12 @@ Projector key S
 -> projector and phone subscriptions update
 ```
 
-All five rounds are anchored to the same `match_started_at` value:
+The sprint uses seven rapid questions inside one `match_started_at + 25s` budget. Rounds can advance early when the room has answered, but no round can extend past the match deadline:
 
 ```text
-round 1: +0s  to +5s
-round 2: +5s  to +10s
-round 3: +10s to +15s
-round 4: +15s to +20s
-round 5: +20s to +25s
+round 1: starts at match start
+round N: starts immediately after prior resolve
+final round: capped by match_started_at + 25s
 ```
 
 The projector calls `live_tick` every 500ms so p95 latency, reducer calls, active clients, and answer rates are refreshed by reducer-owned state. The `A` key streams 100 simulated players in small `add_simulated_players` reducer batches, and the active race uses `simulate_answer_burst` reducer calls to commit simulated answers quickly. Those simulated users are marked in state and exist only for honest room-load demonstration.

@@ -9,8 +9,6 @@ import {
   Loader2,
   Play,
   QrCode,
-  Radio,
-  RotateCcw,
   Sparkles,
   Trophy,
   Users,
@@ -43,8 +41,8 @@ export function cn(...classes: Array<string | false | null | undefined>): string
 
 export function ProjectorShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="projector-grid min-h-screen overflow-hidden px-10 py-7 text-slate-950">
-      <div className="mx-auto flex min-h-[calc(100vh-56px)] w-full max-w-[1760px] flex-col gap-5">{children}</div>
+    <main className="projector-grid min-h-screen overflow-hidden px-8 py-6 text-slate-950">
+      <div className="mx-auto flex min-h-[calc(100vh-48px)] w-full max-w-[1700px] flex-col gap-4">{children}</div>
       <Footer compact />
     </main>
   );
@@ -68,7 +66,7 @@ export function Footer({ compact = false }: { compact?: boolean }) {
 }
 
 export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <section className={cn("rounded-[28px] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-200/60", className)}>{children}</section>;
+  return <section className={cn("rounded-3xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70", className)}>{children}</section>;
 }
 
 export function Button({
@@ -129,19 +127,19 @@ export function TopStatusBar({
   lastSyncAt: number | null;
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4 rounded-[28px] border border-white/70 bg-white/90 px-6 py-4 shadow-xl shadow-slate-200/60 backdrop-blur">
+    <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white/95 px-5 py-4 shadow-sm backdrop-blur">
       <div>
         <div className="flex items-center gap-3">
           <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-r from-violet-600 to-blue-600 text-white">
             <Zap className="size-7" />
           </div>
           <div>
-            <h1 className="text-4xl font-black leading-none tracking-normal text-slate-950">{APP_NAME}</h1>
-            <p className="mt-1 text-xl font-extrabold text-slate-500">{APP_TAGLINE}</p>
+            <h1 className="text-3xl font-black leading-none tracking-normal text-slate-950">{APP_NAME}</h1>
+            <p className="mt-1 text-base font-extrabold text-slate-500">{APP_TAGLINE}</p>
           </div>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-base font-black">
+      <div className="flex flex-wrap items-center gap-2 text-sm font-black">
         <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} players`} />
         <StatusPill icon={<Play className="size-5" />} label={phase.replace("_", " ")} />
         <StatusPill icon={<Gauge className="size-5" />} label={`p95 ${p95LatencyMs}ms`} />
@@ -154,7 +152,7 @@ export function TopStatusBar({
 
 function StatusPill({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-3 text-slate-800">
+    <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-slate-800">
       {icon}
       <span>{label}</span>
     </div>
@@ -164,7 +162,7 @@ function StatusPill({ icon, label }: { icon: React.ReactNode; label: string }) {
 export function ConnectionBadge({ state, lastSyncAt }: { state: ConnectionState; lastSyncAt: number | null }) {
   const connected = state === "connected";
   return (
-    <div className={cn("inline-flex items-center gap-2 rounded-full px-4 py-3 font-black", connected ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800")}>
+    <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-2 font-black", connected ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800")}>
       {connected ? <Wifi className="size-5" /> : <WifiOff className="size-5" />}
       <span>{connected ? "SpacetimeDB Live" : state === "error" ? "Local fallback" : "Reconnecting"}</span>
       <span className="text-slate-500">{lastSyncAt ? `${Math.max(0, Math.round((Date.now() - lastSyncAt) / 1000))}s` : ""}</span>
@@ -192,54 +190,80 @@ export function QRHeroCard({
   joinedCount: number;
   countdownSeconds: number;
 }) {
+  const scope = joinLinkScope(joinUrl);
+  const status =
+    scope === "public"
+      ? { label: "Public internet QR", className: "bg-emerald-50 text-emerald-700", note: "Works for phones on any network." }
+      : scope === "lan"
+        ? { label: "Same Wi-Fi QR", className: "bg-amber-50 text-amber-800", note: "Friends must be on the same reachable network." }
+        : { label: "Laptop-only QR", className: "bg-rose-50 text-rose-700", note: "Restart with make online-public for room-wide scanning." };
   return (
-    <Panel className="grid min-h-[560px] grid-cols-[minmax(360px,0.9fr)_1.1fr] gap-8 p-8">
-      <div className="flex flex-col items-center justify-center rounded-[28px] bg-gradient-to-br from-white to-violet-50 p-8 ring-1 ring-violet-100">
-        <div className="rounded-[28px] bg-white p-6 shadow-2xl shadow-violet-200/80">
-          <QRCodeSVG value={joinUrl} size={340} level="H" includeMargin />
+    <Panel className="grid min-h-[500px] grid-cols-[minmax(320px,0.86fr)_1.14fr] gap-7 p-7">
+      <div className="flex flex-col items-center justify-center rounded-[28px] bg-slate-50 p-6 ring-1 ring-slate-200">
+        <div className="rounded-[28px] bg-white p-5 shadow-xl shadow-slate-200/80">
+          <QRCodeSVG value={joinUrl} size={300} level="H" includeMargin />
         </div>
-        <div className="mt-6 flex items-center gap-3 text-2xl font-black text-slate-950">
-          <QrCode className="size-7 text-violet-600" />
+        <div className="mt-5 flex items-center gap-3 text-2xl font-black text-slate-950">
+          <QrCode className="size-7 text-blue-600" />
           <span>Scan to join</span>
         </div>
-        <p className="mt-2 text-2xl font-black text-violet-700">Session: {sessionCode}</p>
-        <p className="mt-4 max-w-[420px] break-all rounded-2xl bg-slate-100 px-4 py-3 text-center text-base font-black text-slate-700">
+        <p className="mt-1 text-2xl font-black text-blue-700">Session {sessionCode}</p>
+        <p className="mt-4 max-w-[440px] break-all rounded-2xl bg-white px-4 py-3 text-center text-sm font-black text-slate-700 ring-1 ring-slate-200">
           {joinUrl}
         </p>
-        {isLocalOnlyUrl(joinUrl) ? (
-          <p className="mt-3 max-w-[420px] rounded-2xl bg-rose-50 px-4 py-3 text-center text-sm font-black text-rose-700">
-            This QR only works on this laptop. Restart with a LAN host or public tunnel.
-          </p>
-        ) : (
-          <p className="mt-3 max-w-[420px] rounded-2xl bg-emerald-50 px-4 py-3 text-center text-sm font-black text-emerald-700">
-            Phone-ready link
-          </p>
-        )}
+        <p className={cn("mt-3 max-w-[440px] rounded-2xl px-4 py-3 text-center text-sm font-black", status.className)}>
+          {status.label}. {status.note}
+        </p>
       </div>
       <div className="flex flex-col justify-center">
-        <p className="text-3xl font-black text-slate-500">Players Joined</p>
-        <motion.div key={joinedCount} initial={{ scale: 0.92 }} animate={{ scale: 1 }} className="mt-3 text-[132px] font-black leading-none text-slate-950">
+        <p className="text-2xl font-black uppercase text-slate-500">Players joined</p>
+        <motion.div key={joinedCount} initial={{ scale: 0.94 }} animate={{ scale: 1 }} className="mt-2 text-[116px] font-black leading-none text-slate-950">
           {joinedCount.toString().padStart(3, "0")}
         </motion.div>
-        <p className="mt-6 max-w-2xl text-5xl font-black leading-tight text-slate-950">
-          One QR code turns the whole room into a live tournament bracket.
+        <p className="mt-5 max-w-2xl text-5xl font-black leading-tight text-slate-950">
+          Everyone joins, picks topics, then races through a 25-second bracket.
         </p>
-        <div className="mt-8 inline-flex w-fit items-center gap-3 rounded-full bg-amber-100 px-5 py-4 text-2xl font-black text-amber-800">
+        <div className="mt-7 inline-flex w-fit items-center gap-3 rounded-full bg-slate-950 px-5 py-4 text-2xl font-black text-white">
           <Clock className="size-7" />
-          Match starts in {countdownSeconds}s
+          {joinedCount ? `Topic window closes in ${countdownSeconds}s` : "Waiting for first scan"}
+        </div>
+        <div className="mt-7 grid max-w-2xl grid-cols-3 gap-3">
+          <LobbyStep number="1" label="Name" />
+          <LobbyStep number="2" label="Topics" />
+          <LobbyStep number="3" label="Answer fast" />
         </div>
       </div>
     </Panel>
   );
 }
 
-function isLocalOnlyUrl(value: string): boolean {
+function LobbyStep({ number, label }: { number: string; label: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200">
+      <p className="text-sm font-black uppercase text-slate-500">Step {number}</p>
+      <p className="mt-1 text-xl font-black text-slate-950">{label}</p>
+    </div>
+  );
+}
+
+function joinLinkScope(value: string): "local" | "lan" | "public" {
   try {
-    const hostname = new URL(value).hostname;
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    const url = new URL(value);
+    const hostname = url.hostname;
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return "local";
+    if (isPrivateNetworkHost(hostname)) return "lan";
+    return "public";
   } catch {
-    return false;
+    return "local";
   }
+}
+
+function isPrivateNetworkHost(hostname: string): boolean {
+  const match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return false;
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  return first === 10 || first === 127 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
 }
 
 export function TopicSwarm({
@@ -251,25 +275,25 @@ export function TopicSwarm({
 }) {
   const rows = topicCounts.length ? topicCounts : DEFAULT_TOPICS.map((topic) => ({ topic, count: 0, percent: 0 }));
   return (
-    <Panel>
+    <Panel className="p-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-3xl font-black text-slate-950">Topic Swarm</h2>
-        {selectedTopic ? <span className="rounded-full bg-violet-100 px-4 py-2 text-base font-black text-violet-700">AI selected: {selectedTopic}</span> : null}
+        <h2 className="text-2xl font-black text-slate-950">Topic Intent</h2>
+        {selectedTopic ? <span className="rounded-full bg-blue-100 px-3 py-2 text-sm font-black text-blue-700">Selected: {selectedTopic}</span> : null}
       </div>
-      <div className="mt-5 space-y-4">
+      <div className="mt-4 space-y-3">
         {rows.slice(0, 6).map((row, index) => (
           <div key={row.topic}>
-            <div className="mb-2 flex items-center justify-between text-xl font-black">
+            <div className="mb-1.5 flex items-center justify-between text-lg font-black">
               <span>{row.topic}</span>
               <span className="text-slate-500">{row.percent}%</span>
             </div>
-            <div className="h-5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100">
               <motion.div
                 initial={false}
                 animate={{ width: `${Math.max(row.percent, row.count ? 8 : 3)}%` }}
                 className={cn(
                   "h-full rounded-full",
-                  index === 0 ? "bg-gradient-to-r from-violet-600 to-blue-600" : "bg-gradient-to-r from-cyan-400 to-emerald-400"
+                  index === 0 ? "bg-gradient-to-r from-blue-600 to-violet-600" : "bg-gradient-to-r from-cyan-500 to-emerald-500"
                 )}
               />
             </div>
@@ -282,16 +306,19 @@ export function TopicSwarm({
 
 export function FloatingAvatarCloud({ participants }: { participants: Participant[] }) {
   return (
-    <Panel className="min-h-[258px] overflow-hidden">
-      <h2 className="text-3xl font-black text-slate-950">Tournament Wall</h2>
-      <div className="mt-5 grid grid-cols-8 gap-3">
-        {participants.slice(-40).map((participant) => (
+    <Panel className="min-h-[224px] overflow-hidden">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-black text-slate-950">Roster Wall</h2>
+        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{participants.length} live</span>
+      </div>
+      <div className="mt-4 grid grid-cols-10 gap-2.5">
+        {participants.slice(-50).map((participant) => (
           <motion.div
             key={participant.participantId}
             layout
             initial={{ opacity: 0, scale: 0.6 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="grid aspect-square place-items-center rounded-full bg-gradient-to-br from-violet-600 to-blue-600 text-3xl shadow-lg shadow-violet-200"
+            className="grid aspect-square place-items-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 text-2xl shadow-md shadow-blue-100"
             title={participant.displayName}
           >
             {participant.avatar}
@@ -304,13 +331,13 @@ export function FloatingAvatarCloud({ participants }: { participants: Participan
 
 export function LiveJoinFeed({ participants }: { participants: Participant[] }) {
   return (
-    <Panel>
+    <Panel className="p-5">
       <h2 className="text-2xl font-black text-slate-950">Live Join Feed</h2>
-      <div className="mt-4 grid gap-3">
+      <div className="mt-3 grid gap-2">
         {participants.slice(-6).reverse().map((participant) => (
-          <motion.div key={participant.participantId} initial={{ x: 18, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+          <motion.div key={participant.participantId} initial={{ x: 18, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2.5">
             <Avatar participant={participant} />
-            <span className="text-lg font-black">+ {participant.displayName} entered the race</span>
+            <span className="truncate text-base font-black">+ {participant.displayName} entered the race</span>
           </motion.div>
         ))}
         {!participants.length ? <p className="text-lg font-bold text-slate-500">Waiting for the first scan...</p> : null}
@@ -322,26 +349,29 @@ export function LiveJoinFeed({ participants }: { participants: Participant[] }) 
 export function AgentPipeline({ events, status }: { events: AgentEvent[]; status: string }) {
   const steps = [
     { name: "Topic Router Agent", detail: "merged room intent" },
-    { name: "Quiz Builder Agent", detail: "generated 5 questions" },
+    { name: "Quiz Builder Agent", detail: `generated ${QUESTION_COUNT} sprint questions` },
     { name: "Fairness Agent", detail: "approved the pack" },
     { name: "Match Engine", detail: "ready to race" }
   ];
   return (
-    <Panel>
-      <h2 className="text-3xl font-black text-slate-950">Agent Pipeline</h2>
-      <div className="mt-5 grid grid-cols-4 gap-4">
+    <Panel className="p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-black text-slate-950">AI Build Pipeline</h2>
+        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{status.replace("_", " ")}</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
         {steps.map((step) => {
           const event = events.find((candidate) => candidate.agentName === step.name);
           const complete = event?.status === "complete" || event?.status === "fallback";
           const running = status === "generating" && !complete;
           return (
-            <div key={step.name} className={cn("rounded-[24px] border p-4", complete ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50")}>
+            <div key={step.name} className={cn("rounded-[20px] border p-3", complete ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50")}>
               <div className="flex items-center justify-between">
-                <Sparkles className={cn("size-6", complete ? "text-emerald-600" : "text-violet-600")} />
-                {complete ? <CheckCircle2 className="size-6 text-emerald-600" /> : running ? <Loader2 className="size-6 animate-spin text-violet-600" /> : null}
+                <Sparkles className={cn("size-5", complete ? "text-emerald-600" : "text-blue-600")} />
+                {complete ? <CheckCircle2 className="size-5 text-emerald-600" /> : running ? <Loader2 className="size-5 animate-spin text-blue-600" /> : null}
               </div>
-              <p className="mt-4 text-lg font-black text-slate-950">{step.name}</p>
-              <p className="mt-1 text-sm font-bold text-slate-500">{event?.content || step.detail}</p>
+              <p className="mt-3 text-base font-black text-slate-950">{step.name}</p>
+              <p className="mt-1 line-clamp-2 text-xs font-bold text-slate-500">{event?.content || step.detail}</p>
             </div>
           );
         })}
@@ -372,28 +402,28 @@ export function QuestionStage({
       ]
     : [];
   return (
-    <Panel className="flex min-h-[620px] flex-col justify-between">
+    <Panel className="flex min-h-[560px] flex-col justify-between">
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="rounded-full bg-violet-100 px-5 py-3 text-xl font-black text-violet-700">
+          <div className="rounded-full bg-blue-100 px-4 py-2.5 text-lg font-black text-blue-700">
             Question {round?.orderIndex ?? 0} / {QUESTION_COUNT}
           </div>
-          <div className="rounded-full bg-slate-950 px-5 py-3 text-xl font-black text-white">
+          <div className="rounded-full bg-slate-950 px-4 py-2.5 text-lg font-black text-white">
             Race clock {raceSecondsRemaining}s
           </div>
         </div>
         <TimerRing secondsRemaining={secondsRemaining} />
       </div>
-      <h2 className="mt-8 text-5xl font-black leading-tight text-slate-950">{question?.questionText ?? "Waiting for the agent-built question pack..."}</h2>
-      <div className="mt-8 grid grid-cols-2 gap-4">
+      <h2 className="mt-6 text-5xl font-black leading-tight text-slate-950">{question?.questionText ?? "Waiting for the agent-built question pack..."}</h2>
+      <div className="mt-6 grid grid-cols-2 gap-3">
         {options.map(([key, value]) => (
-          <div key={key} className="rounded-[24px] border-2 border-slate-200 bg-slate-50 p-5 text-2xl font-black text-slate-900">
-            <span className="mr-3 inline-grid size-10 place-items-center rounded-full bg-gradient-to-r from-violet-600 to-blue-600 text-lg text-white">{key}</span>
+          <div key={key} className="rounded-[22px] border-2 border-slate-200 bg-slate-50 p-4 text-2xl font-black text-slate-900">
+            <span className="mr-3 inline-grid size-10 place-items-center rounded-full bg-gradient-to-r from-blue-600 to-violet-600 text-lg text-white">{key}</span>
             {value}
           </div>
         ))}
       </div>
-      <div className="mt-8 flex items-center justify-between rounded-[24px] bg-slate-950 px-6 py-5 text-2xl font-black text-white">
+      <div className="mt-6 flex items-center justify-between rounded-[24px] bg-slate-950 px-6 py-4 text-2xl font-black text-white">
         <span>Live answers</span>
         <motion.span key={answersCount} initial={{ scale: 0.8 }} animate={{ scale: 1 }}>
           {answersCount}
@@ -409,7 +439,7 @@ export function TimerRing({ secondsRemaining }: { secondsRemaining: number }) {
     <motion.div
       animate={{ scale: urgent ? [1, 1.06, 1] : 1 }}
       transition={{ duration: 0.7, repeat: urgent ? Infinity : 0 }}
-      className={cn("grid size-24 place-items-center rounded-full text-4xl font-black text-white", urgent ? "bg-gradient-to-r from-rose-500 to-red-500" : "bg-gradient-to-r from-amber-400 to-orange-400")}
+      className={cn("grid size-22 place-items-center rounded-full text-4xl font-black text-white", urgent ? "bg-gradient-to-r from-rose-500 to-red-500" : "bg-gradient-to-r from-amber-400 to-orange-400")}
     >
       {Math.max(0, secondsRemaining)}
     </motion.div>
@@ -419,27 +449,30 @@ export function TimerRing({ secondsRemaining }: { secondsRemaining: number }) {
 export function LeaderboardPanel({ entries, compact = false }: { entries: Array<{ participant: Participant; score: Score }>; compact?: boolean }) {
   return (
     <Panel className="min-h-full">
-      <h2 className="text-3xl font-black text-slate-950">Live Leaderboard</h2>
-      <div className="mt-5 space-y-3">
-        {entries.slice(0, compact ? 7 : 10).map((entry) => (
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-black text-slate-950">Leaderboard</h2>
+        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">speed + accuracy</span>
+      </div>
+      <div className="mt-4 space-y-2.5">
+        {entries.slice(0, compact ? 8 : 12).map((entry) => (
           <motion.div
             key={entry.participant.participantId}
             layout
             className={cn(
-              "flex items-center gap-3 rounded-[20px] px-4 py-3",
+              "flex items-center gap-3 rounded-[20px] px-3 py-2.5",
               entry.score.currentRank === 1 ? "bg-gradient-to-r from-amber-100 to-orange-100 ring-2 ring-amber-300" : "bg-slate-50"
             )}
           >
-            <span className="w-10 text-2xl font-black text-slate-500">#{entry.score.currentRank}</span>
+            <span className="w-10 text-xl font-black text-slate-500">#{entry.score.currentRank}</span>
             <Avatar participant={entry.participant} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xl font-black text-slate-950">{entry.participant.displayName}</p>
+              <p className="truncate text-lg font-black text-slate-950">{entry.participant.displayName}</p>
               <p className="text-sm font-bold text-slate-500">{entry.score.correctCount}/{QUESTION_COUNT} correct</p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-black text-slate-950">{entry.score.totalScore.toLocaleString()}</p>
+              <p className="text-xl font-black text-slate-950">{entry.score.totalScore.toLocaleString()}</p>
               <p className={cn("text-sm font-black", entry.score.previousRank > entry.score.currentRank ? "text-emerald-600" : "text-slate-400")}>
-                {entry.score.previousRank > entry.score.currentRank ? "rank up" : "live"}
+                {entry.score.previousRank > entry.score.currentRank ? `up ${entry.score.previousRank - entry.score.currentRank}` : "live"}
               </p>
             </div>
           </motion.div>
@@ -451,24 +484,107 @@ export function LeaderboardPanel({ entries, compact = false }: { entries: Array<
 }
 
 export function TournamentBracket({ entries }: { entries: Array<{ participant: Participant; score: Score }> }) {
-  const top = entries.slice(0, 16);
+  const top16 = entries.slice(0, 16);
+  const top8 = entries.slice(0, 8);
+  const top4 = entries.slice(0, 4);
+  const top2 = entries.slice(0, 2);
   return (
-    <Panel className="min-h-full">
-      <h2 className="text-3xl font-black text-slate-950">Top 16 Bracket</h2>
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        {top.map((entry) => (
-          <motion.div key={entry.participant.participantId} layout className="flex items-center gap-3 rounded-[18px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
-            <span className="w-8 text-lg font-black text-violet-700">#{entry.score.currentRank}</span>
-            <Avatar participant={entry.participant} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-black">{entry.participant.displayName}</p>
-              <p className="text-sm font-bold text-slate-500">{entry.score.totalScore.toLocaleString()} pts</p>
-            </div>
-          </motion.div>
-        ))}
-        {!top.length ? <p className="col-span-2 text-lg font-bold text-slate-500">The bracket fills as players answer.</p> : null}
+    <Panel className="min-h-full overflow-hidden">
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-black text-slate-950">Live Fixture</h2>
+        <span className="rounded-full bg-blue-100 px-3 py-1.5 text-sm font-black text-blue-700">Top 16 race</span>
       </div>
+      {top16.length ? (
+        <div className="mt-5 grid h-[calc(100%-72px)] grid-cols-[minmax(0,1.12fr)_minmax(0,0.9fr)_minmax(0,0.78fr)_minmax(0,0.74fr)] gap-3">
+          <FixtureColumn title="Top 16" entries={top16} dense />
+          <FixtureColumn title="Top 8" entries={top8} />
+          <FixtureColumn title="Top 4" entries={top4} />
+          <FixtureColumn title="Final" entries={top2} />
+        </div>
+      ) : (
+        <p className="mt-5 text-lg font-bold text-slate-500">The fixture fills as the first answers commit.</p>
+      )}
     </Panel>
+  );
+}
+
+function FixtureColumn({
+  title,
+  entries,
+  dense = false
+}: {
+  title: string;
+  entries: Array<{ participant: Participant; score: Score }>;
+  dense?: boolean;
+}) {
+  const slotCount = dense ? 16 : title === "Top 8" ? 8 : title === "Top 4" ? 4 : 2;
+  return (
+    <div className="flex min-h-full min-w-0 flex-col rounded-[22px] border border-slate-200 bg-slate-50 p-2.5">
+      <p className="px-1 pb-2 text-xs font-black uppercase text-slate-500">{title}</p>
+      <div
+        className={cn(
+          "grid flex-1 gap-2",
+          dense ? "grid-cols-2 grid-rows-8" : slotCount === 8 ? "grid-rows-8" : slotCount === 4 ? "grid-rows-4" : "grid-rows-2"
+        )}
+      >
+        {entries.map((entry) => (
+          <FixtureSlot key={entry.participant.participantId} entry={entry} compact highlight={entry.score.currentRank === 1} />
+        ))}
+        {Array.from({ length: Math.max(0, slotCount - entries.length) }).map((_, index) => (
+          <div key={index} className="rounded-2xl border border-dashed border-slate-200 bg-white/70" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FixtureSlot({
+  entry,
+  compact = false,
+  highlight = false,
+  large = false
+}: {
+  entry: { participant: Participant; score: Score };
+  compact?: boolean;
+  highlight?: boolean;
+  large?: boolean;
+}) {
+  if (compact && !large) {
+    return (
+      <motion.div
+        layout
+        className={cn(
+          "relative grid w-full min-w-0 place-items-center overflow-hidden rounded-2xl border bg-white shadow-sm",
+          highlight ? "border-amber-300 ring-2 ring-amber-200" : "border-slate-200"
+        )}
+        title={`${entry.score.currentRank}. ${entry.participant.displayName} ${entry.score.totalScore} pts`}
+      >
+        <span className="absolute left-1.5 top-1 text-[10px] font-black leading-none text-slate-500">#{entry.score.currentRank}</span>
+        <div className="grid size-9 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 text-lg shadow-sm shadow-blue-100">
+          {entry.participant.avatar}
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      layout
+      className={cn(
+        "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-2xl border bg-white px-2.5 py-2 shadow-sm",
+        highlight ? "border-amber-300 ring-2 ring-amber-200" : "border-slate-200",
+        large && "px-3 py-3"
+      )}
+    >
+      <span className={cn("font-black text-slate-500", compact ? "w-7 text-sm" : "w-8 text-base")}>#{entry.score.currentRank}</span>
+      <div className={cn("grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 shadow-sm shadow-blue-100", compact ? "size-8 text-lg" : large ? "size-12 text-2xl" : "size-10 text-xl")}>
+        {entry.participant.avatar}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={cn("truncate font-black text-slate-950", compact ? "text-sm" : "text-base")}>{entry.participant.displayName}</p>
+        <p className="truncate text-xs font-bold text-slate-500">{entry.score.totalScore.toLocaleString()} pts</p>
+      </div>
+    </motion.div>
   );
 }
 

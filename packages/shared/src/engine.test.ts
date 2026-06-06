@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT } from "./constants";
+import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT, QUESTION_TIME_LIMIT_MS, TOTAL_MATCH_SECONDS } from "./constants";
 import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
 import { QuizRushEngine } from "./engine";
 import { computeAnswerScore, percentile } from "./scoring";
@@ -87,7 +87,7 @@ describe("QuizRush reducer invariants", () => {
     expect(engine.getSnapshot().sessions[0]?.currentRound).toBe(1);
   });
 
-  it("round deadlines stay anchored to a 25-second match budget", () => {
+  it("rounds advance immediately while staying inside the 25-second match budget", () => {
     const engine = prepareReadyMatch();
     const first = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
     const startedAt = engine.getSnapshot().sessions[0]?.matchStartedAt;
@@ -95,8 +95,9 @@ describe("QuizRush reducer invariants", () => {
     const secondRound = engine.getSnapshot().rounds.find((round) => round.orderIndex === 2);
 
     expect(startedAt).toBeTypeOf("number");
-    expect(secondRound?.startsAt).toBe((startedAt ?? 0) + 5_000);
-    expect(secondRound?.endsAt).toBe((startedAt ?? 0) + 10_000);
+    expect(secondRound?.startsAt).toBeGreaterThanOrEqual(startedAt ?? 0);
+    expect(secondRound?.endsAt).toBeLessThanOrEqual((startedAt ?? 0) + TOTAL_MATCH_SECONDS * 1000);
+    expect((secondRound?.endsAt ?? 0) - (secondRound?.startsAt ?? 0)).toBeLessThanOrEqual(QUESTION_TIME_LIMIT_MS);
   });
 
   it("submit_answer rejects duplicate answers and records the rejection", () => {

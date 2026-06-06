@@ -50,15 +50,39 @@ export const SEEDED_DEMO_QUESTIONS: QuestionInput[] = [
     topic: "SpacetimeDB"
   },
   {
-    questionText: "A correct 1-second answer earns what bonus?",
+    questionText: "What decides your rank after every answer?",
     options: {
-      A: "About 800",
-      B: "Zero",
-      C: "Only 25",
-      D: "A profile badge"
+      A: "Score rules",
+      B: "Screen size",
+      C: "Avatar color",
+      D: "Join order only"
     },
     correctOption: "A",
-    explanation: "With a 5-second timer, the speed bonus is roughly 1000 * (1 - 1/5).",
+    explanation: "Ranks are recomputed from committed scores, correctness, and response time.",
+    topic: "Scoring"
+  },
+  {
+    questionText: "Why keep the quiz under one match clock?",
+    options: {
+      A: "To cap race time",
+      B: "To hide scores",
+      C: "To stop joins",
+      D: "To slow answers"
+    },
+    correctOption: "A",
+    explanation: "A single match deadline keeps the tournament fast and predictable for the room.",
+    topic: "Realtime Systems"
+  },
+  {
+    questionText: "A correct answer gets speed points when it is...",
+    options: {
+      A: "Earlier",
+      B: "Later",
+      C: "Skipped",
+      D: "Duplicated"
+    },
+    correctOption: "A",
+    explanation: "Correct answers earn more speed bonus when the server receives them earlier.",
     topic: "Scoring"
   }
 ];

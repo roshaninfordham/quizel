@@ -9,7 +9,7 @@ export const sharedGuardrails = [
   "Use the provided output schema exactly.",
   "Keep explanations short and educational.",
   "Do not use gambling language.",
-  "Questions must be answerable in about five seconds from general knowledge."
+  "Questions must be answerable in a few seconds from general knowledge."
 ].join("\n");
 
 export function topicRouterPrompt(): string {
@@ -23,7 +23,7 @@ export function quizAuthorPrompt(): string {
   return `${sharedGuardrails}
 
 You are the Quiz Builder Agent for QuizRush Live.
-Generate exactly five fast multiple-choice questions with four short options and one unambiguous correct answer.`;
+Generate the requested number of fast multiple-choice questions with four short options and one unambiguous correct answer.`;
 }
 
 export function fairnessReviewPrompt(): string {
@@ -69,7 +69,7 @@ export function quizAuthorUserPrompt(input: {
     topic: input.topic,
     question_count: input.questionCount,
     rules: [
-      "Exactly five questions.",
+      `Exactly ${input.questionCount} questions.`,
       "Each question and option must be short enough for phone screens.",
       "Options A, B, C, and D must all be plausible.",
       "Only one option can be correct.",
@@ -100,11 +100,11 @@ export function fairnessReviewUserPrompt(input: { questions: unknown }): string 
     task: "Review and repair this QuizRush Live question batch.",
     questions: input.questions,
     checks: [
-      "exactly five questions",
+      "matches the requested question count",
       "each question has exactly four options",
       "no duplicate options",
       "one correct answer",
-      "short enough for five-second answers",
+      "short enough for rapid answers",
       "public-audience safe",
       "explanation matches the correct answer"
     ],

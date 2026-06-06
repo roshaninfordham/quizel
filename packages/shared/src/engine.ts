@@ -5,7 +5,8 @@ import {
   DEFAULT_TOPICS,
   QUESTION_COUNT,
   QUESTION_TIME_LIMIT_MS,
-  SIMULATED_ANSWER_BURST_SIZE
+  SIMULATED_ANSWER_BURST_SIZE,
+  TOTAL_MATCH_SECONDS
 } from "./constants";
 import { questionBatchSchema, selectedOptionSchema } from "./schemas";
 import { computeAnswerScore, compareScores } from "./scoring";
@@ -385,8 +386,9 @@ export class QuizRushEngine {
     const question = this.requireQuestionByOrder(session.sessionId, args.questionOrder);
     const now = Date.now();
     const matchStartedAt = session.matchStartedAt ?? now;
-    const startsAt = matchStartedAt + (args.questionOrder - 1) * QUESTION_TIME_LIMIT_MS;
-    const endsAt = matchStartedAt + args.questionOrder * QUESTION_TIME_LIMIT_MS;
+    const matchDeadline = matchStartedAt + TOTAL_MATCH_SECONDS * 1000;
+    const startsAt = Math.min(Math.max(now, matchStartedAt), matchDeadline);
+    const endsAt = Math.min(startsAt + QUESTION_TIME_LIMIT_MS, matchDeadline);
     for (const round of this.state.rounds.filter((round) => round.sessionId === session.sessionId && round.status === "active")) {
       round.status = "resolved";
       round.resolvedAt = now;
@@ -433,6 +435,7 @@ export class QuizRushEngine {
     }
     const question = this.requireQuestion(round.questionId);
     const now = Date.now();
+    if (now > round.endsAt) throw new Error("Round has ended.");
     const responseMs = Math.max(0, Math.min(now - round.startsAt, QUESTION_TIME_LIMIT_MS));
     const isCorrect = args.selectedOption === question.correctOption;
     const scoreDelta = computeAnswerScore({ isCorrect, responseMs });

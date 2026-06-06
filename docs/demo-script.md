@@ -8,7 +8,7 @@
 
 0:10-0:25
 
-Run `make online`. Show the projector arena and QR.
+Run `make online-public`. Show the projector arena and QR.
 
 “Scan this. No app, no login. Your phone becomes the controller.”
 
@@ -22,13 +22,11 @@ Optional backup: press `A` to stream 100 marked simulated players if the room is
 
 0:40-0:55
 
-Press `G`.
-
 “The Effect worker routes the room’s topic intent, calls the LLM, validates the JSON, runs fairness/safety guardrails, and falls back to seed questions if anything fails.”
 
 0:55-1:20
 
-Press `S`. Phones answer five questions.
+The match starts automatically. Phones answer seven rapid questions inside the 25-second race clock.
 
 “Now watch the leaderboard and top-16 bracket move after every tap. Scores are not client-side guesses; response time, correctness, rank, and duplicate-answer rejection happen in reducer-owned state.”
 
@@ -56,7 +54,7 @@ Why SpacetimeDB?
 
 Why AI?
 
-“AI routes the room’s topic intent, generates the five-question challenge, reviews fairness, and produces recap/commentary. It is a content pipeline, not a chatbot bolted onto the side.”
+“AI routes the room’s topic intent, generates the sprint challenge, reviews fairness, and produces recap/commentary. It is a content pipeline, not a chatbot bolted onto the side.”
 
 Is this gambling?
 
@@ -68,4 +66,4 @@ What is technically hard?
 
 What is mocked?
 
-“Production auth, profiles, cloud deployment, and automated public tunneling. The realtime match engine, reducer invariants, scoring, replay ledger, AI validation/fallback, and UI flow are working.”
+“Production auth, profiles, and a permanent cloud deployment. The realtime match engine, public tunnel launch, reducer invariants, scoring, replay ledger, AI validation/fallback, and UI flow are working.”

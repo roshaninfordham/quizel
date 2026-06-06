@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { QUESTION_COUNT } from "./constants";
 
 export const optionKeySchema = z.enum(["A", "B", "C", "D"]);
 
@@ -16,7 +17,7 @@ export const questionInputSchema = z.object({
 });
 
 export const questionBatchSchema = z.object({
-  questions: z.array(questionInputSchema).min(1).max(5)
+  questions: z.array(questionInputSchema).min(1).max(Math.max(QUESTION_COUNT, 9))
 });
 
 export const joinTournamentSchema = z.object({

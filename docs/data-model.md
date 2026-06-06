@@ -9,8 +9,8 @@ QuizRush Live uses reducer-owned game state. Clients call reducers and subscribe
 | `Session` | Session code, status, selected topic, current round, match timestamps. |
 | `Participant` | Joined player identity, display name, avatar, simulated flag, heartbeat latency. |
 | `TopicVote` | One latest topic set per participant, stored as rows for live swarm counts. |
-| `Question` | Five approved questions with options, correct option, explanation, and source. |
-| `Round` | Server-side start/end timestamps for each 5-second question. |
+| `Question` | Seven approved sprint questions with options, correct option, explanation, and source. |
+| `Round` | Server-side start/end timestamps for each rapid question, capped by the 25-second match deadline. |
 | `Answer` | One committed answer per participant per round. |
 | `Score` | Cached total score, correct count, response time, fastest answer, current rank. |
 | `MatchEvent` | Event ledger for join, topic vote, answer, score delta, rank change, round resolved, match finished. |
@@ -42,7 +42,7 @@ lobby -> topic_voting -> generating -> ready -> playing -> finished -> replay
 ```text
 if correct:
   base = 1000
-  speed_bonus = floor(1000 * clamp(1 - response_ms / 5000, 0, 1))
+  speed_bonus = floor(1000 * clamp(1 - response_ms / round_time_limit_ms, 0, 1))
 else:
   base = 0
   speed_bonus = 0

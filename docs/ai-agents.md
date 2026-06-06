@@ -7,7 +7,7 @@ The AI layer runs outside reducers in `apps/agent-worker`. Reducers remain deter
 | Agent | Job | Reducer Output |
 | --- | --- | --- |
 | Topic Router Agent | Merge topic votes into one tournament topic. | `record_agent_event`, selected topic for generation. |
-| Quiz Builder Agent | Generate exactly five short MCQ questions. | `submit_question_pack`. |
+| Quiz Builder Agent | Generate exactly seven short MCQ questions for the sprint. | `submit_question_pack`. |
 | Safety Guard Agent | Optional model-based safety classification. | `record_agent_event`; rejects unsafe content before use. |
 | Fairness Agent | Validate options, ambiguity, length, and explanation correctness. | `record_agent_event`; repaired pack if needed. |
 | Host Commentator Agent | Short positive commentary after resolved rounds. | `record_agent_event`. |

@@ -18,7 +18,7 @@ Live events, classrooms, sponsor booths, and team trainings struggle to make the
 
 ## Solution
 
-QuizRush Live turns the room into a synchronized multiplayer race. Everyone joins instantly from a phone, votes on topics, answers the same five fast questions, and watches the projector leaderboard/bracket move live.
+QuizRush Live turns the room into a synchronized multiplayer race. Everyone joins instantly from a phone, votes on topics during a short intent window, answers seven rapid questions inside a 25-second race clock, and watches the projector leaderboard/fixture move live.
 
 ## Technical Claim
 
