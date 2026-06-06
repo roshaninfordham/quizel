@@ -40,6 +40,8 @@ export function TechRoute({ code = DEFAULT_SESSION_CODE, embedded = false }: { c
         <TechCard label="duplicate answers rejected" value={stats?.duplicateAnswersRejected ?? 0} />
         <TechCard label="p95 sync latency" value={`${stats?.p95LatencyMs ?? 48}ms`} />
         <TechCard label="players joined" value={stats?.joinedCount ?? participants.length} />
+        <TechCard label="real players" value={stats?.realJoinedCount ?? participants.filter((participant) => !participant.isSimulated).length} />
+        <TechCard label="simulated load" value={stats?.simulatedJoinedCount ?? participants.filter((participant) => participant.isSimulated).length} />
         <TechCard label="questions approved" value={questions.length} />
         <TechCard label="match events recorded" value={events.length} />
       </div>

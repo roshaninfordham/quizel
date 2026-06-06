@@ -25,6 +25,6 @@ export function compareScores(a: Score, b: Score): number {
 }
 
 export function percentile(rank: number, total: number): number {
-  if (total <= 1) return 100;
-  return Math.max(1, Math.round(((total - rank + 1) / total) * 100));
+  if (total <= 0) return 100;
+  return clamp(Math.ceil((Math.max(1, rank) * 100) / total), 1, 100);
 }

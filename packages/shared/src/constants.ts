@@ -10,8 +10,12 @@ export const QUESTION_COUNT = 5;
 export const TOTAL_MATCH_SECONDS = 25;
 export const QUESTION_SECONDS = 5;
 export const QUESTION_TIME_LIMIT_MS = QUESTION_SECONDS * 1000;
+export const QUESTION_GENERATION_DEADLINE_MS = 25_000;
+export const QUESTION_GENERATION_FALLBACK_MS = 2_200;
 export const CORRECT_BASE_POINTS = 1000;
 export const MAX_SPEED_BONUS = 1000;
+export const SIMULATED_JOIN_BATCH_SIZE = 5;
+export const SIMULATED_ANSWER_BURST_SIZE = 8;
 
 export const DEFAULT_TOPICS = ["AI", "Space", "Tech", "Math", "History", "Startups"];
 export const DEFAULT_SELECTED_TOPIC = "AI + Space + Startups";

@@ -37,8 +37,9 @@ export function connectToSpacetime(): {
 } {
   const host = import.meta.env.VITE_SPACETIMEDB_HOST ?? "ws://localhost:3000";
   const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizrush-live";
+  const configuredRealtimeUrl = String(import.meta.env.VITE_REALTIME_URL ?? "").trim();
   const realtimeUrl =
-    import.meta.env.VITE_REALTIME_URL ?? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8787`;
+    configuredRealtimeUrl || `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:8787`;
   return { host, module, realtimeUrl };
 }
 
@@ -226,9 +227,23 @@ export function getDeviceIdentity(): string {
   const key = "quizrush-live-device";
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
-  const created = `device-${crypto.randomUUID()}`;
+  const created = createClientId("device");
   window.localStorage.setItem(key, created);
   return created;
+}
+
+function createClientId(prefix: string): string {
+  if (typeof window.crypto?.randomUUID === "function") {
+    return `${prefix}-${window.crypto.randomUUID()}`;
+  }
+
+  if (typeof window.crypto?.getRandomValues === "function") {
+    const bytes = new Uint32Array(4);
+    window.crypto.getRandomValues(bytes);
+    return `${prefix}-${Array.from(bytes, (value) => value.toString(36)).join("")}`;
+  }
+
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function getJoinedParticipantId(code = DEFAULT_SESSION_CODE): string | null {

@@ -44,5 +44,6 @@ UI disclaimer:
 ## Network Risk
 
 - Phones need a reachable public or LAN URL.
-- `PUBLIC_BASE_URL` should be set to a Cloudflare/ngrok URL for rooms outside the laptop network.
+- `make online` auto-detects a LAN IP; set `QUIZRUSH_LAN_HOST` if the printed QR is not reachable from phones.
+- For rooms outside the laptop network, set both `PUBLIC_BASE_URL` and `PUBLIC_REALTIME_URL` to tunnel URLs.
 - If the websocket disconnects, the UI shows a reconnecting state.

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AVATAR_CHOICES, DEFAULT_SESSION_CODE, DEFAULT_TOPICS, QUESTION_COUNT, type OptionKey, percentile } from "@quizrush/shared";
 import { AnswerButton, Button, ConnectionBadge, Panel, PhoneShell, ReconnectingOverlay, cn } from "../components/ui";
 import { useJoinTournament, useSubmitAnswer, useSubmitTopicVote } from "../hooks/useArenaActions";
@@ -26,6 +26,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const [displayName, setDisplayName] = useState("");
   const [avatar, setAvatar] = useState(AVATAR_CHOICES[0] ?? "🚀");
   const [topics, setTopics] = useState<string[]>(["AI"]);
+  const [now, setNow] = useState(Date.now());
   const { joinTournament, loading: joining, error: joinError } = useJoinTournament(code);
   const { submitTopicVote, loading: voting, message: voteMessage } = useSubmitTopicVote();
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
@@ -42,6 +43,11 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         : [],
     [question]
   );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const join = async () => {
     const result = await joinTournament({ displayName: displayName.trim() || "Player", avatar });
@@ -130,7 +136,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
               <p className="mt-1 text-sm font-bold text-slate-500">Rank #{score?.currentRank ?? "-"} · {score?.totalScore.toLocaleString() ?? 0} pts</p>
             </div>
             <div className="grid size-16 place-items-center rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-2xl font-black text-white">
-              {Math.ceil(Math.max(0, round.endsAt - Date.now()) / 1000)}
+              {Math.ceil(Math.max(0, round.endsAt - now) / 1000)}
             </div>
           </div>
           <h1 className="mt-6 text-2xl font-black leading-tight text-slate-950">{question.questionText}</h1>

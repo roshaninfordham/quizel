@@ -16,7 +16,7 @@ QuizRush Live uses reducer-owned game state. Clients call reducers and subscribe
 | `MatchEvent` | Event ledger for join, topic vote, answer, score delta, rank change, round resolved, match finished. |
 | `AgentRequest` | Pending quiz generation/recap work for the Effect worker. |
 | `AgentEvent` | Visible agent pipeline events and fallback logs. |
-| `LiveStats` | Joined counts, answer rate, reducer calls, duplicate rejects, p95 latency. |
+| `LiveStats` | Joined counts split by real/simulated players, answer rate, reducer calls, duplicate rejects, p95 latency. |
 | `AuditEvent` | Operator/system audit trail for demo reset and session changes. |
 
 ## Session Status
@@ -35,6 +35,7 @@ lobby -> topic_voting -> generating -> ready -> playing -> finished -> replay
 - Duplicate answers are rejected and counted.
 - AI can submit question packs and agent events, but cannot mutate scores.
 - Replay is reconstructed from `MatchEvent`, not from client-only animation state.
+- Live metrics are refreshed through reducers such as `live_tick`, not client-only counters.
 
 ## Scoring
 

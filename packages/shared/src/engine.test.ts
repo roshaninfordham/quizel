@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT } from "./constants";
 import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
 import { QuizRushEngine } from "./engine";
-import { computeAnswerScore } from "./scoring";
+import { computeAnswerScore, percentile } from "./scoring";
 
 function prepareReadyMatch() {
   const engine = new QuizRushEngine();
@@ -87,6 +87,18 @@ describe("QuizRush reducer invariants", () => {
     expect(engine.getSnapshot().sessions[0]?.currentRound).toBe(1);
   });
 
+  it("round deadlines stay anchored to a 25-second match budget", () => {
+    const engine = prepareReadyMatch();
+    const first = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    const startedAt = engine.getSnapshot().sessions[0]?.matchStartedAt;
+    engine.callReducer("resolve_round", { roundId: first.roundId }, "operator");
+    const secondRound = engine.getSnapshot().rounds.find((round) => round.orderIndex === 2);
+
+    expect(startedAt).toBeTypeOf("number");
+    expect(secondRound?.startsAt).toBe((startedAt ?? 0) + 5_000);
+    expect(secondRound?.endsAt).toBe((startedAt ?? 0) + 10_000);
+  });
+
   it("submit_answer rejects duplicate answers and records the rejection", () => {
     const engine = prepareReadyMatch();
     const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
@@ -104,6 +116,12 @@ describe("QuizRush reducer invariants", () => {
     expect(computeAnswerScore({ isCorrect: false, responseMs: 1 })).toBe(0);
   });
 
+  it("formats top-room placement from rank", () => {
+    expect(percentile(1, 100)).toBe(1);
+    expect(percentile(7, 100)).toBe(7);
+    expect(percentile(100, 100)).toBe(100);
+  });
+
   it("updates rankings and writes replay events after answers", () => {
     const engine = prepareReadyMatch();
     const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
@@ -115,6 +133,29 @@ describe("QuizRush reducer invariants", () => {
     expect(ranked[0]?.currentRank).toBe(1);
     expect(state.matchEvents.some((event) => event.eventType === "answer")).toBe(true);
     expect(state.matchEvents.some((event) => event.eventType === "score_delta")).toBe(true);
+  });
+
+  it("simulate_answer_burst commits simulated answers, score changes, and live stats", () => {
+    const engine = prepareReadyMatch();
+    engine.callReducer("add_simulated_players", { sessionId: DEFAULT_SESSION_ID, count: 12 }, "operator");
+    engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const burst = engine.callReducer("simulate_answer_burst", { sessionId: DEFAULT_SESSION_ID, count: 8 }, "simulation-engine");
+    const state = engine.getSnapshot();
+
+    expect(burst.ok).toBe(true);
+    expect(state.answers.filter((answer) => answer.roundId === state.rounds[0]?.roundId)).toHaveLength(8);
+    expect(state.liveStats[0]?.answersCount).toBe(8);
+    expect(state.matchEvents.some((event) => event.eventType === "score_delta")).toBe(true);
+  });
+
+  it("live_tick refreshes live stats through a reducer", () => {
+    const engine = prepareReadyMatch();
+    const before = engine.getSnapshot().liveStats[0]?.updatedAt ?? 0;
+    const tick = engine.callReducer("live_tick", { sessionId: DEFAULT_SESSION_ID }, "projector");
+    const after = engine.getSnapshot().liveStats[0]?.updatedAt ?? 0;
+
+    expect(tick.ok).toBe(true);
+    expect(after).toBeGreaterThanOrEqual(before);
   });
 
   it("resolve_round is idempotent and starts the next question once", () => {

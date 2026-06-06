@@ -45,14 +45,23 @@ make online
 Default local URLs:
 
 - Projector: http://localhost:5173/arena/ARENA-42
-- Phone: http://localhost:5173/join/ARENA-42
+- Phone QR: `make online` prints a LAN URL such as `http://YOUR_LAPTOP_IP:5173/join/ARENA-42`
 - Tech proof: http://localhost:5173/tech/ARENA-42
-- Realtime gateway: ws://localhost:8787
+- Phone realtime gateway: `ws://YOUR_LAPTOP_IP:8787`
+- Worker realtime gateway: ws://127.0.0.1:8787
 
-For room phones, expose the laptop with Cloudflare Tunnel/ngrok and run:
+For room phones on the same Wi-Fi, use the printed QR. If the detected IP is wrong, set it explicitly:
 
 ```bash
-PUBLIC_BASE_URL=https://your-public-url.example make online
+QUIZRUSH_LAN_HOST=192.168.1.23 make online
+```
+
+For phones outside the LAN, expose both the web app and websocket gateway with tunnels and run:
+
+```bash
+PUBLIC_BASE_URL=https://your-web-tunnel.example \
+PUBLIC_REALTIME_URL=wss://your-realtime-tunnel.example \
+make online
 ```
 
 ## Architecture
@@ -86,6 +95,9 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Single phone route at `/join/:code`.
 - Optional tech proof at `/tech/:code`.
 - Realtime joins, topic votes, answers, scores, ranks, bracket, winner, and replay.
+- Live projector metrics refreshed by reducer-owned `live_tick` updates.
+- Simulated 100-player room load streamed in small reducer batches from the `A` key.
+- Simulated answer bursts during the 25-second race for fast leaderboard/bracket movement.
 - Reducer-owned game state in `packages/shared` and `modules/spacetime`.
 - One answer per participant per round.
 - Server-authoritative response time and score calculation.
@@ -99,7 +111,7 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 
 - Production auth, payments, stored-value accounts, profiles, chat, and content marketplace are intentionally omitted.
 - The default judged laptop transport is the local realtime gateway for reliability. The SpacetimeDB module builds and exposes the same public reducers/tables for direct integration.
-- Cloudflare/ngrok tunnel startup is not automated; set `PUBLIC_BASE_URL` after starting a tunnel.
+- Cloudflare/ngrok tunnel startup is not automated; set `PUBLIC_BASE_URL` and `PUBLIC_REALTIME_URL` after starting tunnels.
 
 ## AI Agents
 
@@ -147,8 +159,10 @@ submit_answer
 resolve_round
 finish_match
 heartbeat
+live_tick
 reset_demo
 add_simulated_players
+simulate_answer_burst
 record_agent_event
 ```
 
@@ -164,7 +178,7 @@ Manual golden path:
 
 - Join from two browser tabs or phones.
 - Lock topics.
-- Press `G`, then `S`.
+- Press `A` to stream 100 simulated players, then `G`, then `S`.
 - Answer on phones.
 - Tap the same answer twice and verify duplicate rejection in tech overlay.
 - Let five rounds resolve.

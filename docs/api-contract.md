@@ -17,9 +17,22 @@ The web app calls domain hooks, which call reducers through `apps/web/src/lib/sp
 | `resolve_round` | `{ roundId }` | Idempotently resolves the round and starts next round or finishes match. |
 | `finish_match` | `{ sessionId, force? }` | Finishes the match and writes the final winner event. |
 | `heartbeat` | `{ sessionId, clientLatencyMs? }` | Updates last-seen and latency stats. |
+| `live_tick` | `{ sessionId }` | Refreshes reducer-owned live stats so projector numbers keep moving from authoritative state. |
 | `reset_demo` | `{ sessionId? }` | Returns the demo to a clean lobby. |
 | `add_simulated_players` | `{ sessionId, count }` | Adds marked simulated players for honest load demos. |
+| `simulate_answer_burst` | `{ sessionId, count }` | During an active round, commits answers for simulated participants and updates scores/ranks/events. |
 | `record_agent_event` | `{ sessionId, agentName, eventType, content, confidence, status }` | Appends an agent pipeline event. |
+
+## Room Networking Contract
+
+`make online` prints the URLs that phones must use:
+
+```text
+Phone join QR: http://YOUR_LAPTOP_IP:5173/join/ARENA-42
+Phone realtime websocket: ws://YOUR_LAPTOP_IP:8787
+```
+
+The worker uses `ws://127.0.0.1:8787` locally, but browser clients must not use `localhost` unless they run on the laptop. For tunnel demos, set both `PUBLIC_BASE_URL` and `PUBLIC_REALTIME_URL`.
 
 ## LLM Schemas
 

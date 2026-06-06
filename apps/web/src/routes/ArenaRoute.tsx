@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT } from "@quizrush/shared";
+import {
+  DEFAULT_SESSION_CODE,
+  DEFAULT_SESSION_ID,
+  QUESTION_COUNT,
+  QUESTION_GENERATION_FALLBACK_MS,
+  SIMULATED_ANSWER_BURST_SIZE,
+  SIMULATED_JOIN_BATCH_SIZE,
+  TOTAL_MATCH_SECONDS
+} from "@quizrush/shared";
 import {
   AgentPipeline,
   FloatingAvatarCloud,
@@ -17,7 +25,6 @@ import {
   WinnerExplosion
 } from "../components/ui";
 import {
-  useAddSimulatedPlayers,
   useFinishMatch,
   useRequestQuestions,
   useResetDemo,
@@ -40,7 +47,7 @@ import { getLeaderboard, topicCounts } from "../lib/selectors";
 import { TechRoute } from "./TechRoute";
 
 export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
-  const { state, connectionState, lastSyncAt } = useSpacetime();
+  const { state, connectionState, lastSyncAt, callReducer } = useSpacetime();
   const session = useSessionByCode(code);
   const sessionId = session?.sessionId ?? DEFAULT_SESSION_ID;
   const participants = useParticipants(sessionId);
@@ -61,20 +68,49 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const { resolveRound } = useResolveRound();
   const { finishMatch } = useFinishMatch();
   const { resetDemo } = useResetDemo();
-  const { addSimulatedPlayers } = useAddSimulatedPlayers();
-
   const questionCountRef = useRef(0);
   questionCountRef.current = state.questions.filter((candidate) => candidate.sessionId === sessionId).length;
+  const tickInFlightRef = useRef(false);
+  const simulatedAnswerInFlightRef = useRef(false);
 
   const joinUrl = useMemo(() => {
     const base = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
     return `${base.replace(/\/$/, "")}/join/${session?.code ?? code}`;
   }, [code, session?.code]);
+  const phase = session?.status ?? "lobby";
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (tickInFlightRef.current) return;
+      tickInFlightRef.current = true;
+      void callReducer("live_tick", { sessionId }, "projector-live-tick").finally(() => {
+        tickInFlightRef.current = false;
+      });
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [callReducer, sessionId]);
+
+  useEffect(() => {
+    if (phase !== "playing" || !round || round.status !== "active") return;
+    if (!participants.some((participant) => participant.isSimulated)) return;
+    const timer = window.setInterval(() => {
+      if (simulatedAnswerInFlightRef.current) return;
+      simulatedAnswerInFlightRef.current = true;
+      void callReducer(
+        "simulate_answer_burst",
+        { sessionId, count: SIMULATED_ANSWER_BURST_SIZE },
+        "simulation-engine"
+      ).finally(() => {
+        simulatedAnswerInFlightRef.current = false;
+      });
+    }, 280);
+    return () => window.clearInterval(timer);
+  }, [callReducer, participants, phase, round, sessionId]);
 
   useEffect(() => {
     if (!round || round.status !== "active") return;
@@ -88,23 +124,26 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       const key = event.key.toLowerCase();
       if (key === "t") setShowTech((current) => !current);
       if (key === "r") void resetDemo(sessionId);
-      if (key === "a") void addSimulatedPlayers(sessionId, 100);
+      if (key === "a") streamSimulatedRoster(sessionId, callReducer);
       if (key === "f") void finishMatch(sessionId);
       if (key === "s") void startMatch(sessionId);
       if (key === "g") {
         void requestQuestions(sessionId);
         window.setTimeout(() => {
           if (questionCountRef.current < QUESTION_COUNT) void seedQuestions(sessionId, session?.selectedTopic ?? "AI + Space + Startups");
-        }, 2200);
+        }, QUESTION_GENERATION_FALLBACK_MS);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addSimulatedPlayers, finishMatch, requestQuestions, resetDemo, seedQuestions, session?.selectedTopic, sessionId, startMatch]);
+  }, [callReducer, finishMatch, requestQuestions, resetDemo, seedQuestions, session?.selectedTopic, sessionId, startMatch]);
 
-  const phase = session?.status ?? "lobby";
   const currentAnswers = round ? answers.filter((answer) => answer.roundId === round.roundId).length : 0;
   const secondsRemaining = round ? Math.ceil(Math.max(0, round.endsAt - now) / 1000) : 25;
+  const raceSecondsRemaining =
+    session?.matchStartedAt && phase === "playing"
+      ? Math.ceil(Math.max(0, session.matchStartedAt + TOTAL_MATCH_SECONDS * 1000 - now) / 1000)
+      : TOTAL_MATCH_SECONDS;
   const winner = leaderboard[0];
 
   return (
@@ -125,7 +164,13 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         <div className="grid flex-1 grid-cols-[0.82fr_1.4fr_0.88fr] gap-5">
           <TournamentBracket entries={leaderboard} />
           <div className="flex flex-col gap-5">
-            <QuestionStage question={question} round={round} answersCount={currentAnswers} secondsRemaining={secondsRemaining} />
+            <QuestionStage
+              question={question}
+              round={round}
+              answersCount={currentAnswers}
+              secondsRemaining={secondsRemaining}
+              raceSecondsRemaining={raceSecondsRemaining}
+            />
             <TechMetricStrip stats={stats} eventsCount={events.length} />
           </div>
           <LeaderboardPanel entries={leaderboard} compact />
@@ -141,7 +186,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       ) : (
         <div className="grid flex-1 grid-cols-[1.08fr_0.92fr] gap-5">
           <div className="flex flex-col gap-5">
-            <QRHeroCard joinUrl={joinUrl} sessionCode={session?.code ?? code} joinedCount={participants.length} countdownSeconds={25} />
+            <QRHeroCard joinUrl={joinUrl} sessionCode={session?.code ?? code} joinedCount={participants.length} countdownSeconds={TOTAL_MATCH_SECONDS} />
             <FloatingAvatarCloud participants={participants} />
           </div>
           <div className="flex flex-col gap-5">
@@ -154,4 +199,19 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       )}
     </ProjectorShell>
   );
+}
+
+function streamSimulatedRoster(
+  sessionId: string,
+  callReducer: <T = unknown>(name: string, args: unknown, identity?: string) => Promise<{ ok: boolean; data?: T; error?: string }>
+) {
+  for (let offset = 0; offset < 100; offset += SIMULATED_JOIN_BATCH_SIZE) {
+    window.setTimeout(() => {
+      void callReducer(
+        "add_simulated_players",
+        { sessionId, count: SIMULATED_JOIN_BATCH_SIZE },
+        "simulation-engine"
+      );
+    }, (offset / SIMULATED_JOIN_BATCH_SIZE) * 90);
+  }
 }

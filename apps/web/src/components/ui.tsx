@@ -333,12 +333,14 @@ export function QuestionStage({
   question,
   round,
   answersCount,
-  secondsRemaining
+  secondsRemaining,
+  raceSecondsRemaining
 }: {
   question?: Question;
   round?: Round;
   answersCount: number;
   secondsRemaining: number;
+  raceSecondsRemaining: number;
 }) {
   const options = question
     ? [
@@ -351,8 +353,13 @@ export function QuestionStage({
   return (
     <Panel className="flex min-h-[620px] flex-col justify-between">
       <div className="flex items-center justify-between">
-        <div className="rounded-full bg-violet-100 px-5 py-3 text-xl font-black text-violet-700">
-          Question {round?.orderIndex ?? 0} / {QUESTION_COUNT}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-full bg-violet-100 px-5 py-3 text-xl font-black text-violet-700">
+            Question {round?.orderIndex ?? 0} / {QUESTION_COUNT}
+          </div>
+          <div className="rounded-full bg-slate-950 px-5 py-3 text-xl font-black text-white">
+            Race clock {raceSecondsRemaining}s
+          </div>
         </div>
         <TimerRing secondsRemaining={secondsRemaining} />
       </div>
@@ -461,7 +468,9 @@ function MetricStripItem({ label, value }: { label: string; value: React.ReactNo
   return (
     <div className="rounded-[18px] bg-white/10 px-4 py-3">
       <p className="text-xs font-black uppercase text-slate-300">{label}</p>
-      <p className="mt-1 text-2xl font-black">{value}</p>
+      <motion.p key={String(value)} initial={{ y: 6, opacity: 0.55 }} animate={{ y: 0, opacity: 1 }} className="mt-1 text-2xl font-black">
+        {value}
+      </motion.p>
     </div>
   );
 }

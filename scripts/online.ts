@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { networkInterfaces } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Effect } from "effect";
 import qrcode from "qrcode-terminal";
@@ -7,9 +8,16 @@ import { DEFAULT_SESSION_CODE, QUESTION_COUNT } from "../packages/shared/src/ind
 
 const REALTIME_PORT = Number(process.env.REALTIME_PORT ?? 8787);
 const WEB_PORT = Number(process.env.WEB_PORT ?? 5173);
-const realtimeUrl = process.env.AGENT_REALTIME_URL ?? `ws://localhost:${REALTIME_PORT}`;
+const lanHost = process.env.QUIZRUSH_LAN_HOST ?? findLanHost() ?? "localhost";
+const agentRealtimeUrl = process.env.AGENT_REALTIME_URL ?? `ws://127.0.0.1:${REALTIME_PORT}`;
 const localBaseUrl = `http://localhost:${WEB_PORT}`;
-const publicBaseUrl = (process.env.PUBLIC_BASE_URL || process.env.VITE_PUBLIC_APP_URL || localBaseUrl).replace(/\/$/, "");
+const lanBaseUrl = `http://${lanHost}:${WEB_PORT}`;
+const publicBaseUrl = (process.env.PUBLIC_BASE_URL || process.env.VITE_PUBLIC_APP_URL || lanBaseUrl).replace(/\/$/, "");
+const browserRealtimeUrl = (
+  process.env.PUBLIC_REALTIME_URL ||
+  process.env.VITE_REALTIME_URL ||
+  `ws://${lanHost}:${REALTIME_PORT}`
+).replace(/\/$/, "");
 const joinUrl = `${publicBaseUrl}/join/${DEFAULT_SESSION_CODE}`;
 const projectorUrl = `${localBaseUrl}/arena/${DEFAULT_SESSION_CODE}`;
 
@@ -53,13 +61,13 @@ const program = Effect.gen(function* () {
   yield* resetSession();
 
   start("agent", ["--filter", "@quizrush/agent-worker", "start"], {
-    AGENT_REALTIME_URL: realtimeUrl,
+    AGENT_REALTIME_URL: agentRealtimeUrl,
     VITE_PUBLIC_APP_URL: publicBaseUrl,
     QUIZ_QUESTION_COUNT: String(QUESTION_COUNT),
     QUIZ_TOPIC: "AI + Space + Startups"
   });
   start("web", ["--filter", "@quizrush/web", "dev", "--", "--host", "0.0.0.0", "--port", String(WEB_PORT)], {
-    VITE_REALTIME_URL: realtimeUrl,
+    VITE_REALTIME_URL: browserRealtimeUrl,
     VITE_PUBLIC_APP_URL: publicBaseUrl
   });
   yield* waitForHttp(localBaseUrl, "Vite web app");
@@ -107,7 +115,7 @@ function resetSession(): Effect.Effect<void, Error> {
 }
 
 async function callReducer(reducer: string, args: unknown, identity: string) {
-  const socket = new WebSocket(realtimeUrl);
+  const socket = new WebSocket(agentRealtimeUrl);
   await new Promise<void>((resolve, reject) => {
     socket.once("open", () => resolve());
     socket.once("error", reject);
@@ -136,16 +144,20 @@ function printReadyBlock() {
   console.log("");
   console.log("QuizRush Live is online");
   console.log("");
-  console.log(`Projector: ${projectorUrl}`);
-  console.log(`Public join: ${joinUrl}`);
-  console.log(`Realtime: ${realtimeUrl}`);
+  console.log(`Projector on this laptop: ${projectorUrl}`);
+  console.log(`Phone join QR: ${joinUrl}`);
+  console.log(`Phone realtime websocket: ${browserRealtimeUrl}`);
+  console.log(`Worker realtime websocket: ${agentRealtimeUrl}`);
   console.log(`Session: ${DEFAULT_SESSION_CODE}`);
   console.log("");
   qrcode.generate(joinUrl, { small: true });
   console.log("");
   console.log("Keyboard on projector: S start | G generate | A add simulated players | T tech | F finish | R reset");
-  if (publicBaseUrl === localBaseUrl) {
-    console.log("For room phones, set PUBLIC_BASE_URL to a Cloudflare/ngrok URL before running make online.");
+  if (lanHost === "localhost" && !process.env.PUBLIC_BASE_URL && !process.env.VITE_PUBLIC_APP_URL) {
+    console.log("Could not detect a LAN IP. Set QUIZRUSH_LAN_HOST to your laptop IP before running make online.");
+  }
+  if (isLocalOnly(publicBaseUrl) || isLocalOnly(browserRealtimeUrl)) {
+    console.log("Warning: the QR or websocket points at localhost. Phones need a LAN IP or public tunnel URL.");
   }
   console.log("");
 }
@@ -163,4 +175,54 @@ function prefixLines(name: string, input: string): string {
     .filter(Boolean)
     .map((line) => `[${name}] ${line}\n`)
     .join("");
+}
+
+function findLanHost(): string | null {
+  const defaultInterface = readDefaultInterface();
+  const preferredInterfaces = [defaultInterface, "en0", "en1", "en2"].filter(Boolean) as string[];
+  for (const name of [...new Set(preferredInterfaces)]) {
+    const address = readInterfaceAddress(name);
+    if (address && isUsableLanAddress(address)) return address;
+  }
+
+  const interfaces = networkInterfaces();
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries ?? []) {
+      if (entry.family === "IPv4" && !entry.internal && isUsableLanAddress(entry.address)) {
+        return entry.address;
+      }
+    }
+  }
+  return null;
+}
+
+function readDefaultInterface(): string | null {
+  try {
+    const output = execFileSync("route", ["-n", "get", "default"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return output.match(/interface:\s+(\S+)/)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function readInterfaceAddress(name: string): string | null {
+  try {
+    const output = execFileSync("ipconfig", ["getifaddr", name], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return output.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function isUsableLanAddress(address: string): boolean {
+  return Boolean(address) && !address.startsWith("127.") && !address.startsWith("169.254.");
+}
+
+function isLocalOnly(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
 }

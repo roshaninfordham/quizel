@@ -4,7 +4,8 @@ import {
   DEFAULT_SESSION_ID,
   DEFAULT_TOPICS,
   QUESTION_COUNT,
-  QUESTION_TIME_LIMIT_MS
+  QUESTION_TIME_LIMIT_MS,
+  SIMULATED_ANSWER_BURST_SIZE
 } from "./constants";
 import { questionBatchSchema, selectedOptionSchema } from "./schemas";
 import { computeAnswerScore, compareScores } from "./scoring";
@@ -121,10 +122,14 @@ export class QuizRushEngine {
         return this.finishMatch(context as ReducerContext<{ sessionId: string; force?: boolean }>);
       case "heartbeat":
         return this.heartbeat(context as ReducerContext<{ sessionId: string; clientLatencyMs?: number }>);
+      case "live_tick":
+        return this.liveTick(context as ReducerContext<{ sessionId: string }>);
       case "reset_demo":
         return this.resetDemo(context as ReducerContext<{ sessionId?: string }>);
       case "add_simulated_players":
         return this.addSimulatedPlayers(context as ReducerContext<{ sessionId: string; count: number }>);
+      case "simulate_answer_burst":
+        return this.simulateAnswerBurst(context as ReducerContext<{ sessionId: string; count?: number }>);
       case "record_agent_event":
         return this.recordAgentEvent(context as ReducerContext<Partial<AgentEvent> & { sessionId: string }>);
       default:
@@ -270,6 +275,27 @@ export class QuizRushEngine {
     identity
   }: ReducerContext<{ sessionId: string; selectedTopic?: string; requestId?: string; questions?: QuestionInput[]; questionsJson?: string }>): Question[] {
     const session = this.requireSession(args.sessionId);
+    if ((session.status === "playing" || session.status === "finished" || session.status === "replay") && this.state.questions.some((question) => question.sessionId === session.sessionId)) {
+      if (args.requestId) {
+        const request = this.state.agentRequests.find((candidate) => candidate.requestId === args.requestId);
+        if (request) {
+          request.status = "complete";
+          request.updatedAt = Date.now();
+        }
+      }
+      this.recordAgentEvent({
+        args: {
+          sessionId: session.sessionId,
+          agentName: "Match Engine",
+          eventType: "late_question_pack_ignored",
+          content: "A late question pack arrived after the race had started, so the live match kept its locked question set.",
+          confidence: 1,
+          status: "complete"
+        },
+        identity
+      });
+      return this.state.questions.filter((question) => question.sessionId === session.sessionId);
+    }
     const payload = args.questionsJson ? JSON.parse(args.questionsJson) : { questions: args.questions };
     const parsed = questionBatchSchema.safeParse(payload);
     if (!parsed.success) {
@@ -358,6 +384,9 @@ export class QuizRushEngine {
     const session = this.requireSession(args.sessionId);
     const question = this.requireQuestionByOrder(session.sessionId, args.questionOrder);
     const now = Date.now();
+    const matchStartedAt = session.matchStartedAt ?? now;
+    const startsAt = matchStartedAt + (args.questionOrder - 1) * QUESTION_TIME_LIMIT_MS;
+    const endsAt = matchStartedAt + args.questionOrder * QUESTION_TIME_LIMIT_MS;
     for (const round of this.state.rounds.filter((round) => round.sessionId === session.sessionId && round.status === "active")) {
       round.status = "resolved";
       round.resolvedAt = now;
@@ -370,15 +399,15 @@ export class QuizRushEngine {
         questionId: question.questionId,
         orderIndex: args.questionOrder,
         status: "active",
-        startsAt: now,
-        endsAt: now + QUESTION_TIME_LIMIT_MS,
+        startsAt,
+        endsAt,
         resolvedAt: null
       };
       this.state.rounds.push(round);
     } else {
       round.status = "active";
-      round.startsAt = now;
-      round.endsAt = now + QUESTION_TIME_LIMIT_MS;
+      round.startsAt = startsAt;
+      round.endsAt = endsAt;
       round.resolvedAt = null;
     }
     session.status = "playing";
@@ -482,6 +511,13 @@ export class QuizRushEngine {
     return participant;
   }
 
+  private liveTick({ args }: ReducerContext<{ sessionId: string }>): LiveStats {
+    this.recalculateStats(args.sessionId);
+    const stats = this.state.liveStats.find((candidate) => candidate.sessionId === args.sessionId);
+    if (!stats) throw new Error(`LiveStats not found: ${args.sessionId}`);
+    return stats;
+  }
+
   private resetDemo({ args }: ReducerContext<{ sessionId?: string }>): Session {
     this.state = emptyState();
     return this.seedSession(args.sessionId);
@@ -512,6 +548,65 @@ export class QuizRushEngine {
     if (session.status === "lobby") session.status = "topic_voting";
     this.recomputeRanks(session.sessionId, now);
     this.recalculateStats(session.sessionId);
+    return inserted;
+  }
+
+  private simulateAnswerBurst({ args }: ReducerContext<{ sessionId: string; count?: number }>): Answer[] {
+    const session = this.requireSession(args.sessionId);
+    if (session.status !== "playing") return [];
+    const round = this.state.rounds.find((candidate) => candidate.sessionId === session.sessionId && candidate.status === "active");
+    if (!round) return [];
+    const question = this.requireQuestion(round.questionId);
+    const now = Date.now();
+    if (now < round.startsAt || now > round.endsAt + 200) return [];
+    const answered = new Set(this.state.answers.filter((answer) => answer.roundId === round.roundId).map((answer) => answer.participantId));
+    const candidates = this.state.participants
+      .filter((participant) => participant.sessionId === session.sessionId && participant.isSimulated && !answered.has(participant.participantId))
+      .sort((a, b) => a.participantId.localeCompare(b.participantId))
+      .slice(0, Math.max(0, Math.min(args.count ?? SIMULATED_ANSWER_BURST_SIZE, 32)));
+    const inserted: Answer[] = [];
+    const wrongOptions: OptionKey[] = ["A", "B", "C", "D"].filter((option) => option !== question.correctOption) as OptionKey[];
+    candidates.forEach((participant, index) => {
+      const answerTime = now + index;
+      const responseMs = Math.max(0, Math.min(answerTime - round.startsAt + (index % 5) * 9, QUESTION_TIME_LIMIT_MS));
+      const isCorrect = (index + round.orderIndex + Number(participant.participantId.split("-").at(-1) ?? 0)) % 5 !== 0;
+      const selectedOption = isCorrect ? question.correctOption : wrongOptions[index % wrongOptions.length] ?? "A";
+      const scoreDelta = computeAnswerScore({ isCorrect, responseMs });
+      const answer: Answer = {
+        answerId: this.nextId("answer"),
+        sessionId: round.sessionId,
+        roundId: round.roundId,
+        participantId: participant.participantId,
+        selectedOption,
+        isCorrect,
+        responseMs,
+        scoreDelta,
+        serverReceivedAt: answerTime
+      };
+      this.state.answers.push(answer);
+      const score = this.requireScore(round.sessionId, participant.participantId);
+      score.totalScore += scoreDelta;
+      score.correctCount += isCorrect ? 1 : 0;
+      score.totalResponseMs += responseMs;
+      score.fastestResponseMs = score.fastestResponseMs === null ? responseMs : Math.min(score.fastestResponseMs, responseMs);
+      score.lastAnswerAt = answerTime;
+      score.updatedAt = answerTime;
+      this.matchEvent(round.sessionId, participant.participantId, "answer", round.orderIndex, score.totalScore, score.currentRank, {
+        selectedOption,
+        isCorrect,
+        responseMs,
+        simulated: true
+      });
+      this.matchEvent(round.sessionId, participant.participantId, "score_delta", round.orderIndex, score.totalScore, score.currentRank, {
+        scoreDelta,
+        simulated: true
+      });
+      inserted.push(answer);
+    });
+    if (inserted.length) {
+      this.recomputeRanks(round.sessionId, now);
+      this.recalculateStats(round.sessionId);
+    }
     return inserted;
   }
 

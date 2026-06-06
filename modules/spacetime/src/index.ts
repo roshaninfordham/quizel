@@ -2,6 +2,7 @@ import { schema, table, t } from "spacetimedb/server";
 
 const QUESTION_COUNT = 5;
 const QUESTION_TIME_LIMIT_MS = 5_000;
+const SIMULATED_ANSWER_BURST_SIZE = 8;
 const DEFAULT_TOPIC = "AI + Space + Startups";
 const DEFAULT_CODE = "ARENA-42";
 
@@ -420,6 +421,11 @@ export const heartbeat = spacetimedb.reducer({ session_id: t.string(), client_la
   recalcStats(ctx, session_id);
 });
 
+export const live_tick = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+  recalcStats(ctx, session_id);
+  bumpStats(ctx, session_id);
+});
+
 export const reset_demo = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
   resetSessionTables(ctx, session_id);
   const current = ctx.db.session.session_id.find(session_id);
@@ -452,6 +458,60 @@ export const add_simulated_players = spacetimedb.reducer({ session_id: t.string(
   if (current.status === "lobby") ctx.db.session.session_id.update({ ...current, status: "topic_voting", updated_at_ms: now });
   recomputeRanks(ctx, session_id);
   recalcStats(ctx, session_id);
+});
+
+export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(), count: t.u32() }, (ctx, { session_id, count }) => {
+  const current = requireSession(ctx, session_id);
+  if (current.status !== "playing") return;
+  const currentRound = Array.from(ctx.db.round.session_id.filter(session_id)).find((candidate) => candidate.status === "active");
+  if (!currentRound) return;
+  const now = nowMs();
+  if (now < currentRound.starts_at_ms || now > currentRound.ends_at_ms + BigInt(200)) return;
+  const currentQuestion = requireQuestion(ctx, currentRound.question_id);
+  const answered = new Set(Array.from(ctx.db.answer.round_id.filter(currentRound.round_id)).map((item) => item.participant_id));
+  const candidates = Array.from(ctx.db.participant.session_id.filter(session_id))
+    .filter((item) => item.is_simulated && !answered.has(item.participant_id))
+    .sort((a, b) => a.participant_id.localeCompare(b.participant_id))
+    .slice(0, Math.min(Number(count || SIMULATED_ANSWER_BURST_SIZE), 32));
+  const wrongOptions = ["A", "B", "C", "D"].filter((option) => option !== currentQuestion.correct_option);
+
+  candidates.forEach((item, index) => {
+    const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms) + (index % 5) * 9, QUESTION_TIME_LIMIT_MS));
+    const is_correct = (index + currentRound.order_index + numericSuffix(item.participant_id)) % 5 !== 0;
+    const selected_option = is_correct ? currentQuestion.correct_option : wrongOptions[index % wrongOptions.length] ?? "A";
+    const score_delta = computeAnswerScore(is_correct, response_ms);
+    ctx.db.answer.insert({
+      answer_id: id("answer"),
+      session_id,
+      round_id: currentRound.round_id,
+      participant_id: item.participant_id,
+      selected_option,
+      is_correct,
+      response_ms,
+      score_delta,
+      server_received_at_ms: now + BigInt(index)
+    });
+    const currentScore = requireScore(ctx, session_id, item.participant_id);
+    ctx.db.score.score_id.update({
+      ...currentScore,
+      total_score: currentScore.total_score + score_delta,
+      correct_count: currentScore.correct_count + (is_correct ? 1 : 0),
+      total_response_ms: currentScore.total_response_ms + response_ms,
+      fastest_response_ms:
+        currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms),
+      last_answer_at_ms: now + BigInt(index),
+      updated_at_ms: now + BigInt(index)
+    });
+    const updatedScore = requireScore(ctx, session_id, item.participant_id);
+    insertMatchEvent(ctx, session_id, item.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, response_ms, simulated: true }));
+    insertMatchEvent(ctx, session_id, item.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ score_delta, simulated: true }));
+  });
+
+  if (candidates.length) {
+    recomputeRanks(ctx, session_id);
+    recalcStats(ctx, session_id);
+  }
+  bumpStats(ctx, session_id);
 });
 
 export const record_agent_event = spacetimedb.reducer(
@@ -488,6 +548,15 @@ function createSessionRow(ctx: ReducerCtx, code: string, question_count: number)
 }
 
 function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selected_topic: string, questions_json: string, request_id?: string) {
+  const current = requireSession(ctx, session_id);
+  if ((current.status === "playing" || current.status === "finished" || current.status === "replay") && Array.from(ctx.db.question.session_id.filter(session_id)).length > 0) {
+    if (request_id) {
+      const request = ctx.db.agent_request.request_id.find(request_id);
+      if (request) ctx.db.agent_request.request_id.update({ ...request, status: "complete", updated_at_ms: nowMs() });
+    }
+    insertAgentEvent(ctx, session_id, "Match Engine", "late_question_pack_ignored", "A late question pack arrived after the race started, so the locked question set stayed live.", 1, "complete");
+    return;
+  }
   const parsed = JSON.parse(questions_json) as {
     questions?: Array<{
       questionText: string;
@@ -502,7 +571,6 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
   }
   ctx.db.question.session_id.delete(session_id);
   ctx.db.round.session_id.delete(session_id);
-  const current = requireSession(ctx, session_id);
   const now = nowMs();
   parsed.questions.slice(0, current.question_count).forEach((item, index) => {
     if (!item.options || !["A", "B", "C", "D"].includes(item.correctOption)) throw new Error("Malformed question option.");
@@ -537,6 +605,9 @@ function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order:
   const questionRow = Array.from(ctx.db.question.session_id.filter(session_id)).find((candidate) => candidate.order_index === question_order);
   if (!questionRow) throw new Error(`Question ${question_order} is not ready.`);
   const now = nowMs();
+  const matchStartedAt = current.match_started_at_ms ?? now;
+  const startsAt = matchStartedAt + BigInt((question_order - 1) * QUESTION_TIME_LIMIT_MS);
+  const endsAt = matchStartedAt + BigInt(question_order * QUESTION_TIME_LIMIT_MS);
   for (const active of ctx.db.round.session_id.filter(session_id)) {
     if (active.status === "active") ctx.db.round.round_id.update({ ...active, status: "resolved", resolved_at_ms: now });
   }
@@ -545,8 +616,8 @@ function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order:
     ctx.db.round.round_id.update({
       ...existing,
       status: "active",
-      starts_at_ms: now,
-      ends_at_ms: now + BigInt(QUESTION_TIME_LIMIT_MS),
+      starts_at_ms: startsAt,
+      ends_at_ms: endsAt,
       resolved_at_ms: undefined
     });
   } else {
@@ -556,8 +627,8 @@ function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order:
       question_id: questionRow.question_id,
       order_index: question_order,
       status: "active",
-      starts_at_ms: now,
-      ends_at_ms: now + BigInt(QUESTION_TIME_LIMIT_MS),
+      starts_at_ms: startsAt,
+      ends_at_ms: endsAt,
       resolved_at_ms: undefined
     });
   }
@@ -805,6 +876,11 @@ function parseTopics(topics_json: string): string[] {
 
 function cleanName(name: string): string {
   return name.trim().slice(0, 24) || "Player";
+}
+
+function numericSuffix(value: string): number {
+  const match = value.match(/(\d+)$/);
+  return match ? Number(match[1]) : 0;
 }
 
 function sender(ctx: ReducerCtx): string {

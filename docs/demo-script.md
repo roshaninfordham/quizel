@@ -18,6 +18,8 @@ Audience joins and picks topics. Point to the live count and topic swarm.
 
 “Every join and topic vote is committed through a reducer and synced to the projector.”
 
+Optional backup: press `A` to stream 100 marked simulated players if the room is small. Say, “These are marked simulated load so we can prove the high-fan-in path honestly.”
+
 0:40-0:55
 
 Press `G`.
