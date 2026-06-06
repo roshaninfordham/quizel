@@ -24,6 +24,7 @@ Current implementation:
 - `apps/agent-worker/src/llm/service.ts`: `LlmProviderService` tag and provider construction.
 - `apps/agent-worker/src/effects/program.ts`: composed worker program with `Layer` provisioning.
 - `apps/agent-worker/src/agents/quizAgents.ts`: retry, validation, fallback, and typed errors.
+- `apps/agent-worker/src/spacetime/agentLoop.ts`: live reducer-stream worker that processes requests and writes back through reducers.
 
 Pattern for new TS integrations:
 

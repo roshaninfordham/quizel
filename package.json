@@ -5,7 +5,7 @@
   "description": "QuizDuel Live: AI-hosted realtime crowd quiz duel with reducer-owned game state.",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n realtime,web -c cyan,magenta \"pnpm --filter @quizduel/realtime-server dev\" \"pnpm --filter @quizduel/web dev\"",
+    "dev": "concurrently -n realtime,agent,web -c cyan,yellow,magenta \"pnpm --filter @quizduel/realtime-server dev\" \"pnpm --filter @quizduel/agent-worker dev\" \"pnpm --filter @quizduel/web dev\"",
     "dev:web": "pnpm --filter @quizduel/web dev",
     "dev:server": "pnpm --filter @quizduel/realtime-server dev",
     "dev:worker": "pnpm --filter @quizduel/agent-worker dev",
@@ -15,6 +15,7 @@
     "seed:demo": "tsx scripts/seed-demo.ts",
     "reset:demo": "tsx scripts/demo-reset.ts",
     "spacetime:build": "~/.local/bin/spacetime build --module-path modules/spacetime --lint-dir=",
+    "spacetime:generate": "~/.local/bin/spacetime generate --lang typescript --module-path modules/spacetime --out-dir apps/web/src/lib/spacetime/module_bindings --build-options='--lint-dir=' -y",
     "spacetime:start": "~/.local/bin/spacetime start --listen-addr 0.0.0.0:3000 --in-memory --non-interactive",
     "spacetime:publish:local": "~/.local/bin/spacetime publish quizduel-live --server local --module-path modules/spacetime --anonymous -y=all"
   },

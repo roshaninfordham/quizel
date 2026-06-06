@@ -4,7 +4,17 @@ import type { QuestionInput } from "@quizduel/shared";
 import { demoQuestions } from "../fallbacks/demoQuestions";
 import { ValidationError, type LlmError } from "../llm/errors";
 import type { LlmProvider } from "../llm/provider";
-import { quizAuthorPrompt, quizAuthorUserPrompt } from "../prompts/quizPrompts";
+import {
+  fairnessReviewPrompt,
+  fairnessReviewUserPrompt,
+  hostCommentaryPrompt,
+  hostCommentaryUserPrompt,
+  learningRecapPrompt,
+  learningRecapUserPrompt,
+  quizAuthorPrompt,
+  quizAuthorUserPrompt
+} from "../prompts/quizPrompts";
+import { fairnessReviewSchema, hostCommentarySchema, learningRecapSchema } from "../schemas/agentSchemas";
 
 export interface AgentConfig {
   timeoutMs: number;
@@ -78,6 +88,53 @@ export function generateQuizQuestions(
             error instanceof ValidationError ? error : new ValidationError(error instanceof Error ? error.message : String(error))
         })
       ),
+      Effect.flatMap((authored) =>
+        provider
+          .generateJson<unknown>({
+            system: fairnessReviewPrompt(),
+            user: fairnessReviewUserPrompt({ questions: authored.questions }),
+            schemaName: "FairnessReview",
+            timeoutMs: config.timeoutMs,
+            temperature: 0.1
+          })
+          .pipe(
+            Effect.retry(policy),
+            Effect.flatMap((payload) =>
+              Effect.try({
+                try: () => {
+                  const parsed = fairnessReviewSchema.safeParse(payload);
+                  if (!parsed.success) {
+                    throw new ValidationError(parsed.error.message);
+                  }
+                  if (!parsed.data.approved && parsed.data.rejectedCount > 0) {
+                    throw new ValidationError(`Fairness Review rejected ${parsed.data.rejectedCount} question(s).`);
+                  }
+
+                  return {
+                    questions: parsed.data.fixedQuestions.slice(0, input.questionCount),
+                    status: "complete" as const,
+                    events: [
+                      authored.events[0],
+                      {
+                        agentName: "Fairness Review Agent",
+                        eventType: "questions_approved",
+                        content: parsed.data.issues.length
+                          ? `${parsed.data.issues.length} issue(s) repaired before approval.`
+                          : "Schema, option uniqueness, ambiguity, and public-audience guardrails passed.",
+                        confidence: 0.96,
+                        status: "complete" as const
+                      }
+                    ].filter((event): event is NonNullable<typeof event> => Boolean(event))
+                  };
+                },
+                catch: (error): LlmError =>
+                  error instanceof ValidationError
+                    ? error
+                    : new ValidationError(error instanceof Error ? error.message : String(error))
+              })
+            )
+          )
+      ),
       Effect.catchAll((error) =>
         Effect.succeed({
           questions: demoQuestions.slice(0, input.questionCount),
@@ -103,13 +160,73 @@ export function generateQuizQuestions(
     );
 }
 
-export function createHostCommentary(input: {
-  playerName: string;
-  isCorrect: boolean;
-  scoreDelta: number;
-}): string {
-  if (input.isCorrect) {
-    return `${input.playerName} locks it in and adds ${input.scoreDelta} points. The Crowd is awake.`;
-  }
-  return `${input.playerName} took a swing. The explanation makes this one easier next time.`;
+export function generateHostCommentary(
+  provider: LlmProvider,
+  config: AgentConfig,
+  input: unknown
+): Effect.Effect<{ commentary: string; confidence: number; status: "complete" | "fallback" }, never> {
+  return provider
+    .generateJson<unknown>({
+      system: hostCommentaryPrompt(),
+      user: hostCommentaryUserPrompt(input),
+      schemaName: "HostCommentary",
+      timeoutMs: config.timeoutMs,
+      temperature: 0.5
+    })
+    .pipe(
+      Effect.flatMap((payload) =>
+        Effect.try({
+          try: () => hostCommentarySchema.parse(payload),
+          catch: (error) => new ValidationError(error instanceof Error ? error.message : String(error))
+        })
+      ),
+      Effect.map((parsed) => ({
+        commentary: parsed.commentary,
+        confidence: parsed.confidence,
+        status: "complete" as const
+      })),
+      Effect.catchAll(() =>
+        Effect.succeed({
+          commentary: "That round moved fast. The explanation is locked in for the whole room.",
+          confidence: 1,
+          status: "fallback" as const
+        })
+      )
+    );
+}
+
+export function generateLearningRecap(
+  provider: LlmProvider,
+  config: AgentConfig,
+  input: unknown
+): Effect.Effect<{ summary: string; confidence: number; status: "complete" | "fallback" }, never> {
+  return provider
+    .generateJson<unknown>({
+      system: learningRecapPrompt(),
+      user: learningRecapUserPrompt(input),
+      schemaName: "LearningRecap",
+      timeoutMs: config.timeoutMs,
+      temperature: 0.3
+    })
+    .pipe(
+      Effect.flatMap((payload) =>
+        Effect.try({
+          try: () => learningRecapSchema.parse(payload),
+          catch: (error) => new ValidationError(error instanceof Error ? error.message : String(error))
+        })
+      ),
+      Effect.map((parsed) => ({
+        summary: `${parsed.summary} Next quiz: ${parsed.nextQuizRecommendation}`,
+        confidence: 0.9,
+        status: "complete" as const
+      })),
+      Effect.catchAll(() =>
+        Effect.succeed({
+          summary:
+            "Based on this match: realtime reducers kept answers fair, capped Crowd support kept scoring balanced, and fallback AI kept the quiz reliable.",
+          confidence: 1,
+          status: "fallback" as const
+        })
+      )
+    );
 }

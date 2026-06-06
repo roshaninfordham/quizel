@@ -3,41 +3,46 @@ import { LlmMalformedJsonError, LlmProviderError, LlmTimeoutError, type LlmError
 import { parseJsonContent } from "../json";
 import type { GenerateJsonInput, LlmProvider } from "../provider";
 
-export interface GenericHttpLlmProviderConfig {
+export interface GeminiLlmProviderConfig {
   baseUrl: string;
   apiKey: string;
   modelId: string;
-  jsonMode: boolean;
   providerName: string;
 }
 
-export class GenericHttpLlmProvider implements LlmProvider {
-  public constructor(private readonly config: GenericHttpLlmProviderConfig) {}
+export class GeminiLlmProvider implements LlmProvider {
+  public constructor(private readonly config: GeminiLlmProviderConfig) {}
 
   public generateJson<T>(input: GenerateJsonInput): Effect.Effect<T, LlmError> {
     return Effect.tryPromise({
       try: async () => {
         if (!this.config.apiKey || !this.config.baseUrl || !this.config.modelId) {
-          throw new LlmProviderError("LLM provider is not configured.");
+          throw new LlmProviderError("Gemini provider is not configured.");
         }
 
+        const endpoint = `${this.config.baseUrl.replace(/\/$/, "")}/models/${encodeURIComponent(
+          this.config.modelId
+        )}:generateContent?key=${encodeURIComponent(this.config.apiKey)}`;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), input.timeoutMs);
         try {
-          const response = await fetch(this.config.baseUrl, {
+          const response = await fetch(endpoint, {
             method: "POST",
-            headers: {
-              "content-type": "application/json",
-              authorization: `Bearer ${this.config.apiKey}`
-            },
+            headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              model: this.config.modelId,
-              temperature: input.temperature,
-              response_format: this.config.jsonMode ? { type: "json_object" } : undefined,
-              messages: [
-                { role: "system", content: input.system },
-                { role: "user", content: input.user }
-              ]
+              systemInstruction: {
+                parts: [{ text: input.system }]
+              },
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: input.user }]
+                }
+              ],
+              generationConfig: {
+                temperature: input.temperature,
+                responseMimeType: "application/json"
+              }
             }),
             signal: controller.signal
           });
@@ -47,18 +52,19 @@ export class GenericHttpLlmProvider implements LlmProvider {
           }
 
           const payload = (await response.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-            output_text?: string;
+            candidates?: Array<{
+              content?: { parts?: Array<{ text?: string }> };
+            }>;
           };
-          const content = payload.output_text ?? payload.choices?.[0]?.message?.content;
+          const content = payload.candidates?.[0]?.content?.parts?.find((part) => part.text)?.text;
           if (!content) {
-            throw new LlmProviderError("LLM response did not include JSON content.");
+            throw new LlmProviderError("Gemini response did not include text content.");
           }
 
           return parseJsonContent<T>(content);
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") {
-            throw new LlmTimeoutError(`LLM call timed out after ${input.timeoutMs}ms.`);
+            throw new LlmTimeoutError(`Gemini call timed out after ${input.timeoutMs}ms.`);
           }
           throw error;
         } finally {

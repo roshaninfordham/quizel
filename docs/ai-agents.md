@@ -26,6 +26,8 @@ interface LlmProvider {
 Implemented providers:
 
 - `GenericHttpLlmProvider`
+- `AnthropicLlmProvider`
+- `GeminiLlmProvider`
 - `MockLlmProvider`
 - `FallbackSeedProvider`
 
@@ -47,3 +49,10 @@ Failure path:
 AI guardrail:
 
 AI may write question batches and AgentEvents through reducers, but it cannot directly mutate answers, Energy, scores, or winners.
+
+Provider selection:
+
+- `LLM_PROVIDER_NAME=auto` selects the first configured provider.
+- Explicit `LLM_PROVIDER_NAME=generic|openai|anthropic|gemini` forces a provider.
+- Missing or failing providers fall back to seeded demo questions and visible fallback AgentEvents.
+- Secrets are read from `.env.local` or process env and are never committed.

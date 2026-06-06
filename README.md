@@ -42,6 +42,8 @@ pnpm install
 pnpm dev
 ```
 
+`pnpm dev` starts three laptop-hosted processes: the realtime reducer gateway, the Effect agent worker, and the Vite web app.
+
 Open:
 
 - Host: http://localhost:5174/host
@@ -107,6 +109,15 @@ The worker package lives in `apps/agent-worker` and defines:
 
 Effect is used as the TypeScript runtime pattern for external/async workflows: typed config, service layers, retries, timeouts, schema validation, fallback, and structured logs. See `docs/effect-adoption.md`.
 
+The worker auto-detects useful keys without printing secret values:
+
+- `LLM_API_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL_ID` for OpenAI-compatible gateways.
+- `OPENAI_API_KEY` for OpenAI Chat Completions.
+- `ANTHROPIC_API_KEY` for Anthropic Messages.
+- `GEMINI_API_KEY` for Gemini `generateContent`.
+
+Put real keys in `.env.local`; keep `.env.example` as placeholders only.
+
 Configuration is provider-neutral:
 
 ```bash
@@ -114,11 +125,13 @@ LLM_API_BASE_URL=
 LLM_API_KEY=
 LLM_MODEL_ID=
 LLM_SMALL_MODEL_ID=
-LLM_PROVIDER_NAME=generic
+LLM_PROVIDER_NAME=auto
 LLM_TIMEOUT_MS=12000
 LLM_MAX_RETRIES=2
 LLM_JSON_MODE=true
 ```
+
+You can also set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`. `LLM_PROVIDER_NAME=auto` picks the first configured provider; set `LLM_PROVIDER_NAME=generic|openai|anthropic|gemini` to force one.
 
 ## Test
 
@@ -128,6 +141,14 @@ pnpm typecheck
 pnpm build
 pnpm spacetime:build
 ```
+
+Generate TypeScript bindings:
+
+```bash
+pnpm spacetime:generate
+```
+
+The laptop demo uses the local reducer gateway for easy multi-device hosting from one machine. The SpacetimeDB module in `modules/spacetime` builds successfully and generated TypeScript bindings can replace the gateway behind the existing web hooks in a direct deployment.
 
 Critical reducer tests cover Energy grants, Champion selection, duplicate answer rejection, Cheer deduction, double-spend prevention, invalid amount rejection, idempotent round resolution, support cap, missing speed bonus on wrong answers, and malformed LLM fallback rejection.
 

@@ -18,6 +18,15 @@ You are the Quiz Author Agent for QuizDuel Live.
 Generate multiple-choice questions with exactly four plausible options and one unambiguous correct answer.`;
 }
 
+export function fairnessReviewPrompt(): string {
+  return `${sharedGuardrails}
+
+You are the Fairness Review Agent for QuizDuel Live.
+Review the question batch for exactly four options, one correct answer, no duplicate options, no ambiguity, no unsafe claims, and explanations that support the correct answer.
+Return approved=true only when the batch is safe for a public hackathon room.
+If a question needs light repair, include the repaired batch in fixedQuestions.`;
+}
+
 export function quizAuthorUserPrompt(input: {
   topic: string;
   difficulty: string;
@@ -44,6 +53,64 @@ export function quizAuthorUserPrompt(input: {
           topicTags: ["string"]
         }
       ]
+    }
+  });
+}
+
+export function fairnessReviewUserPrompt(input: { questions: unknown }): string {
+  return JSON.stringify({
+    task: "Review and repair this QuizDuel Live question batch.",
+    questions: input.questions,
+    output_schema: {
+      approved: true,
+      rejectedCount: 0,
+      issues: [
+        {
+          roundNumber: 1,
+          severity: "low|medium|high",
+          issue: "string",
+          suggestedFix: "string"
+        }
+      ],
+      fixedQuestions: []
+    }
+  });
+}
+
+export function hostCommentaryPrompt(): string {
+  return `${sharedGuardrails}
+
+You are the Host Commentator Agent for QuizDuel Live.
+Write one short, positive, game-show style line after a round. Do not shame either player. Do not mention gambling.`;
+}
+
+export function hostCommentaryUserPrompt(input: unknown): string {
+  return JSON.stringify({
+    task: "Create one live commentary line for this resolved round.",
+    match_state: input,
+    output_schema: {
+      commentary: "string max 160 characters",
+      tone: "excited|encouraging|educational",
+      confidence: 0.0
+    }
+  });
+}
+
+export function learningRecapPrompt(): string {
+  return `${sharedGuardrails}
+
+You are the Learning Recap Agent for QuizDuel Live.
+Summarize what the room learned from the match. Be concise, educational, and based only on provided match data.`;
+}
+
+export function learningRecapUserPrompt(input: unknown): string {
+  return JSON.stringify({
+    task: "Create a final learning recap for this match.",
+    match_state: input,
+    output_schema: {
+      summary: "string",
+      hardestConcepts: ["string"],
+      nextQuizRecommendation: "string"
     }
   });
 }

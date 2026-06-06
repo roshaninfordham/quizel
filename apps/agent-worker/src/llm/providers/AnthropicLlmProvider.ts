@@ -3,22 +3,21 @@ import { LlmMalformedJsonError, LlmProviderError, LlmTimeoutError, type LlmError
 import { parseJsonContent } from "../json";
 import type { GenerateJsonInput, LlmProvider } from "../provider";
 
-export interface GenericHttpLlmProviderConfig {
+export interface AnthropicLlmProviderConfig {
   baseUrl: string;
   apiKey: string;
   modelId: string;
-  jsonMode: boolean;
   providerName: string;
 }
 
-export class GenericHttpLlmProvider implements LlmProvider {
-  public constructor(private readonly config: GenericHttpLlmProviderConfig) {}
+export class AnthropicLlmProvider implements LlmProvider {
+  public constructor(private readonly config: AnthropicLlmProviderConfig) {}
 
   public generateJson<T>(input: GenerateJsonInput): Effect.Effect<T, LlmError> {
     return Effect.tryPromise({
       try: async () => {
         if (!this.config.apiKey || !this.config.baseUrl || !this.config.modelId) {
-          throw new LlmProviderError("LLM provider is not configured.");
+          throw new LlmProviderError("Anthropic provider is not configured.");
         }
 
         const controller = new AbortController();
@@ -28,16 +27,15 @@ export class GenericHttpLlmProvider implements LlmProvider {
             method: "POST",
             headers: {
               "content-type": "application/json",
-              authorization: `Bearer ${this.config.apiKey}`
+              "x-api-key": this.config.apiKey,
+              "anthropic-version": "2023-06-01"
             },
             body: JSON.stringify({
               model: this.config.modelId,
+              max_tokens: 2_000,
               temperature: input.temperature,
-              response_format: this.config.jsonMode ? { type: "json_object" } : undefined,
-              messages: [
-                { role: "system", content: input.system },
-                { role: "user", content: input.user }
-              ]
+              system: input.system,
+              messages: [{ role: "user", content: input.user }]
             }),
             signal: controller.signal
           });
@@ -47,18 +45,17 @@ export class GenericHttpLlmProvider implements LlmProvider {
           }
 
           const payload = (await response.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-            output_text?: string;
+            content?: Array<{ type: string; text?: string }>;
           };
-          const content = payload.output_text ?? payload.choices?.[0]?.message?.content;
+          const content = payload.content?.find((part) => part.type === "text")?.text;
           if (!content) {
-            throw new LlmProviderError("LLM response did not include JSON content.");
+            throw new LlmProviderError("Anthropic response did not include text content.");
           }
 
           return parseJsonContent<T>(content);
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") {
-            throw new LlmTimeoutError(`LLM call timed out after ${input.timeoutMs}ms.`);
+            throw new LlmTimeoutError(`Anthropic call timed out after ${input.timeoutMs}ms.`);
           }
           throw error;
         } finally {

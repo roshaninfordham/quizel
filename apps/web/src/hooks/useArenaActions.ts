@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { DEFAULT_JOIN_CODE, DEFAULT_SESSION_ID, SEEDED_DEMO_QUESTIONS, type Difficulty, type QuestionCount } from "@quizduel/shared";
+import { DEFAULT_JOIN_CODE, DEFAULT_SESSION_ID, type Difficulty, type QuestionCount } from "@quizduel/shared";
 import { getDeviceIdentity, setJoinedParticipantId, useSpacetime } from "../lib/spacetime/client";
 
 interface ActionState {
@@ -112,7 +112,7 @@ export function useHostActions() {
 
   const generateQuiz = useCallback(
     (input: { sessionId: string; topic: string; difficulty: Difficulty; questionCount: QuestionCount }) =>
-      runner.run("AI quiz ready", async () => {
+      runner.run("AI quiz request queued", async () => {
         const request = await callReducer<{ requestId: string }>(
           "request_questions",
           {
@@ -136,18 +136,7 @@ export function useHostActions() {
           },
           "agent-worker"
         );
-        await sleep(700);
-        const receipt = await callReducer(
-          "submit_question_batch",
-          {
-            sessionId: input.sessionId,
-            requestId: request.data?.requestId,
-            questions: SEEDED_DEMO_QUESTIONS.slice(0, input.questionCount)
-          },
-          "fallback-seed"
-        );
-        if (!receipt.ok) throw new Error(receipt.error);
-        return receipt.data;
+        return request.data;
       }),
     [callReducer, runner]
   );
@@ -298,8 +287,4 @@ export function usePlayerReady() {
     [callReducer, runner]
   );
   return { ...runner, playerReady };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
