@@ -22,6 +22,15 @@ export class FallbackSeedProvider implements LlmProvider {
       } as T);
     }
 
+    if (input.schemaName === "SafetyGuardReview") {
+      return Effect.succeed({
+        safe: true,
+        riskLevel: "low",
+        categories: [],
+        rationale: "Seeded demo content is pre-reviewed for the public hackathon demo."
+      } as T);
+    }
+
     if (input.schemaName === "LearningRecap") {
       return Effect.succeed({
         summary:

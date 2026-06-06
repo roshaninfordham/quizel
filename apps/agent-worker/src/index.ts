@@ -1,12 +1,25 @@
 import { config as loadEnv } from "dotenv";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import { AgentWorkerLive, QuizGenerationProgram } from "./effects/program";
 import { WorkerConfigService } from "./effects/config";
 import { LlmProviderService, selectLlmProvider } from "./llm/service";
 import { runRealtimeAgentWorker } from "./spacetime/agentLoop";
 
-loadEnv({ path: ".env.local" });
-loadEnv();
+const sourceDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(sourceDir, "../../..");
+for (const envPath of [
+  resolve(repoRoot, ".env.local"),
+  resolve(process.cwd(), ".env.local"),
+  resolve(repoRoot, ".env"),
+  resolve(process.cwd(), ".env")
+]) {
+  if (existsSync(envPath)) {
+    loadEnv({ path: envPath });
+  }
+}
 
 const mode = process.env.AGENT_WORKER_MODE ?? "watch";
 

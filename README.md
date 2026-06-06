@@ -103,6 +103,7 @@ SpacetimeDB is used as the authoritative backend contract in `modules/spacetime`
 The worker package lives in `apps/agent-worker` and defines:
 
 - Quiz Author Agent
+- Safety Guard Agent
 - Fairness Review Agent
 - Host Commentator Agent
 - Learning Recap Agent
@@ -113,6 +114,7 @@ The worker auto-detects useful keys without printing secret values:
 
 - `LLM_API_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL_ID` for OpenAI-compatible gateways.
 - `OPENAI_API_KEY` for OpenAI Chat Completions.
+- `NVIDIA_AUTHOR_API_KEY` or `NVIDIA_API_KEY` for NVIDIA-hosted OpenAI-compatible models.
 - `ANTHROPIC_API_KEY` for Anthropic Messages.
 - `GEMINI_API_KEY` for Gemini `generateContent`.
 
@@ -131,7 +133,14 @@ LLM_MAX_RETRIES=2
 LLM_JSON_MODE=true
 ```
 
-You can also set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`. `LLM_PROVIDER_NAME=auto` picks the first configured provider; set `LLM_PROVIDER_NAME=generic|openai|anthropic|gemini` to force one.
+You can also set `OPENAI_API_KEY`, `NVIDIA_AUTHOR_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`. `LLM_PROVIDER_NAME=auto` picks the first configured provider; set `LLM_PROVIDER_NAME=generic|openai|nvidia|anthropic|gemini` to force one.
+
+For the current NVIDIA setup:
+
+- Quiz Author: `nvidia/llama-3.3-nemotron-super-49b-v1.5`
+- Fairness Review: `nvidia/nemotron-3-super-120b-a12b`
+- Fast commentary/recap: `nvidia/llama-3.1-nemotron-nano-8b-v1`
+- Safety Guard: `nvidia/llama-3.1-nemotron-safety-guard-8b-v3`
 
 ## Test
 

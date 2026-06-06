@@ -6,6 +6,7 @@ import { LlmProviderService, makeLlmProvider, selectLlmProvider } from "../llm/s
 import { FallbackSeedProvider } from "../llm/providers/FallbackSeedProvider";
 import { GenericHttpLlmProvider } from "../llm/providers/GenericHttpLlmProvider";
 import { MockLlmProvider } from "../llm/providers/MockLlmProvider";
+import { NvidiaLlmProvider } from "../llm/providers/NvidiaLlmProvider";
 
 const baseConfig: WorkerConfig = {
   llm: {
@@ -29,7 +30,20 @@ const baseConfig: WorkerConfig = {
     geminiApiKey: "",
     geminiBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
     geminiModelId: "gemini-2.5-flash",
-    geminiSmallModelId: "gemini-2.5-flash"
+    geminiSmallModelId: "gemini-2.5-flash",
+    nvidiaApiKey: "",
+    nvidiaBaseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+    nvidiaReasoningApiKey: "",
+    nvidiaReasoningModelId: "nvidia/nemotron-3-super-120b-a12b",
+    nvidiaAuthorApiKey: "",
+    nvidiaAuthorModelId: "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    nvidiaSmallApiKey: "",
+    nvidiaSmallModelId: "nvidia/llama-3.1-nemotron-nano-8b-v1",
+    nvidiaSafetyApiKey: "",
+    nvidiaSafetyModelId: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+    nvidiaJsonMode: false,
+    nvidiaReasoningEnabled: false,
+    safetyGuardEnabled: false
   },
   realtime: {
     url: "ws://localhost:8787",
@@ -76,6 +90,25 @@ describe("Effect worker runtime", () => {
       configured: true,
       reason: "OPENAI_API_KEY"
     });
+  });
+
+  it("uses NVIDIA provider when NVIDIA credentials exist", () => {
+    const config = {
+      ...baseConfig,
+      llm: {
+        ...baseConfig.llm,
+        providerPreference: "nvidia",
+        nvidiaAuthorApiKey: "test-nvidia-key"
+      }
+    };
+
+    expect(selectLlmProvider(config)).toMatchObject({
+      providerName: "nvidia",
+      modelId: "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+      configured: true,
+      reason: "NVIDIA_API_KEY or NVIDIA_AUTHOR_API_KEY"
+    });
+    expect(makeLlmProvider(config)).toBeInstanceOf(NvidiaLlmProvider);
   });
 
   it("honors explicit provider preference", () => {

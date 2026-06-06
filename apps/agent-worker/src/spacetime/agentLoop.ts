@@ -99,7 +99,11 @@ function processAgentRequest(
 
     const result = yield* generateQuizQuestions(
       provider,
-      { timeoutMs: config.llm.timeoutMs, maxRetries: config.llm.maxRetries },
+      {
+        timeoutMs: config.llm.timeoutMs,
+        maxRetries: config.llm.maxRetries,
+        enableSafetyGuard: config.llm.safetyGuardEnabled
+      },
       {
         topic: request.topic,
         difficulty: request.difficulty,

@@ -24,6 +24,19 @@ export interface WorkerConfig {
     readonly geminiBaseUrl: string;
     readonly geminiModelId: string;
     readonly geminiSmallModelId: string;
+    readonly nvidiaApiKey: string;
+    readonly nvidiaBaseUrl: string;
+    readonly nvidiaReasoningApiKey: string;
+    readonly nvidiaReasoningModelId: string;
+    readonly nvidiaAuthorApiKey: string;
+    readonly nvidiaAuthorModelId: string;
+    readonly nvidiaSmallApiKey: string;
+    readonly nvidiaSmallModelId: string;
+    readonly nvidiaSafetyApiKey: string;
+    readonly nvidiaSafetyModelId: string;
+    readonly nvidiaJsonMode: boolean;
+    readonly nvidiaReasoningEnabled: boolean;
+    readonly safetyGuardEnabled: boolean;
   };
   readonly realtime: {
     readonly url: string;
@@ -75,7 +88,30 @@ export const workerConfig = Config.all({
     geminiApiKey: Config.string("GEMINI_API_KEY").pipe(Config.withDefault("")),
     geminiBaseUrl: Config.string("GEMINI_API_BASE_URL").pipe(Config.withDefault("https://generativelanguage.googleapis.com/v1beta")),
     geminiModelId: Config.string("GEMINI_MODEL").pipe(Config.withDefault("gemini-2.5-flash")),
-    geminiSmallModelId: Config.string("GEMINI_SMALL_MODEL").pipe(Config.withDefault("gemini-2.5-flash"))
+    geminiSmallModelId: Config.string("GEMINI_SMALL_MODEL").pipe(Config.withDefault("gemini-2.5-flash")),
+    nvidiaApiKey: Config.string("NVIDIA_API_KEY").pipe(Config.withDefault("")),
+    nvidiaBaseUrl: Config.string("NVIDIA_API_BASE_URL").pipe(
+      Config.withDefault("https://integrate.api.nvidia.com/v1/chat/completions")
+    ),
+    nvidiaReasoningApiKey: Config.string("NVIDIA_REASONING_API_KEY").pipe(Config.withDefault("")),
+    nvidiaReasoningModelId: Config.string("NVIDIA_REASONING_MODEL").pipe(
+      Config.withDefault("nvidia/nemotron-3-super-120b-a12b")
+    ),
+    nvidiaAuthorApiKey: Config.string("NVIDIA_AUTHOR_API_KEY").pipe(Config.withDefault("")),
+    nvidiaAuthorModelId: Config.string("NVIDIA_AUTHOR_MODEL").pipe(
+      Config.withDefault("nvidia/llama-3.3-nemotron-super-49b-v1.5")
+    ),
+    nvidiaSmallApiKey: Config.string("NVIDIA_SMALL_API_KEY").pipe(Config.withDefault("")),
+    nvidiaSmallModelId: Config.string("NVIDIA_SMALL_MODEL").pipe(
+      Config.withDefault("nvidia/llama-3.1-nemotron-nano-8b-v1")
+    ),
+    nvidiaSafetyApiKey: Config.string("NVIDIA_SAFETY_API_KEY").pipe(Config.withDefault("")),
+    nvidiaSafetyModelId: Config.string("NVIDIA_SAFETY_MODEL").pipe(
+      Config.withDefault("nvidia/llama-3.1-nemotron-safety-guard-8b-v3")
+    ),
+    nvidiaJsonMode: Config.boolean("NVIDIA_JSON_MODE").pipe(Config.withDefault(false)),
+    nvidiaReasoningEnabled: Config.boolean("NVIDIA_REASONING_ENABLED").pipe(Config.withDefault(false)),
+    safetyGuardEnabled: Config.boolean("SAFETY_GUARD_ENABLED").pipe(Config.withDefault(false))
   }),
   realtime: Config.all({
     url: Config.string("AGENT_REALTIME_URL").pipe(Config.withDefault("ws://localhost:8787")),

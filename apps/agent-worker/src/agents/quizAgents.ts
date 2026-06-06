@@ -12,13 +12,16 @@ import {
   learningRecapPrompt,
   learningRecapUserPrompt,
   quizAuthorPrompt,
-  quizAuthorUserPrompt
+  quizAuthorUserPrompt,
+  safetyGuardPrompt,
+  safetyGuardUserPrompt
 } from "../prompts/quizPrompts";
-import { fairnessReviewSchema, hostCommentarySchema, learningRecapSchema } from "../schemas/agentSchemas";
+import { fairnessReviewSchema, hostCommentarySchema, learningRecapSchema, safetyGuardReviewSchema } from "../schemas/agentSchemas";
 
 export interface AgentConfig {
   timeoutMs: number;
   maxRetries: number;
+  enableSafetyGuard?: boolean;
 }
 
 export interface QuizGenerationInput {
@@ -59,7 +62,7 @@ export function generateQuizQuestions(
       Effect.flatMap((payload) =>
         Effect.try({
           try: () => {
-            const parsed = questionBatchSchema.safeParse(payload);
+            const parsed = questionBatchSchema.safeParse(normalizeQuestionBatchPayload(payload));
             if (!parsed.success) {
               throw new ValidationError(parsed.error.message);
             }
@@ -89,51 +92,57 @@ export function generateQuizQuestions(
         })
       ),
       Effect.flatMap((authored) =>
-        provider
-          .generateJson<unknown>({
-            system: fairnessReviewPrompt(),
-            user: fairnessReviewUserPrompt({ questions: authored.questions }),
-            schemaName: "FairnessReview",
-            timeoutMs: config.timeoutMs,
-            temperature: 0.1
-          })
-          .pipe(
-            Effect.retry(policy),
-            Effect.flatMap((payload) =>
-              Effect.try({
-                try: () => {
-                  const parsed = fairnessReviewSchema.safeParse(payload);
-                  if (!parsed.success) {
-                    throw new ValidationError(parsed.error.message);
-                  }
-                  if (!parsed.data.approved && parsed.data.rejectedCount > 0) {
-                    throw new ValidationError(`Fairness Review rejected ${parsed.data.rejectedCount} question(s).`);
-                  }
-
-                  return {
-                    questions: parsed.data.fixedQuestions.slice(0, input.questionCount),
-                    status: "complete" as const,
-                    events: [
-                      authored.events[0],
-                      {
-                        agentName: "Fairness Review Agent",
-                        eventType: "questions_approved",
-                        content: parsed.data.issues.length
-                          ? `${parsed.data.issues.length} issue(s) repaired before approval.`
-                          : "Schema, option uniqueness, ambiguity, and public-audience guardrails passed.",
-                        confidence: 0.96,
-                        status: "complete" as const
-                      }
-                    ].filter((event): event is NonNullable<typeof event> => Boolean(event))
-                  };
-                },
-                catch: (error): LlmError =>
-                  error instanceof ValidationError
-                    ? error
-                    : new ValidationError(error instanceof Error ? error.message : String(error))
+        runSafetyGuard(provider, config, policy, authored.questions).pipe(
+          Effect.flatMap((safetyEvent) =>
+            provider
+              .generateJson<unknown>({
+                system: fairnessReviewPrompt(),
+                user: fairnessReviewUserPrompt({ questions: authored.questions }),
+                schemaName: "FairnessReview",
+                timeoutMs: config.timeoutMs,
+                temperature: 0.1
               })
-            )
+              .pipe(
+                Effect.retry(policy),
+                Effect.flatMap((payload) =>
+                  Effect.try({
+                    try: () => {
+                      const parsed = fairnessReviewSchema.safeParse(payload);
+                      if (!parsed.success) {
+                        throw new ValidationError(parsed.error.message);
+                      }
+                      if (!parsed.data.approved && parsed.data.rejectedCount > 0) {
+                        throw new ValidationError(`Fairness Review rejected ${parsed.data.rejectedCount} question(s).`);
+                      }
+
+                      const reviewedQuestions = parsed.data.fixedQuestions.length ? parsed.data.fixedQuestions : authored.questions;
+                      return {
+                        questions: reviewedQuestions.slice(0, input.questionCount),
+                        status: "complete" as const,
+                        events: [
+                          authored.events[0],
+                          safetyEvent,
+                          {
+                            agentName: "Fairness Review Agent",
+                            eventType: "questions_approved",
+                            content: parsed.data.issues.length
+                              ? `${parsed.data.issues.length} issue(s) repaired before approval.`
+                              : "Schema, option uniqueness, ambiguity, and public-audience guardrails passed.",
+                            confidence: 0.96,
+                            status: "complete" as const
+                          }
+                        ].filter((event): event is NonNullable<typeof event> => Boolean(event))
+                      };
+                    },
+                    catch: (error): LlmError =>
+                      error instanceof ValidationError
+                        ? error
+                        : new ValidationError(error instanceof Error ? error.message : String(error))
+                  })
+                )
+              )
           )
+        )
       ),
       Effect.catchAll((error) =>
         Effect.succeed({
@@ -158,6 +167,85 @@ export function generateQuizQuestions(
         })
       )
     );
+}
+
+function normalizeQuestionBatchPayload(payload: unknown): unknown {
+  if (Array.isArray(payload)) {
+    return { questions: payload };
+  }
+  return payload;
+}
+
+function runSafetyGuard(
+  provider: LlmProvider,
+  config: AgentConfig,
+  policy: Schedule.Schedule<unknown, LlmError, never>,
+  questions: QuestionInput[]
+): Effect.Effect<QuizGenerationResult["events"][number] | null, LlmError> {
+  if (!config.enableSafetyGuard) {
+    return Effect.succeed(null);
+  }
+
+  return provider
+    .generateJson<unknown>({
+      system: safetyGuardPrompt(),
+      user: safetyGuardUserPrompt({ questions }),
+      schemaName: "SafetyGuardReview",
+      timeoutMs: config.timeoutMs,
+      temperature: 0
+    })
+    .pipe(
+      Effect.retry(policy),
+      Effect.flatMap((payload) =>
+        Effect.try({
+          try: () => {
+            const parsed = safetyGuardReviewSchema.safeParse(normalizeSafetyGuardPayload(payload));
+            if (!parsed.success) {
+              throw new ValidationError(parsed.error.message);
+            }
+            if (!parsed.data.safe || parsed.data.riskLevel === "high") {
+              throw new ValidationError(`Safety Guard rejected generated questions: ${parsed.data.rationale}`);
+            }
+
+            return {
+              agentName: "Safety Guard Agent",
+              eventType: "content_approved",
+              content: `Safety Guard approved content as ${parsed.data.riskLevel} risk.`,
+              confidence: 0.95,
+              status: "complete" as const
+            };
+          },
+          catch: (error): LlmError =>
+            error instanceof ValidationError ? error : new ValidationError(error instanceof Error ? error.message : String(error))
+        })
+      )
+    );
+}
+
+function normalizeSafetyGuardPayload(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+
+  const record = payload as Record<string, unknown>;
+  if ("safe" in record || "riskLevel" in record) {
+    return payload;
+  }
+
+  const labels = [record["User Safety"], record["Response Safety"], record.userSafety, record.responseSafety]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim().toLowerCase());
+  if (labels.length === 0) {
+    return payload;
+  }
+
+  const safe = labels.every((label) => label === "safe");
+  return {
+    safe,
+    riskLevel: safe ? "low" : "high",
+    categories: safe ? [] : labels,
+    rationale: safe ? "NVIDIA Safety Guard classified the prompt and response as safe." : "NVIDIA Safety Guard flagged generated content."
+  };
 }
 
 export function generateHostCommentary(

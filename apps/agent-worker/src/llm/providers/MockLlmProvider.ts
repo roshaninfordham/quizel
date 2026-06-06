@@ -22,6 +22,15 @@ export class MockLlmProvider implements LlmProvider {
       } as T);
     }
 
+    if (input.schemaName === "SafetyGuardReview") {
+      return Effect.succeed({
+        safe: true,
+        riskLevel: "low",
+        categories: [],
+        rationale: "Mock provider content is safe for the public demo."
+      } as T);
+    }
+
     if (input.schemaName === "LearningRecap") {
       return Effect.succeed({
         summary: "The room learned how reducers, realtime subscriptions, and AI fallbacks keep a live quiz fair.",

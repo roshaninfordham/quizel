@@ -27,6 +27,15 @@ Return approved=true only when the batch is safe for a public hackathon room.
 If a question needs light repair, include the repaired batch in fixedQuestions.`;
 }
 
+export function safetyGuardPrompt(): string {
+  return `${sharedGuardrails}
+
+You are the Safety Guard Agent for QuizDuel Live.
+Classify whether the proposed quiz content is safe for a public educational hackathon audience.
+Reject content that includes political persuasion, sexual content, graphic violence, hate, self-harm, medical/legal/financial advice, real-money mechanics, or gambling language.
+Return safe=true only when all questions and explanations are suitable.`;
+}
+
 export function quizAuthorUserPrompt(input: {
   topic: string;
   difficulty: string;
@@ -73,6 +82,19 @@ export function fairnessReviewUserPrompt(input: { questions: unknown }): string 
         }
       ],
       fixedQuestions: []
+    }
+  });
+}
+
+export function safetyGuardUserPrompt(input: { questions: unknown }): string {
+  return JSON.stringify({
+    task: "Classify this QuizDuel Live question batch before it is accepted.",
+    questions: input.questions,
+    output_schema: {
+      safe: true,
+      riskLevel: "low|medium|high",
+      categories: ["string"],
+      rationale: "string max 240 characters"
     }
   });
 }

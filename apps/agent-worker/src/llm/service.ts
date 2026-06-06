@@ -4,6 +4,7 @@ import { AnthropicLlmProvider } from "./providers/AnthropicLlmProvider";
 import { FallbackSeedProvider } from "./providers/FallbackSeedProvider";
 import { GeminiLlmProvider } from "./providers/GeminiLlmProvider";
 import { GenericHttpLlmProvider } from "./providers/GenericHttpLlmProvider";
+import { NvidiaLlmProvider } from "./providers/NvidiaLlmProvider";
 import type { LlmProvider } from "./provider";
 
 export class LlmProviderService extends Context.Tag("quizduel/LlmProvider")<
@@ -26,6 +27,21 @@ export function makeLlmProvider(config: WorkerConfig): LlmProvider {
   }
 
   switch (selection.providerName) {
+    case "nvidia":
+      return new NvidiaLlmProvider({
+        baseUrl: config.llm.nvidiaBaseUrl,
+        apiKey: config.llm.nvidiaApiKey,
+        authorApiKey: config.llm.nvidiaAuthorApiKey,
+        authorModelId: config.llm.nvidiaAuthorModelId,
+        reasoningApiKey: config.llm.nvidiaReasoningApiKey,
+        reasoningModelId: config.llm.nvidiaReasoningModelId,
+        smallApiKey: config.llm.nvidiaSmallApiKey,
+        smallModelId: config.llm.nvidiaSmallModelId,
+        safetyApiKey: config.llm.nvidiaSafetyApiKey,
+        safetyModelId: config.llm.nvidiaSafetyModelId,
+        jsonMode: config.llm.nvidiaJsonMode,
+        reasoningEnabled: config.llm.nvidiaReasoningEnabled
+      });
     case "anthropic":
       return new AnthropicLlmProvider({
         baseUrl: config.llm.anthropicBaseUrl,
@@ -74,6 +90,16 @@ export function selectLlmProvider(config: WorkerConfig): LlmProviderSelection {
       modelId: config.llm.openaiModelId,
       configured: Boolean(config.llm.openaiApiKey && config.llm.openaiBaseUrl && config.llm.openaiModelId),
       reason: "OPENAI_API_KEY"
+    },
+    {
+      providerName: "nvidia",
+      modelId: config.llm.nvidiaAuthorModelId,
+      configured: Boolean(
+        config.llm.nvidiaBaseUrl &&
+          config.llm.nvidiaAuthorModelId &&
+          (config.llm.nvidiaApiKey || config.llm.nvidiaAuthorApiKey)
+      ),
+      reason: "NVIDIA_API_KEY or NVIDIA_AUTHOR_API_KEY"
     },
     {
       providerName: "anthropic",

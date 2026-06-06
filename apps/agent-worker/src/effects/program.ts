@@ -11,7 +11,8 @@ export const QuizGenerationProgram = Effect.gen(function* () {
     provider,
     {
       timeoutMs: config.llm.timeoutMs,
-      maxRetries: config.llm.maxRetries
+      maxRetries: config.llm.maxRetries,
+      enableSafetyGuard: config.llm.safetyGuardEnabled
     },
     {
       topic: config.demo.topic,

@@ -14,7 +14,14 @@ export const fairnessReviewSchema = z.object({
       })
     )
     .max(10),
-  fixedQuestions: z.array(questionInputSchema).min(1).max(10)
+  fixedQuestions: z.array(questionInputSchema).max(10)
+});
+
+export const safetyGuardReviewSchema = z.object({
+  safe: z.boolean(),
+  riskLevel: z.enum(["low", "medium", "high"]),
+  categories: z.array(z.string().min(2).max(80)).max(8),
+  rationale: z.string().min(4).max(240)
 });
 
 export const hostCommentarySchema = z.object({
@@ -31,3 +38,4 @@ export const learningRecapSchema = z.object({
 
 export type HostCommentaryOutput = z.infer<typeof hostCommentarySchema>;
 export type LearningRecapOutput = z.infer<typeof learningRecapSchema>;
+export type SafetyGuardReviewOutput = z.infer<typeof safetyGuardReviewSchema>;
