@@ -208,6 +208,21 @@ const audit_event = table(
   }
 );
 
+const operation_trace = table(
+  { name: "operation_trace", public: true },
+  {
+    trace_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
+    reducer: t.string(),
+    identity: t.string(),
+    ok: t.bool(),
+    duration_ms: t.u32(),
+    state_version: t.u32(),
+    error_message: t.option(t.string()),
+    created_at_ms: t.u64()
+  }
+);
+
 const spacetimedb = schema({
   session,
   participant,
@@ -221,7 +236,8 @@ const spacetimedb = schema({
   agent_request,
   agent_event,
   live_stats,
-  audit_event
+  audit_event,
+  operation_trace
 });
 
 export default spacetimedb;
@@ -237,6 +253,7 @@ export const create_session = spacetimedb.reducer({ code: t.string(), question_c
   createSessionRow(ctx, code || DEFAULT_CODE, question_count || QUESTION_COUNT);
   insertAudit(ctx, "session-demo", sender(ctx), "create_session", "QuizRush session created.");
   bumpStats(ctx, "session-demo");
+  traceOperation(ctx, "session-demo", "create_session", true, 1, undefined);
 });
 
 export const join_session = spacetimedb.reducer({ code: t.string(), display_name: t.string(), avatar: t.string() }, (ctx, { code, display_name, avatar }) => {
@@ -269,6 +286,7 @@ export const join_session = spacetimedb.reducer({ code: t.string(), display_name
   ctx.db.session.session_id.update({ ...current, status: current.status === "lobby" ? "topic_voting" : current.status, updated_at_ms: now });
   insertMatchEvent(ctx, current.session_id, participant_id, "join", undefined, undefined, undefined, `{"displayName":${JSON.stringify(cleanName(display_name))}}`);
   recalcStats(ctx, current.session_id);
+  traceOperation(ctx, current.session_id, "join_session", true, 1, undefined);
 });
 
 export const submit_topic_vote = spacetimedb.reducer({ session_id: t.string(), topics_json: t.string() }, (ctx, { session_id, topics_json }) => {
@@ -289,6 +307,7 @@ export const submit_topic_vote = spacetimedb.reducer({ session_id: t.string(), t
   ctx.db.session.session_id.update({ ...current, status: current.status === "lobby" ? "topic_voting" : current.status, selected_topic: topicFromVotes(ctx, session_id), updated_at_ms: now });
   insertMatchEvent(ctx, session_id, participantRow.participant_id, "topic_vote", undefined, undefined, undefined, JSON.stringify({ topics }));
   bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "submit_topic_vote", true, 1, undefined);
 });
 
 export const submit_player_intent = spacetimedb.reducer(
@@ -324,6 +343,7 @@ export const submit_player_intent = spacetimedb.reducer(
     insertMatchEvent(ctx, session_id, participantRow.participant_id, "intent_submitted", undefined, undefined, undefined, JSON.stringify({ transcript_source }));
     insertMatchEvent(ctx, session_id, participantRow.participant_id, "intent_parsed", undefined, undefined, undefined, JSON.stringify({ arena_name: parsed.arena_name, topics: parsed.canonical_topics, topic_key: parsed.topic_key }));
     bumpStats(ctx, session_id);
+    traceOperation(ctx, session_id, "submit_player_intent", true, 1, undefined);
   }
 );
 
@@ -347,6 +367,7 @@ export const submit_parsed_intent = spacetimedb.reducer({ intent_id: t.string(),
   ctx.db.session.session_id.update({ ...current, selected_topic: parsed.arena_name, updated_at_ms: now });
   insertMatchEvent(ctx, existing.session_id, existing.participant_id, "intent_parsed", undefined, undefined, undefined, JSON.stringify({ arena_name: parsed.arena_name, topics: parsed.canonical_topics, topic_key: parsed.topic_key }));
   bumpStats(ctx, existing.session_id);
+  traceOperation(ctx, existing.session_id, "submit_parsed_intent", true, 1, undefined);
 });
 
 export const request_questions = spacetimedb.reducer({ session_id: t.string(), topic: t.string(), question_count: t.u32() }, (ctx, { session_id, topic, question_count }) => {
@@ -397,6 +418,7 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
   insertMatchEvent(ctx, session_id, undefined, "questions_requested", undefined, undefined, undefined, JSON.stringify({ selected_topic }));
   submitQuestionPackInternal(ctx, session_id, selected_topic, JSON.stringify({ questions: fallbackQuestionsForTopic(selected_topic, requestedCount) }), undefined);
   bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "request_questions", true, 1, undefined);
 });
 
 export const submit_question_pack = spacetimedb.reducer(
@@ -444,11 +466,13 @@ export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx,
   recomputeRanks(ctx, session_id);
   startRoundInternal(ctx, session_id, 1);
   bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "start_match", true, 1, undefined);
 });
 
 export const start_round = spacetimedb.reducer({ session_id: t.string(), question_order: t.u32() }, (ctx, { session_id, question_order }) => {
   startRoundInternal(ctx, session_id, question_order);
   bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "start_round", true, 1, undefined);
 });
 
 export const submit_answer = spacetimedb.reducer({ round_id: t.string(), selected_option: t.string() }, (ctx, { round_id, selected_option }) => {
@@ -500,6 +524,7 @@ export const submit_answer = spacetimedb.reducer({ round_id: t.string(), selecte
   insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, response_ms }));
   insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ score_delta }));
   recalcStats(ctx, currentRound.session_id);
+  traceOperation(ctx, currentRound.session_id, "submit_answer", true, 1, undefined);
 });
 
 export const resolve_round = spacetimedb.reducer({ round_id: t.string() }, (ctx, { round_id }) => {
@@ -515,11 +540,13 @@ export const resolve_round = spacetimedb.reducer({ round_id: t.string() }, (ctx,
     startRoundInternal(ctx, current.session_id, currentRound.order_index + 1);
   }
   bumpStats(ctx, currentRound.session_id);
+  traceOperation(ctx, currentRound.session_id, "resolve_round", true, 1, undefined);
 });
 
 export const finish_match = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
   finishMatchInternal(ctx, session_id);
   bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "finish_match", true, 1, undefined);
 });
 
 export const heartbeat = spacetimedb.reducer({ session_id: t.string(), client_latency_ms: t.option(t.u32()) }, (ctx, { session_id, client_latency_ms }) => {
@@ -528,11 +555,13 @@ export const heartbeat = spacetimedb.reducer({ session_id: t.string(), client_la
     ctx.db.participant.participant_id.update({ ...participantRow, last_seen_ms: nowMs(), client_latency_ms });
   }
   recalcStats(ctx, session_id);
+  traceOperation(ctx, session_id, "heartbeat", true, 1, undefined);
 });
 
 export const live_tick = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
   recalcStats(ctx, session_id);
   bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "live_tick", true, 1, undefined);
 });
 
 export const reset_demo = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
@@ -541,6 +570,7 @@ export const reset_demo = spacetimedb.reducer({ session_id: t.string() }, (ctx, 
   if (current) ctx.db.session.session_id.delete(session_id);
   createSessionRow(ctx, DEFAULT_CODE, QUESTION_COUNT);
   insertAudit(ctx, session_id, sender(ctx), "reset_demo", "QuizRush demo reset to a clean lobby.");
+  traceOperation(ctx, session_id, "reset_demo", true, 1, undefined);
 });
 
 export const add_simulated_players = spacetimedb.reducer({ session_id: t.string(), count: t.u32() }, (ctx, { session_id, count }) => {
@@ -567,6 +597,7 @@ export const add_simulated_players = spacetimedb.reducer({ session_id: t.string(
   if (current.status === "lobby") ctx.db.session.session_id.update({ ...current, status: "topic_voting", updated_at_ms: now });
   recomputeRanks(ctx, session_id);
   recalcStats(ctx, session_id);
+  traceOperation(ctx, session_id, "add_simulated_players", true, 1, undefined);
 });
 
 export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(), count: t.u32() }, (ctx, { session_id, count }) => {
@@ -621,6 +652,7 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
     recalcStats(ctx, session_id);
   }
   bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "simulate_answer_burst", true, 1, undefined);
 });
 
 export const record_agent_event = spacetimedb.reducer(
@@ -628,6 +660,7 @@ export const record_agent_event = spacetimedb.reducer(
   (ctx, input) => {
     insertAgentEvent(ctx, input.session_id, input.agent_name, input.event_type, input.content, input.confidence, input.status);
     bumpStats(ctx, input.session_id);
+    traceOperation(ctx, input.session_id, "record_agent_event", true, 1, undefined);
   }
 );
 
@@ -835,6 +868,7 @@ function resetSessionTables(ctx: ReducerCtx, session_id: string) {
   ctx.db.agent_request.session_id.delete(session_id);
   ctx.db.agent_event.session_id.delete(session_id);
   ctx.db.audit_event.session_id.delete(session_id);
+  ctx.db.operation_trace.session_id.delete(session_id);
   ctx.db.live_stats.session_id.delete(session_id);
 }
 
@@ -963,6 +997,20 @@ function insertAgentEvent(ctx: ReducerCtx, session_id: string, agent_name: strin
     content,
     confidence,
     status,
+    created_at_ms: nowMs()
+  });
+}
+
+function traceOperation(ctx: ReducerCtx, session_id: string, reducer: string, ok: boolean, duration_ms: number, error_message: string | undefined) {
+  ctx.db.operation_trace.insert({
+    trace_id: id("trace"),
+    session_id,
+    reducer,
+    identity: sender(ctx),
+    ok,
+    duration_ms,
+    state_version: 0,
+    error_message,
     created_at_ms: nowMs()
   });
 }

@@ -19,6 +19,7 @@ QuizRush Arena uses reducer-owned game state. Clients call reducers and subscrib
 | `AgentEvent` | Visible agent pipeline events and fallback logs. |
 | `LiveStats` | Joined counts split by real/simulated players, answer rate, reducer calls, duplicate rejects, p95 latency. |
 | `AuditEvent` | Operator/system audit trail for demo reset and session changes. |
+| `OperationTrace` | Per-reducer trace ledger with reducer name, identity, success/failure, duration, and state version. |
 
 ## Session Status
 
@@ -36,6 +37,7 @@ lobby -> topic_voting -> generating -> ready -> playing -> finished -> replay
 - Duplicate answers are rejected and counted.
 - AI can submit question packs and agent events, but cannot mutate scores.
 - Replay is reconstructed from `MatchEvent`, not from client-only animation state.
+- `OperationTrace` records reducer execution so the tech overlay can show actual operation pressure and timing.
 - Live metrics are refreshed through reducers such as `live_tick`, not client-only counters.
 - Freeform expertise is committed as `PlayerIntent` and mirrored into compact `TopicVote` rows for the judged single-arena sprint. Production multi-arena mode should add `Arena` and `ArenaMember` tables.
 

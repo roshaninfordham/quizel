@@ -19,6 +19,7 @@ export function TechRoute({ code = DEFAULT_SESSION_CODE, embedded = false }: { c
   const questions = useQuestions(sessionId);
   const events = useMatchEvents(sessionId);
   const agentEvents = useAgentEvents(sessionId);
+  const traces = state.operationTraces.filter((trace) => trace.sessionId === sessionId).slice(-8).reverse();
 
   const content = (
     <Panel className="border-2 border-slate-900 !bg-slate-950 !text-white shadow-2xl shadow-slate-400/60">
@@ -44,6 +45,7 @@ export function TechRoute({ code = DEFAULT_SESSION_CODE, embedded = false }: { c
         <TechCard label="simulated load" value={stats?.simulatedJoinedCount ?? participants.filter((participant) => participant.isSimulated).length} />
         <TechCard label="questions approved" value={questions.length} />
         <TechCard label="match events recorded" value={events.length} />
+        <TechCard label="operation traces" value={traces.length} />
       </div>
 
       <div className="mt-8 grid grid-cols-[1fr_1fr] gap-5">
@@ -88,6 +90,20 @@ export function TechRoute({ code = DEFAULT_SESSION_CODE, embedded = false }: { c
             <div key={event.eventId} className="rounded-2xl bg-white/10 px-4 py-3">
               <p className="text-sm font-black uppercase text-cyan-300">{event.agentName} · {event.status}</p>
               <p className="mt-1 text-base font-bold text-slate-100">{event.content}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-8 rounded-[24px] bg-white/10 p-5">
+        <h2 className="text-2xl font-black">Operation Trace</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          {traces.map((trace) => (
+            <div key={trace.traceId} className="rounded-2xl bg-white/10 px-4 py-3">
+              <p className="text-sm font-black uppercase text-cyan-300">{trace.reducer} · {trace.ok ? "ok" : "fail"}</p>
+              <p className="mt-1 text-base font-bold text-slate-100">
+                {trace.durationMs}ms · v{trace.stateVersion} · {trace.identity}
+              </p>
             </div>
           ))}
         </div>

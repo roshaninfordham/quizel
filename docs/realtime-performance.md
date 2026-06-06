@@ -11,6 +11,7 @@ QuizRush Arena does not claim fixed sub-millisecond internet latency. The credib
 - `duplicate taps rejected`: actual duplicate answer rejections.
 - `p95 latency`: live approximate sync metric shown in the UI.
 - `MatchEvents recorded`: append-only replay events.
+- `operation traces`: per-reducer timing and success/failure records.
 
 ## Realtime State Rules
 
@@ -39,6 +40,7 @@ Projector:
 - top leaderboard rows
 - recent match events
 - agent events
+- recent operation traces
 
 Replay:
 
@@ -76,3 +78,13 @@ DbConnection.builder()
 ```
 
 The judged laptop flow currently uses the local reducer gateway for reliability through public tunnels. The direct SpacetimeDB SDK transport should replace that gateway once generated binding names and subscription shapes are verified in this repo.
+
+## Trace Ledger
+
+The realtime gateway and shared engine now record an `OperationTrace` row for each key reducer call. That gives the tech overlay a concrete ledger for:
+
+- join rate under load
+- intent submission timing
+- question pack commit timing
+- answer commit timing
+- reset and recovery timing

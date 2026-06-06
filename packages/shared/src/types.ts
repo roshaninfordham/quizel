@@ -187,6 +187,18 @@ export interface AuditEvent {
   createdAt: number;
 }
 
+export interface OperationTrace {
+  traceId: string;
+  sessionId: string;
+  reducer: string;
+  identity: string;
+  ok: boolean;
+  durationMs: number;
+  stateVersion: number;
+  errorMessage: string | null;
+  createdAt: number;
+}
+
 export interface QuizRushState {
   sessions: Session[];
   participants: Participant[];
@@ -201,6 +213,7 @@ export interface QuizRushState {
   agentEvents: AgentEvent[];
   liveStats: LiveStats[];
   auditEvents: AuditEvent[];
+  operationTraces: OperationTrace[];
 }
 
 export interface ReducerEnvelope<TArgs = unknown> {

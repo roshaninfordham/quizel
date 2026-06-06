@@ -21,6 +21,7 @@ import type {
   MatchEvent,
   MatchEventType,
   OptionKey,
+  OperationTrace,
   Participant,
   PlayerIntent,
   Question,
@@ -69,6 +70,7 @@ export class QuizRushEngine {
       const sessionId = sessionIdFromArgs(args) ?? sessionIdFromResult(data);
       if (sessionId) this.incrementReducerCount(sessionId, started);
       this.stateVersion += 1;
+      this.recordOperationTrace(sessionId ?? DEFAULT_SESSION_ID, reducer, identity, true, Date.now() - started, null);
       this.notify();
       return { ok: true, reducer, data, stateVersion: this.stateVersion, serverTime: Date.now() };
     } catch (error) {
@@ -81,6 +83,7 @@ export class QuizRushEngine {
         }
       }
       this.stateVersion += 1;
+      this.recordOperationTrace(sessionId ?? DEFAULT_SESSION_ID, reducer, identity, false, Date.now() - started, error instanceof Error ? error.message : String(error));
       this.notify();
       return {
         ok: false,
@@ -757,6 +760,29 @@ export class QuizRushEngine {
     return event;
   }
 
+  private recordOperationTrace(
+    sessionId: string,
+    reducer: string,
+    identity: string,
+    ok: boolean,
+    durationMs: number,
+    errorMessage: string | null
+  ): OperationTrace {
+    const trace: OperationTrace = {
+      traceId: this.nextId("operation-trace"),
+      sessionId,
+      reducer,
+      identity,
+      ok,
+      durationMs,
+      stateVersion: this.stateVersion,
+      errorMessage,
+      createdAt: Date.now()
+    };
+    this.state.operationTraces.push(trace);
+    return trace;
+  }
+
   private seedSession(sessionId = DEFAULT_SESSION_ID): Session {
     const now = Date.now();
     const session: Session = {
@@ -960,7 +986,8 @@ function emptyState(): QuizRushState {
     agentRequests: [],
     agentEvents: [],
     liveStats: [],
-    auditEvents: []
+    auditEvents: [],
+    operationTraces: []
   };
 }
 
