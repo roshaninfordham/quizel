@@ -1,56 +1,68 @@
 # Architecture
 
-QuizRush Arena is built around one judged workflow: a public arena QR, a one-route phone controller, freeform expertise intent, AI-generated questions, a 25-second match, and event-ledger replay.
+QuizRush Arena is built around one judged workflow: a public arena QR, a one-route phone controller, freeform topic intent, AI-generated or cached private questions, a 25-second match, live bracket movement, and durable share-card replay.
 
-## System
+## Production System
 
 ```mermaid
 flowchart LR
-    Terminal[make online CLI] --> STDB[(SpacetimeDB)]
-    Terminal --> Web[Vite Web App]
-    Terminal --> Worker[Effect Agent Worker]
-    Terminal --> Gateway[Local Realtime Gateway]
+    Vercel["Vercel frontend<br/>/arena, /join, /share"] --> Phones["Audience phones"]
+    Vercel --> Projector["Projector arena"]
+    Vercel --> SharePage["Public score card route<br/>/share/:slug"]
 
-    Phones[Audience Phones] -->|join_session / submit_answer| Gateway
-    Projector[Projector Arena] -->|subscriptions| Gateway
-    Tech[Tech Overlay] -->|subscriptions| Gateway
+    Phones -->|join_session / submit_profile / submit_player_intent| DB[("SpacetimeDB<br/>quizrush-live")]
+    Phones -->|request_questions / submit_answer / create_share_card| DB
+    Projector -->|subscribe Session, Participant, BracketNode, LeaderboardTopN, LiveStats| DB
+    SharePage -->|subscribe ShareCard by slug| DB
 
-    Gateway -->|same reducer contract| STDB
-    Worker -->|subscribe AgentRequest / Session state| Gateway
-    Worker -->|generic LLM calls| LLM[Swappable LLM Provider]
-    Worker -->|submit_question_pack / record_agent_event| Gateway
+    Worker["Effect agent worker"] -->|claim GenerationJob| DB
+    Worker -->|submit TopicFact + QuestionPack| DB
+    Worker --> Firecrawl["Firecrawl search/scrape"]
+    Worker --> LLM["NVIDIA NIM / LLM provider pool"]
 
-    Gateway -->|live table snapshots| Phones
-    Gateway -->|live table snapshots| Projector
-    Gateway -->|live table snapshots| Tech
+    DB --> GameRows["Session, Participant, PlayerIntent"]
+    DB --> QuizRows["QuestionPack, QuestionPublic, QuestionSecret"]
+    DB --> RaceRows["Round, Answer, Score, BracketNode"]
+    DB --> ResultRows["FinalResult, ShareCard, MatchEvent, LiveStats"]
 ```
+
+Vercel only serves the application shell and routes. SpacetimeDB owns the realtime game state: profiles, intents, quiz pack assignment, hidden answers, official timing, score, rank, bracket movement, final results, and share-card slugs. The Effect worker performs external I/O, then writes compact facts and validated packs back through reducers.
 
 ## Realtime Sequence
 
 ```mermaid
 sequenceDiagram
-    participant Host as Presenter Terminal
+    participant Host as Presenter
     participant DB as SpacetimeDB
     participant P as Projector
     participant U as Phone User
     participant W as Effect Worker
+    participant F as Firecrawl
     participant L as LLM Provider
+    participant S as Share Page
 
     Host->>DB: create_session()
     P->>DB: subscribe Session/Participants/LiveStats
     U->>DB: join_session()
-    DB-->>P: joined count update
-    U->>DB: submit_topic_vote(expertise-derived topics)
-    W->>DB: subscribe TopicVote / AgentRequest
-    W->>L: route topic + generate quiz JSON
-    L-->>W: questions
-    W->>W: validate + fairness review
+    DB-->>P: Participant roster update
+    U->>DB: submit_player_intent(topic)
+    DB-->>W: GenerationJob pending
+    W->>F: fetch facts when cache misses
+    W->>L: generate grounded quiz JSON when needed
+    W->>W: validate schema + topic grounding
     W->>DB: submit_question_pack()
+    DB-->>U: participant QuestionPublic rows
     Host->>DB: start_match()
     U->>DB: submit_answer()
-    DB-->>P: score/rank update
+    DB->>DB: compute official time, correctness, score, rank
+    DB-->>P: leaderboard and bracket update
     DB-->>U: own score update
-    DB-->>P: final winner + replay ledger
+    DB->>DB: finalize_race()
+    DB-->>U: FinalResult row
+    U->>DB: create_share_card()
+    DB-->>U: ShareCard slug
+    U->>S: open /share/:slug
+    S->>DB: subscribe ShareCard by slug
 ```
 
 ## State Machine
@@ -88,14 +100,20 @@ flowchart TD
 ## Packages
 
 - `apps/web`: projector arena, phone route, tech overlay.
-- `apps/realtime-server`: laptop websocket reducer gateway for reliable local demos.
+- `apps/realtime-server`: local websocket reducer gateway for offline rehearsal only.
 - `apps/agent-worker`: Effect-powered agent worker and provider-neutral LLM adapters.
 - `modules/spacetime`: SpacetimeDB table/reducer module matching the shared contract.
 - `packages/shared`: reducer engine, types, schemas, scoring, fallback questions, tests.
 
-## SpacetimeDB SDK Direction
+## SpacetimeDB Usage
 
-The production transport should follow the generated TypeScript binding pattern from the SpacetimeDB skills reference:
+- Phones call reducers for `join_session`, `submit_profile`, `submit_player_intent`, `request_questions`, `submit_answer`, and `create_share_card`.
+- The projector subscribes to public rows only: `Session`, `Participant`, `PlayerIntent`, `BracketNode`, `LeaderboardTopN`, `FinalResult`, and `LiveStats`.
+- Phones subscribe to their own private quiz surface: assigned `QuestionPublic` rows, `Round`, `Score`, `FinalResult`, and `ShareCard`.
+- The agent worker claims `GenerationJob` rows, fetches facts outside the database, validates packs, and submits compact `TopicFact`, `QuestionPack`, `QuestionPublic`, and `QuestionSecret` rows through reducers.
+- The share page loads a durable `ShareCard` row by slug. It never reconstructs score cards from URL text.
+
+Production transport follows the generated TypeScript binding pattern from the SpacetimeDB skills reference:
 
 ```text
 spacetime build
@@ -106,4 +124,4 @@ subscribe(tables...)
 ctx.reducers.reducerName(...)
 ```
 
-The current public demo keeps the reducer gateway active because it has been verified through venue-safe tunnels. The reducer/table model remains aligned with the SpacetimeDB module so this is a transport swap, not a product rewrite.
+The local reducer gateway remains available for offline rehearsal, but the deployed architecture is Vercel plus the `quizrush-live` SpacetimeDB module.

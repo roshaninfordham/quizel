@@ -26,16 +26,25 @@ DevRel teams, hackathon hosts, bootcamp instructors, and live workshop organizer
 
 ```mermaid
 flowchart LR
-    Phone[Phone Player] -->|join/profile/topic| DB[(SpacetimeDB)]
+    Vercel["Vercel Web App"] --> Phone["Phone Player<br/>/join/:code"]
+    Vercel --> Projector["Projector Arena<br/>/arena/:code"]
+    Vercel --> SharePage["Share Page<br/>/share/:slug"]
+
+    Phone -->|join/profile/topic reducers| DB[("SpacetimeDB<br/>quizrush-live")]
     Phone -->|submit_answer reducer| DB
-    Worker[Effect Agent Worker] -->|facts + quiz pack reducers| DB
-    DB --> Questions[QuestionPublic rows]
-    DB --> Score[Score / FinalResult]
-    DB --> Share[ShareCard slug]
-    Projector[Projector Live Bracket] -->|subscriptions| DB
-    Vercel[Vercel Web App] --> Phone
-    Vercel --> Projector
-    Vercel --> SharePage[/share/:slug]
+    Projector -->|subscriptions| DB
+    SharePage -->|subscribe by slug| DB
+
+    Worker["Effect Agent Worker"] -->|claim GenerationJob| DB
+    Worker -->|submit facts + QuestionPack| DB
+    Worker --> Firecrawl["Firecrawl facts"]
+    Worker --> LLM["NVIDIA NIM / LLM pool"]
+
+    DB --> Participant["Participant + PlayerIntent"]
+    DB --> Questions["QuestionPublic + QuestionSecret"]
+    DB --> Score["Answer + Score + FinalResult"]
+    DB --> Bracket["BracketNode + LeaderboardTopN"]
+    DB --> Share["ShareCard slug"]
 ```
 
 ## Why This Is Different

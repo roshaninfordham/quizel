@@ -22,14 +22,14 @@ The current authoritative race path uses these tables:
 
 ```mermaid
 flowchart LR
-  Phone[Phone] -->|submit_answer| DB[(SpacetimeDB)]
-  DB -->|reads hidden correct answer| Secret[QuestionSecret]
-  DB --> Answer[Answer]
-  DB --> Score[Score]
-  DB --> Final[FinalResult]
-  Phone -->|create_share_card| DB
-  DB --> Share[ShareCard]
-  Share --> Page[/share/:slug]
+  Phone["Phone Player"] -->|submit_answer reducer| DB[("SpacetimeDB<br/>quizrush-live")]
+  Phone -->|create_share_card reducer| DB
+  DB -->|reads hidden correct answer| Secret["QuestionSecret"]
+  DB --> Answer["Answer"]
+  DB --> Score["Score"]
+  DB --> Final["FinalResult"]
+  DB --> Share["ShareCard"]
+  Share --> Page["Public share route<br/>/share/:slug"]
 ```
 
 The database module is in `modules/spacetime`. It is the authoritative race contract for Vercel clients and the Effect worker.

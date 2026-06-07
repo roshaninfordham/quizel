@@ -167,16 +167,16 @@ Acceptance criteria:
 
 ```mermaid
 flowchart LR
-    Vercel[Vercel React App] --> Phone[Phone Quiz Controller]
-    Vercel --> Projector[Projector Live Bracket]
-    Phone -->|reducers| DB[(SpacetimeDB)]
+    Vercel["Vercel React App"] --> Phone["Phone Quiz Controller"]
+    Vercel --> Projector["Projector Live Bracket"]
+    Vercel --> SharePage["Public share route<br/>/share/:slug"]
+    Phone -->|reducers| DB[("SpacetimeDB<br/>quizrush-live")]
     Projector -->|subscriptions| DB
-    Worker[Effect Agent Worker] -->|claim jobs / submit packs| DB
-    Worker --> Firecrawl[Firecrawl Facts]
-    Worker --> LLM[LLM Provider Pool]
-    DB --> Final[FinalResult]
-    DB --> Share[ShareCard]
-    Vercel --> SharePage[/share/:slug]
+    Worker["Effect Agent Worker"] -->|claim jobs / submit packs| DB
+    Worker --> Firecrawl["Firecrawl Facts"]
+    Worker --> LLM["LLM Provider Pool"]
+    DB --> Final["FinalResult"]
+    DB --> Share["ShareCard"]
     SharePage -->|subscribe by slug| DB
 ```
 

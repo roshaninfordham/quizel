@@ -17,10 +17,10 @@ Share URLs are durable database records, not text-derived links.
 
 ```mermaid
 flowchart LR
-  Phone[Phone Final Screen] -->|create_share_card| DB[(SpacetimeDB)]
-  DB -->|validates| Final[FinalResult]
-  DB --> Share[ShareCard slug]
-  Phone --> Page[/share/:slug]
+  Phone["Phone Final Screen"] -->|create_share_card reducer| DB[("SpacetimeDB<br/>quizrush-live")]
+  DB -->|validates| Final["FinalResult"]
+  DB --> Share["ShareCard slug"]
+  Phone --> Page["Public share route<br/>/share/:slug"]
   Page -->|subscribe by slug| DB
   Page -->|increment_share_view| DB
 ```
