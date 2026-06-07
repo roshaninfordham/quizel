@@ -21,7 +21,7 @@ function useActionRunner() {
         setState({ loading: false, error: null, message: label });
         return result;
       } catch (error) {
-        setState({ loading: false, error: error instanceof Error ? error.message : String(error), message: null });
+        setState({ loading: false, error: friendlyActionError(error), message: null });
         return undefined;
       }
     },
@@ -29,6 +29,23 @@ function useActionRunner() {
   );
 
   return { ...state, run };
+}
+
+function friendlyActionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/instance encountered a fatal error/i.test(message)) {
+    return "Realtime backend hiccuped while committing that step. Tap again, or rejoin from the lobby if this phone is stuck.";
+  }
+  if (/reducer response timed out|timed out/i.test(message)) {
+    return "Realtime commit is taking too long. Check the connection badge and tap again.";
+  }
+  if (/already in progress/i.test(message)) {
+    return "This sprint is already live. You can watch this round and join the next sprint.";
+  }
+  if (/join the tournament/i.test(message)) {
+    return "This phone lost its player session. Rejoin from the lobby to continue.";
+  }
+  return message;
 }
 
 export function useCreateSession() {

@@ -5,6 +5,7 @@ const TOTAL_MATCH_MS = 25_000;
 const QUESTION_TIME_LIMIT_MS = Math.floor(TOTAL_MATCH_MS / QUESTION_COUNT);
 const ROUND_LEAD_TIME_MS = 1_000;
 const ANSWER_GRACE_MS = 150;
+const EARLY_ANSWER_TOLERANCE_MS = ROUND_LEAD_TIME_MS + 100;
 const CORRECTNESS_POINTS = 1000;
 const MAX_SPEED_BONUS = 1000;
 const STREAK_BONUS = 100;
@@ -392,6 +393,22 @@ const operation_trace = table(
   }
 );
 
+const client_error = table(
+  { name: "client_error", public: true },
+  {
+    error_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
+    participant_id: t.string().index("btree"),
+    screen: t.string(),
+    error_code: t.string(),
+    message: t.string(),
+    stack_hash: t.option(t.string()).default(undefined),
+    metadata_json: t.string(),
+    user_agent: t.string(),
+    created_at_ms: t.u64()
+  }
+);
+
 const topic_fact = table(
   { name: "topic_fact", public: true },
   {
@@ -429,6 +446,7 @@ const spacetimedb = schema({
   live_stats,
   audit_event,
   operation_trace,
+  client_error,
   topic_fact
 });
 
@@ -783,7 +801,7 @@ export const submit_answer = spacetimedb.reducer(
   }
   const currentSecret = requireQuestionSecret(ctx, currentRound.question_id);
   const now = nowMs();
-  if (now < currentRound.starts_at_ms) throw new Error("Round has not started.");
+  if (now + BigInt(EARLY_ANSWER_TOLERANCE_MS) < currentRound.starts_at_ms) throw new Error("Round has not started.");
   if (now > currentRound.ends_at_ms + BigInt(ANSWER_GRACE_MS)) throw new Error("Round has ended.");
   const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms), QUESTION_TIME_LIMIT_MS));
   const observed_response_ms =
@@ -1099,6 +1117,50 @@ export const record_agent_event = spacetimedb.reducer(
     insertAgentEvent(ctx, input.session_id, input.agent_name, input.event_type, input.content, input.confidence, input.status);
     bumpStats(ctx, input.session_id);
     traceOperation(ctx, input.session_id, "record_agent_event", true, 1, undefined);
+  }
+);
+
+export const record_client_error = spacetimedb.reducer(
+  {
+    session_id: t.option(t.string()),
+    participant_id: t.option(t.string()),
+    screen: t.string(),
+    error_code: t.string(),
+    message: t.string(),
+    stack_hash: t.option(t.string()),
+    metadata_json: t.string(),
+    user_agent: t.string()
+  },
+  (ctx, input) => {
+    const now = nowMs();
+    const session_id = input.session_id ?? "session-demo";
+    const participant_id = input.participant_id ?? "";
+    const row = {
+      error_id: id(ctx, "client-error"),
+      session_id,
+      participant_id,
+      screen: cleanText(input.screen || "unknown", 80),
+      error_code: cleanText(input.error_code || "client_error", 80),
+      message: cleanText(input.message || "Unknown client error", 600),
+      stack_hash: input.stack_hash ? cleanText(input.stack_hash, 80) : undefined,
+      metadata_json: cleanJsonText(input.metadata_json || "{}", 4000),
+      user_agent: cleanText(input.user_agent || "", 300),
+      created_at_ms: now
+    };
+    ctx.db.client_error.insert(row);
+    if (ctx.db.session.session_id.find(session_id)) {
+      insertMatchEvent(
+        ctx,
+        session_id,
+        participant_id || undefined,
+        "client_error",
+        undefined,
+        undefined,
+        undefined,
+        JSON.stringify({ screen: row.screen, errorCode: row.error_code, message: row.message, stackHash: row.stack_hash })
+      );
+      traceOperation(ctx, session_id, "record_client_error", true, 1, undefined);
+    }
   }
 );
 
@@ -1506,6 +1568,7 @@ function resetSessionTables(ctx: ReducerCtx, session_id: string) {
   ctx.db.agent_event.session_id.delete(session_id);
   ctx.db.audit_event.session_id.delete(session_id);
   ctx.db.operation_trace.session_id.delete(session_id);
+  ctx.db.client_error.session_id.delete(session_id);
   ctx.db.live_stats.session_id.delete(session_id);
 }
 
@@ -1903,6 +1966,15 @@ function cleanName(name: string): string {
 
 function cleanText(value: string, maxLength: number): string {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function cleanJsonText(value: string, maxLength: number): string {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return JSON.stringify(parsed).slice(0, maxLength);
+  } catch {
+    return "{}";
+  }
 }
 
 function clamp01(value: number): number {

@@ -12,6 +12,8 @@ import {
   SIMULATED_ANSWER_BURST_SIZE,
   TOTAL_MATCH_SECONDS
 } from "./constants";
+
+const EARLY_ANSWER_TOLERANCE_MS = ROUND_LEAD_TIME_MS + 100;
 import { questionBatchSchema, selectedOptionSchema } from "./schemas";
 import { computeAnswerScoreBreakdown, compareScores, percentile } from "./scoring";
 import { buildTopicFallbackQuestions } from "./topicFallbackQuestions";
@@ -22,6 +24,7 @@ import type {
   AdmissionTicket,
   Answer,
   AuditEvent,
+  ClientError,
   FinalResult,
   LiveStats,
   MatchEvent,
@@ -177,6 +180,19 @@ export class QuizRushEngine {
         return this.simulateAnswerBurst(context as ReducerContext<{ sessionId: string; count?: number }>);
       case "record_agent_event":
         return this.recordAgentEvent(context as ReducerContext<Partial<AgentEvent> & { sessionId: string }>);
+      case "record_client_error":
+        return this.recordClientError(
+          context as ReducerContext<{
+            sessionId?: string | null;
+            participantId?: string | null;
+            screen?: string;
+            errorCode?: string;
+            message?: string;
+            stackHash?: string | null;
+            metadataJson?: string;
+            userAgent?: string;
+          }>
+        );
       default:
         throw new Error(`Unknown reducer: ${reducer}`);
     }
@@ -724,7 +740,7 @@ export class QuizRushEngine {
     }
     const secret = this.requireQuestionSecret(round.questionId);
     const now = Date.now();
-    if (now < round.startsAt) throw new Error("Round has not started.");
+    if (now + EARLY_ANSWER_TOLERANCE_MS < round.startsAt) throw new Error("Round has not started.");
     if (now > round.endsAt + ANSWER_GRACE_MS) throw new Error("Round has ended.");
     const officialResponseMs = Math.max(0, Math.min(now - round.startsAt, QUESTION_TIME_LIMIT_MS));
     const observedResponseMs =
@@ -1084,6 +1100,44 @@ export class QuizRushEngine {
     return event;
   }
 
+  private recordClientError({
+    args
+  }: ReducerContext<{
+    sessionId?: string | null;
+    participantId?: string | null;
+    screen?: string;
+    errorCode?: string;
+    message?: string;
+    stackHash?: string | null;
+    metadataJson?: string;
+    userAgent?: string;
+  }>): ClientError {
+    const sessionId = args.sessionId || DEFAULT_SESSION_ID;
+    const metadata = parseMetadata(args.metadataJson);
+    const error: ClientError = {
+      errorId: this.nextId("client-error"),
+      sessionId,
+      participantId: args.participantId ?? null,
+      screen: cleanText(args.screen ?? "unknown", 80),
+      errorCode: cleanText(args.errorCode ?? "client_error", 80),
+      message: cleanText(args.message ?? "Unknown client error", 600),
+      stackHash: args.stackHash ? cleanText(args.stackHash, 80) : null,
+      metadata,
+      userAgent: cleanText(args.userAgent ?? "", 300),
+      createdAt: Date.now()
+    };
+    this.state.clientErrors.push(error);
+    if (this.state.sessions.some((session) => session.sessionId === sessionId)) {
+      this.matchEvent(sessionId, error.participantId, "client_error", null, null, null, {
+        screen: error.screen,
+        errorCode: error.errorCode,
+        message: error.message,
+        stackHash: error.stackHash
+      });
+    }
+    return error;
+  }
+
   private recordOperationTrace(
     sessionId: string,
     reducer: string,
@@ -1441,7 +1495,8 @@ function emptyState(): QuizRushState {
     topicFacts: [],
     liveStats: [],
     auditEvents: [],
-    operationTraces: []
+    operationTraces: [],
+    clientErrors: []
   };
 }
 
@@ -1510,10 +1565,25 @@ function cleanName(name: string): string {
   return name.trim().slice(0, 24) || "Player";
 }
 
+function cleanText(value: string, maxLength: number): string {
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function parseMetadata(value: string | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 function sessionIdFromArgs(args: unknown): string | null {
   if (!args || typeof args !== "object") return null;
   const record = args as Record<string, unknown>;
-  return typeof record.sessionId === "string" ? record.sessionId : null;
+  if (typeof record.sessionId === "string") return record.sessionId;
+  return typeof record.session_id === "string" ? record.session_id : null;
 }
 
 function sessionIdFromResult(data: unknown): string | null {

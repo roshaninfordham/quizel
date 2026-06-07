@@ -44,6 +44,7 @@ import IncrementShareViewReducer from "./increment_share_view_reducer";
 import JoinSessionReducer from "./join_session_reducer";
 import LiveTickReducer from "./live_tick_reducer";
 import RecordAgentEventReducer from "./record_agent_event_reducer";
+import RecordClientErrorReducer from "./record_client_error_reducer";
 import RequestQuestionsReducer from "./request_questions_reducer";
 import ResetDemoReducer from "./reset_demo_reducer";
 import ResolveRoundReducer from "./resolve_round_reducer";
@@ -66,6 +67,7 @@ import AgentEventRow from "./agent_event_table";
 import AgentRequestRow from "./agent_request_table";
 import AnswerRow from "./answer_table";
 import AuditEventRow from "./audit_event_table";
+import ClientErrorRow from "./client_error_table";
 import FinalResultRow from "./final_result_table";
 import LiveStatsRow from "./live_stats_table";
 import MatchEventRow from "./match_event_table";
@@ -165,6 +167,23 @@ const tablesSchema = __schema({
       { name: 'audit_event_audit_id_key', constraint: 'unique', columns: ['auditId'] },
     ],
   }, AuditEventRow),
+  client_error: __table({
+    name: 'client_error',
+    indexes: [
+      { accessor: 'error_id', name: 'client_error_error_id_idx_btree', algorithm: 'btree', columns: [
+        'errorId',
+      ] },
+      { accessor: 'participant_id', name: 'client_error_participant_id_idx_btree', algorithm: 'btree', columns: [
+        'participantId',
+      ] },
+      { accessor: 'session_id', name: 'client_error_session_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+      ] },
+    ],
+    constraints: [
+      { name: 'client_error_error_id_key', constraint: 'unique', columns: ['errorId'] },
+    ],
+  }, ClientErrorRow),
   final_result: __table({
     name: 'final_result',
     indexes: [
@@ -409,6 +428,7 @@ const reducersSchema = __reducers(
   __reducerSchema("join_session", JoinSessionReducer),
   __reducerSchema("live_tick", LiveTickReducer),
   __reducerSchema("record_agent_event", RecordAgentEventReducer),
+  __reducerSchema("record_client_error", RecordClientErrorReducer),
   __reducerSchema("request_questions", RequestQuestionsReducer),
   __reducerSchema("reset_demo", ResetDemoReducer),
   __reducerSchema("resolve_round", ResolveRoundReducer),

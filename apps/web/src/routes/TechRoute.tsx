@@ -20,6 +20,7 @@ export function TechRoute({ code = DEFAULT_SESSION_CODE, embedded = false }: { c
   const events = useMatchEvents(sessionId);
   const agentEvents = useAgentEvents(sessionId);
   const traces = state.operationTraces.filter((trace) => trace.sessionId === sessionId).slice(-8).reverse();
+  const clientErrors = state.clientErrors.filter((error) => error.sessionId === sessionId).slice(-8).reverse();
 
   const content = (
     <Panel className="border-2 border-slate-900 !bg-slate-950 !text-white shadow-2xl shadow-slate-400/60">
@@ -46,6 +47,7 @@ export function TechRoute({ code = DEFAULT_SESSION_CODE, embedded = false }: { c
         <TechCard label="questions approved" value={questions.length} />
         <TechCard label="match events recorded" value={events.length} />
         <TechCard label="operation traces" value={traces.length} />
+        <TechCard label="client errors" value={clientErrors.length} />
       </div>
 
       <div className="mt-8 grid grid-cols-[1fr_1fr] gap-5">
@@ -106,6 +108,21 @@ export function TechRoute({ code = DEFAULT_SESSION_CODE, embedded = false }: { c
               </p>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="mt-8 rounded-[24px] bg-white/10 p-5">
+        <h2 className="text-2xl font-black">Client Error Recovery</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          {clientErrors.map((error) => (
+            <div key={error.errorId} className="rounded-2xl bg-white/10 px-4 py-3">
+              <p className="text-sm font-black uppercase text-rose-200">
+                {error.screen} · {error.errorCode} · {error.stackHash ?? "no hash"}
+              </p>
+              <p className="mt-1 text-base font-bold text-slate-100">{error.message}</p>
+            </div>
+          ))}
+          {!clientErrors.length ? <p className="text-lg font-black text-slate-300">No client recovery events recorded.</p> : null}
         </div>
       </div>
     </Panel>

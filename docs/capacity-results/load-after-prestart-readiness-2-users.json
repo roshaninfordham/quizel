@@ -1,66 +1,66 @@
 {
-  "runId": "load-after-prestart-readiness-10-users",
-  "startedAt": "2026-06-07T09:00:31.022Z",
+  "runId": "load-after-prestart-readiness-2-users",
+  "startedAt": "2026-06-07T08:58:55.896Z",
   "config": {
-    "users": 10,
-    "topics": 4,
+    "users": 2,
+    "topics": 2,
     "host": "https://maincloud.spacetimedb.com",
     "module": "quizrush-live",
     "appUrl": "https://quizel-eta.vercel.app",
     "subscribeAllTables": true,
-    "connectConcurrency": 10,
-    "joinConcurrency": 10,
-    "answerConcurrency": 10
+    "connectConcurrency": 2,
+    "joinConcurrency": 2,
+    "answerConcurrency": 2
   },
   "staticVercel": {
     "attempted": 1,
     "ok": 1,
     "failed": 0,
-    "p50Ms": 89,
-    "p95Ms": 89
+    "p50Ms": 83,
+    "p95Ms": 83
   },
   "realtime": {
-    "connected": 10,
-    "joined": 10,
+    "connected": 2,
+    "joined": 2,
     "joinFailed": 0,
-    "answerAttempts": 100,
-    "answerSendOk": 100,
+    "answerAttempts": 20,
+    "answerSendOk": 20,
     "answerSendFailed": 0,
-    "answerCommitted": 100,
+    "answerCommitted": 20,
     "duplicateRejected": 0,
     "roundsResolved": 10,
     "finalStatus": "finished",
-    "participantsAfterRun": 10,
-    "answersAfterRun": 100,
-    "scoresAfterRun": 10
+    "participantsAfterRun": 2,
+    "answersAfterRun": 20,
+    "scoresAfterRun": 2
   },
   "timings": {
     "connect": {
-      "count": 10,
-      "ok": 10,
+      "count": 2,
+      "ok": 2,
       "failed": 0,
-      "minMs": 70,
-      "p50Ms": 75,
-      "p95Ms": 80,
-      "maxMs": 80
+      "minMs": 75,
+      "p50Ms": 86,
+      "p95Ms": 86,
+      "maxMs": 86
     },
     "join": {
-      "count": 10,
-      "ok": 10,
+      "count": 2,
+      "ok": 2,
       "failed": 0,
-      "minMs": 37,
-      "p50Ms": 49,
-      "p95Ms": 57,
-      "maxMs": 57
+      "minMs": 27,
+      "p50Ms": 28,
+      "p95Ms": 28,
+      "maxMs": 28
     },
     "answer": {
-      "count": 100,
-      "ok": 100,
+      "count": 20,
+      "ok": 20,
       "failed": 0,
-      "minMs": 17,
-      "p50Ms": 30,
-      "p95Ms": 47,
-      "maxMs": 49
+      "minMs": 13,
+      "p50Ms": 17,
+      "p95Ms": 25,
+      "maxMs": 25
     },
     "roundResolve": {
       "count": 40,
@@ -69,37 +69,37 @@
       "minMs": 0,
       "p50Ms": 0,
       "p95Ms": 26,
-      "maxMs": 35
+      "maxMs": 27
     },
     "startMatch": {
       "count": 1,
       "ok": 1,
       "failed": 0,
-      "minMs": 21,
-      "p50Ms": 21,
-      "p95Ms": 21,
-      "maxMs": 21
+      "minMs": 24,
+      "p50Ms": 24,
+      "p95Ms": 24,
+      "maxMs": 24
     },
     "staticFetch": {
       "count": 1,
       "ok": 1,
       "failed": 0,
-      "minMs": 89,
-      "p50Ms": 89,
-      "p95Ms": 89,
-      "maxMs": 89
+      "minMs": 83,
+      "p50Ms": 83,
+      "p95Ms": 83,
+      "maxMs": 83
     }
   },
   "throughput": {
-    "answerWindowMs": 10686,
-    "successfulAnswersPerSec": 9.36
+    "answerWindowMs": 10494,
+    "successfulAnswersPerSec": 1.91
   },
   "observed": {
-    "reducerCalls": 33,
-    "liveStatsAnswersPerSec": 10,
+    "reducerCalls": 26,
+    "liveStatsAnswersPerSec": 2,
     "duplicateAnswersRejected": 0,
     "p95LatencyMs": 48,
-    "topScore": 5935
+    "topScore": 3960
   },
   "errors": {
     "connect": [],

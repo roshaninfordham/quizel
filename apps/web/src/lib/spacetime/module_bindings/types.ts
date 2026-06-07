@@ -83,6 +83,20 @@ export const AuditEvent = __t.object("AuditEvent", {
 });
 export type AuditEvent = __Infer<typeof AuditEvent>;
 
+export const ClientError = __t.object("ClientError", {
+  errorId: __t.string(),
+  sessionId: __t.string(),
+  participantId: __t.string(),
+  screen: __t.string(),
+  errorCode: __t.string(),
+  message: __t.string(),
+  stackHash: __t.option(__t.string()),
+  metadataJson: __t.string(),
+  userAgent: __t.string(),
+  createdAtMs: __t.u64(),
+});
+export type ClientError = __Infer<typeof ClientError>;
+
 export const FinalResult = __t.object("FinalResult", {
   finalResultId: __t.string(),
   sessionId: __t.string(),

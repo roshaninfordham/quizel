@@ -31,6 +31,7 @@ import {
   DISCLAIMER,
   QUESTION_COUNT,
   type AgentEvent,
+  type ClientError,
   type LiveStats,
   type MatchEvent,
   type OptionKey,
@@ -634,7 +635,8 @@ export function TechDrawer({
   stats,
   events,
   participants,
-  session
+  session,
+  clientErrors
 }: {
   open: boolean;
   onClose: () => void;
@@ -642,9 +644,11 @@ export function TechDrawer({
   events: MatchEvent[];
   participants: Participant[];
   session?: Session;
+  clientErrors?: ClientError[];
 }) {
   if (!open) return null;
   const recentEvents = events.slice(-18).reverse();
+  const recentClientErrors = (clientErrors ?? []).slice(-10).reverse();
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 backdrop-blur-sm" onClick={onClose}>
       <aside
@@ -701,6 +705,23 @@ rank = score desc, correct desc, total response time asc, fastest answer asc`}
             <p>Phones call reducers. Reducers read hidden answer state, compute correctness, response time, score, and rank, then commit all rows transactionally.</p>
             <p>The projector subscribes to public race state only: participants, scores, final results, live stats, and recent ledger rows when this drawer is open.</p>
             <p>The main screen is product UI. The raw MatchEvent ledger stays here for judges and engineers.</p>
+          </div>
+        </TechSection>
+
+        <TechSection title="Client Error Recovery">
+          <div className="space-y-2">
+            {recentClientErrors.map((error) => (
+              <details key={error.errorId} className="rounded-2xl bg-rose-50 px-3 py-2 ring-1 ring-rose-100">
+                <summary className="cursor-pointer text-sm font-black text-rose-900">
+                  {error.screen} · {error.errorCode} · {error.stackHash ?? "no hash"}
+                </summary>
+                <p className="mt-2 text-sm font-bold text-rose-800">{error.message}</p>
+                <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-bold text-slate-600">
+                  {JSON.stringify(error.metadata, null, 2)}
+                </pre>
+              </details>
+            ))}
+            {!recentClientErrors.length ? <p className="text-sm font-bold text-slate-500">No phone or projector client errors recorded for this session.</p> : null}
           </div>
         </TechSection>
 

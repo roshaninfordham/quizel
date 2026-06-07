@@ -8,6 +8,7 @@ import type {
   AgentRequest as StdbAgentRequest,
   Answer as StdbAnswer,
   AuditEvent as StdbAuditEvent,
+  ClientError as StdbClientError,
   FinalResult as StdbFinalResult,
   LiveStats as StdbLiveStats,
   MatchEvent as StdbMatchEvent,
@@ -156,7 +157,8 @@ function registerDirectSnapshotListeners(connection: DbConnection, onChange: () 
     connection.db.agent_event,
     connection.db.live_stats,
     connection.db.audit_event,
-    connection.db.operation_trace
+    connection.db.operation_trace,
+    connection.db.client_error
   ] as Array<{
     onInsert: (callback: (...args: unknown[]) => void) => void;
     onDelete: (callback: (...args: unknown[]) => void) => void;
@@ -208,7 +210,8 @@ function snapshotFromDirectConnection(connection: DbConnection): QuizRushState {
     agentEvents: Array.from(connection.db.agent_event.iter()).map(mapAgentEvent),
     liveStats: Array.from(connection.db.live_stats.iter()).map(mapLiveStats),
     auditEvents: Array.from(connection.db.audit_event.iter()).map(mapAuditEvent),
-    operationTraces: Array.from(connection.db.operation_trace.iter()).map(mapOperationTrace)
+    operationTraces: Array.from(connection.db.operation_trace.iter()).map(mapOperationTrace),
+    clientErrors: Array.from(connection.db.client_error.iter()).map(mapClientError)
   };
 }
 
@@ -592,6 +595,21 @@ function mapOperationTrace(row: StdbOperationTrace): QuizRushState["operationTra
     durationMs: row.durationMs,
     stateVersion: row.stateVersion,
     errorMessage: row.errorMessage ?? null,
+    createdAt: toNumber(row.createdAtMs)
+  };
+}
+
+function mapClientError(row: StdbClientError): QuizRushState["clientErrors"][number] {
+  return {
+    errorId: row.errorId,
+    sessionId: row.sessionId || null,
+    participantId: row.participantId || null,
+    screen: row.screen,
+    errorCode: row.errorCode,
+    message: row.message,
+    stackHash: row.stackHash ?? null,
+    metadata: parseObject(row.metadataJson),
+    userAgent: row.userAgent,
     createdAt: toNumber(row.createdAtMs)
   };
 }

@@ -16,6 +16,7 @@ import IncrementShareViewReducer from "../increment_share_view_reducer";
 import JoinSessionReducer from "../join_session_reducer";
 import LiveTickReducer from "../live_tick_reducer";
 import RecordAgentEventReducer from "../record_agent_event_reducer";
+import RecordClientErrorReducer from "../record_client_error_reducer";
 import RequestQuestionsReducer from "../request_questions_reducer";
 import ResetDemoReducer from "../reset_demo_reducer";
 import ResolveRoundReducer from "../resolve_round_reducer";
@@ -40,6 +41,7 @@ export type IncrementShareViewParams = __Infer<typeof IncrementShareViewReducer>
 export type JoinSessionParams = __Infer<typeof JoinSessionReducer>;
 export type LiveTickParams = __Infer<typeof LiveTickReducer>;
 export type RecordAgentEventParams = __Infer<typeof RecordAgentEventReducer>;
+export type RecordClientErrorParams = __Infer<typeof RecordClientErrorReducer>;
 export type RequestQuestionsParams = __Infer<typeof RequestQuestionsReducer>;
 export type ResetDemoParams = __Infer<typeof ResetDemoReducer>;
 export type ResolveRoundParams = __Infer<typeof ResolveRoundReducer>;

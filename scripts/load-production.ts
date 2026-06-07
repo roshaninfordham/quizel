@@ -175,8 +175,18 @@ async function main() {
       joinSamples.push(sample);
     });
 
-    await waitFor(() => Array.from(operator!.connection.db.participant.iter()).filter((row) => row.sessionId === sessionId).length >= joinedCount(joinSamples), 15_000);
+    await waitFor(() => {
+      const joined = joinedCount(joinSamples);
+      const participantsReady = Array.from(operator!.connection.db.participant.iter()).filter((row) => row.sessionId === sessionId).length >= joined;
+      const scoresReady = Array.from(operator!.connection.db.score.iter()).filter((row) => row.sessionId === sessionId).length >= joined;
+      const intentsReady = Array.from(operator!.connection.db.player_intent.iter()).filter((row) => row.sessionId === sessionId).length >= joined;
+      return participantsReady && scoresReady && intentsReady;
+    }, 15_000);
+    await sleep(numberEnv("PRE_START_SETTLE_MS", 300));
     startSamples.push(await timed(async () => operator!.connection.reducers.startMatch({ sessionId })));
+    operator.connection.disconnect();
+    operator = await connectClient(-1, true);
+    await sleep(numberEnv("FIRST_ROUND_SETTLE_MS", 350));
     await waitFor(() => activeRoundFor(operator!.connection, 1) !== undefined, 10_000);
 
     answerWindowStart = performance.now();
@@ -195,13 +205,16 @@ async function main() {
       await mapLimit(clients, answerConcurrency, async (client) => {
         const selectedOption = (["A", "B", "C", "D"] as const)[(client.id + roundIndex) % 4] ?? "A";
         const sample = await timed(async () =>
-          client.connection.reducers.submitAnswer({
-            roundId: round.roundId,
-            selectedOption,
-            clientQuestionRenderedAtMs: BigInt(Math.max(0, Math.round(performance.now() - 250))),
-            clientClickedAtMs: BigInt(Math.round(performance.now())),
-            clientSentAtMs: BigInt(Date.now())
-          })
+          {
+            await client.connection.reducers.submitAnswer({
+              roundId: round.roundId,
+              selectedOption,
+              clientQuestionRenderedAtMs: BigInt(Math.max(0, Math.round(performance.now() - 250))),
+              clientClickedAtMs: BigInt(Math.round(performance.now())),
+              clientSentAtMs: BigInt(Date.now()),
+              clientEventId: `load-${runId}-${client.id}-${round.roundId}`
+            });
+          }
         );
         answerSamples.push(sample);
       });

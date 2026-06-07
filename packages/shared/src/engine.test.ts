@@ -4,6 +4,7 @@ import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
 import { QuizRushEngine } from "./engine";
 import { computeAnswerScore, percentile } from "./scoring";
 import { buildTopicFallbackQuestions } from "./topicFallbackQuestions";
+import type { ShareCard } from "./types";
 
 function prepareReadyMatch() {
   const engine = new QuizRushEngine();
@@ -197,6 +198,9 @@ describe("QuizRush reducer invariants", () => {
     useStableClock();
     const engine = prepareReadyMatch();
     const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    const activeRound = engine.getSnapshot().rounds.find((candidate) => candidate.roundId === round.roundId);
+    if (!activeRound) throw new Error("round missing");
+    vi.setSystemTime(activeRound.startsAt - 1200);
     const early = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
     moveClockToRoundStart(engine, round.roundId);
     const first = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
@@ -208,6 +212,21 @@ describe("QuizRush reducer invariants", () => {
     expect(second.ok).toBe(false);
     expect(engine.getSnapshot().answers).toHaveLength(1);
     expect(engine.getSnapshot().liveStats[0]?.duplicateAnswersRejected).toBe(1);
+    vi.useRealTimers();
+  });
+
+  it("accepts tiny first-round clock skew and clamps official response to zero", () => {
+    useStableClock();
+    const engine = prepareReadyMatch();
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    const activeRound = engine.getSnapshot().rounds.find((candidate) => candidate.roundId === round.roundId);
+    if (!activeRound) throw new Error("round missing");
+    vi.setSystemTime(activeRound.startsAt - 75);
+    const accepted = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
+    const answer = engine.getSnapshot().answers[0];
+
+    expect(accepted.ok).toBe(true);
+    expect(answer?.officialResponseMs).toBe(0);
     vi.useRealTimers();
   });
 
@@ -284,6 +303,32 @@ describe("QuizRush reducer invariants", () => {
     expect(after).toBeGreaterThanOrEqual(before);
   });
 
+  it("records client recovery errors without crashing the race state", () => {
+    const engine = prepareReadyMatch();
+    const participantId = engine.getSnapshot().participants[0]?.participantId;
+    const logged = engine.callReducer(
+      "record_client_error",
+      {
+        sessionId: DEFAULT_SESSION_ID,
+        participantId,
+        screen: "phone",
+        errorCode: "react_error_boundary",
+        message: "Detected Arena render failed",
+        stackHash: "err_test",
+        metadataJson: JSON.stringify({ path: "/join/ARENA-42" }),
+        userAgent: "vitest"
+      },
+      "device-maya"
+    );
+    const state = engine.getSnapshot();
+
+    expect(logged.ok).toBe(true);
+    expect(state.clientErrors).toHaveLength(1);
+    expect(state.clientErrors[0]?.message).toBe("Detected Arena render failed");
+    expect(state.matchEvents.some((event) => event.eventType === "client_error")).toBe(true);
+    expect(state.sessions[0]?.status).toBe("ready");
+  });
+
   it("resolve_round is idempotent and starts the next question once", () => {
     const engine = prepareReadyMatch();
     const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
@@ -316,8 +361,8 @@ describe("QuizRush reducer invariants", () => {
     engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
     engine.callReducer("finish_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
 
-    const first = engine.callReducer("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
-    const second = engine.callReducer("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
+    const first = engine.callReducer<ShareCard>("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
+    const second = engine.callReducer<ShareCard>("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
     const share = first.data;
 
     expect(first.ok).toBe(true);

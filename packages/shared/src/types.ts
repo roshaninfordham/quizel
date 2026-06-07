@@ -17,7 +17,8 @@ export type MatchEventType =
   | "rank_change"
   | "round_resolved"
   | "match_finished"
-  | "share_created";
+  | "share_created"
+  | "client_error";
 
 export interface Session {
   sessionId: string;
@@ -362,6 +363,19 @@ export interface OperationTrace {
   createdAt: number;
 }
 
+export interface ClientError {
+  errorId: string;
+  sessionId: string | null;
+  participantId: string | null;
+  screen: string;
+  errorCode: string;
+  message: string;
+  stackHash: string | null;
+  metadata: Record<string, unknown>;
+  userAgent: string;
+  createdAt: number;
+}
+
 export interface QuizRushState {
   sessions: Session[];
   participants: Participant[];
@@ -384,6 +398,7 @@ export interface QuizRushState {
   liveStats: LiveStats[];
   auditEvents: AuditEvent[];
   operationTraces: OperationTrace[];
+  clientErrors: ClientError[];
 }
 
 export interface ReducerEnvelope<TArgs = unknown> {

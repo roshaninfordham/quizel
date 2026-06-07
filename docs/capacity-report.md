@@ -49,7 +49,24 @@ The harness:
 - Waits for committed `Answer` rows, `Score` rows, round transitions, and final session status.
 - Writes results under `docs/capacity-results/`.
 
-Latest 10-question smoke result after the public/secret question split, scheduled timing, and durable share-card refactor:
+Latest 10-question smoke result after the phone recovery, scheduled timing tolerance, and production load-harness readiness fix:
+
+```text
+Run: docs/capacity-results/load-after-prestart-readiness-10-users.json
+Users: 10
+Connected: 10 / 10
+Joined: 10 / 10
+Committed answers: 100 / 100
+Rounds resolved: 10 / 10
+Final status: finished
+Answer p50: 30ms
+Answer p95: 47ms
+Join p95: 57ms
+Static Vercel fetch p95: 89ms
+Result: pass
+```
+
+Previous 10-question smoke result after the public/secret question split, scheduled timing, and durable share-card refactor:
 
 ```text
 Run: docs/capacity-results/load-2026-06-07T07-33-20-128Z.json
@@ -97,7 +114,8 @@ Result: pass
 
 | Users | Result | Notes |
 | ---: | --- | --- |
-| 10 | Pass | 100/100 committed answers on the 10-question refactor, p95 answer 35ms, finished. |
+| 10 | Pass | Latest production readiness run: 100/100 committed answers, p95 answer 47ms, p95 join 57ms, finished. |
+| 10 | Pass | Earlier 10-question refactor run: 100/100 committed answers, p95 answer 52ms, finished. |
 | 10 | Pass | Previous 7-question run: 70/70 committed answers, p95 answer 32ms, finished. |
 | 11 | Pass | Previous 7-question run: 77/77 committed answers, p95 answer 41ms, finished. |
 | 12 | Pass | Previous 7-question run: 84/84 committed answers, p95 answer 37ms, finished. |

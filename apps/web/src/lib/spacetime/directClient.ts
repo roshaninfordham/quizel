@@ -6,6 +6,7 @@ import type {
   AgentRequest as StdbAgentRequest,
   Answer as StdbAnswer,
   AuditEvent as StdbAuditEvent,
+  ClientError as StdbClientError,
   FinalResult as StdbFinalResult,
   LiveStats as StdbLiveStats,
   MatchEvent as StdbMatchEvent,
@@ -36,6 +37,7 @@ const reducerMethods: Record<string, string> = {
   join_session: "joinSession",
   live_tick: "liveTick",
   record_agent_event: "recordAgentEvent",
+  record_client_error: "recordClientError",
   request_questions: "requestQuestions",
   reset_demo: "resetDemo",
   resolve_round: "resolveRound",
@@ -93,7 +95,8 @@ export function registerDirectSnapshotListeners(connection: DbConnection, onChan
     connection.db.agent_event,
     connection.db.live_stats,
     connection.db.audit_event,
-    connection.db.operation_trace
+    connection.db.operation_trace,
+    connection.db.client_error
   ] as Array<{
     onInsert: (callback: (...args: unknown[]) => void) => void;
     onDelete: (callback: (...args: unknown[]) => void) => void;
@@ -193,7 +196,8 @@ export function snapshotFromDirectConnection(connection: DbConnection): QuizRush
     agentEvents: Array.from(connection.db.agent_event.iter()).map(mapAgentEvent),
     liveStats: Array.from(connection.db.live_stats.iter()).map(mapLiveStats),
     auditEvents: Array.from(connection.db.audit_event.iter()).map(mapAuditEvent),
-    operationTraces: Array.from(connection.db.operation_trace.iter()).map(mapOperationTrace)
+    operationTraces: Array.from(connection.db.operation_trace.iter()).map(mapOperationTrace),
+    clientErrors: Array.from(connection.db.client_error.iter()).map(mapClientError)
   };
 }
 
@@ -295,6 +299,17 @@ function toDirectReducerArgs(name: string, rawArgs: unknown): unknown {
         content: stringArg(args, "content"),
         confidence: numberArg(args, "confidence", 0.8),
         status: stringArg(args, "status", "complete")
+      };
+    case "record_client_error":
+      return {
+        sessionId: optionalStringArg(args, "sessionId"),
+        participantId: optionalStringArg(args, "participantId"),
+        screen: stringArg(args, "screen", "unknown"),
+        errorCode: stringArg(args, "errorCode", "client_error"),
+        message: stringArg(args, "message", "Unknown client error"),
+        stackHash: optionalStringArg(args, "stackHash"),
+        metadataJson: stringArg(args, "metadataJson", "{}"),
+        userAgent: stringArg(args, "userAgent")
       };
     case "add_simulated_players":
     case "simulate_answer_burst":
@@ -695,6 +710,21 @@ function mapOperationTrace(row: StdbOperationTrace): QuizRushState["operationTra
     durationMs: row.durationMs,
     stateVersion: row.stateVersion,
     errorMessage: row.errorMessage ?? null,
+    createdAt: toNumber(row.createdAtMs)
+  };
+}
+
+function mapClientError(row: StdbClientError): QuizRushState["clientErrors"][number] {
+  return {
+    errorId: row.errorId,
+    sessionId: row.sessionId || null,
+    participantId: row.participantId || null,
+    screen: row.screen,
+    errorCode: row.errorCode,
+    message: row.message,
+    stackHash: row.stackHash ?? null,
+    metadata: parseObject(row.metadataJson),
+    userAgent: row.userAgent,
     createdAt: toNumber(row.createdAtMs)
   };
 }

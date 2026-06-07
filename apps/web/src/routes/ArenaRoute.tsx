@@ -54,6 +54,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const participants = useParticipants(sessionId);
   const stats = useLiveStats(sessionId);
   const events = useMatchEvents(sessionId);
+  const clientErrors = state.clientErrors.filter((error) => error.sessionId === sessionId);
   const agentEvents = useAgentEvents(sessionId);
   const round = useCurrentRound(sessionId);
   const answers = useAnswers(sessionId);
@@ -263,6 +264,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         events={events}
         participants={participants}
         session={session}
+        clientErrors={clientErrors}
       />
 
       {phase === "playing" ? (
