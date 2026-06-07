@@ -46,6 +46,7 @@ import {
   type OptionKey,
   type Participant,
   type Question,
+  type QuizRushState,
   type Round,
   type Score,
   type Session,
@@ -835,6 +836,7 @@ export function TechDrawer({
   events,
   participants,
   session,
+  state,
   clientErrors
 }: {
   open: boolean;
@@ -843,9 +845,10 @@ export function TechDrawer({
   events: MatchEvent[];
   participants: Participant[];
   session?: Session;
+  state?: QuizRushState;
   clientErrors?: ClientError[];
 }) {
-  const [activeTab, setActiveTab] = React.useState<"overview" | "flow" | "metrics" | "scoring" | "tables" | "ledger">("overview");
+  const [activeTab, setActiveTab] = React.useState<"overview" | "flow" | "metrics" | "diagnostics" | "scoring" | "tables" | "ledger">("overview");
   if (!open) return null;
   const recentEvents = events.slice(-18).reverse();
   const recentClientErrors = (clientErrors ?? []).slice(-10).reverse();
@@ -854,6 +857,7 @@ export function TechDrawer({
     { id: "overview", label: "Overview" },
     { id: "flow", label: "Flow" },
     { id: "metrics", label: "Metrics" },
+    { id: "diagnostics", label: "Diagnostics" },
     { id: "scoring", label: "Scoring" },
     { id: "tables", label: "Tables" },
     { id: "ledger", label: "Ledger" }
@@ -895,6 +899,7 @@ export function TechDrawer({
         ) : null}
         {activeTab === "flow" ? <TechFlow /> : null}
         {activeTab === "metrics" ? <TechMetrics stats={stats} session={session} activeRacers={activeRacers} /> : null}
+        {activeTab === "diagnostics" ? <TechDiagnostics state={state} session={session} participants={participants} clientErrors={recentClientErrors} /> : null}
         {activeTab === "scoring" ? <TechScoring /> : null}
         {activeTab === "tables" ? <TechTables /> : null}
         {activeTab === "ledger" ? (
@@ -1069,6 +1074,91 @@ function TechMetrics({ stats, session, activeRacers }: { stats?: LiveStats; sess
         sourceTable="ClientError, SessionCapacity"
         sourceReducer="record_client_error"
       />
+    </div>
+  );
+}
+
+function TechDiagnostics({
+  state,
+  session,
+  participants,
+  clientErrors
+}: {
+  state?: QuizRushState;
+  session?: Session;
+  participants: Participant[];
+  clientErrors: ClientError[];
+}) {
+  const sessionId = session?.sessionId;
+  const participantIds = new Set(participants.map((participant) => participant.participantId));
+  const scoped = {
+    admissionTickets: state?.admissionTickets.filter((row) => row.sessionId === sessionId) ?? [],
+    playerIntents: state?.playerIntents.filter((row) => row.sessionId === sessionId) ?? [],
+    agentRequests: state?.agentRequests.filter((row) => row.sessionId === sessionId) ?? [],
+    questionPacks: state?.questionPacks.filter((row) => row.sessionId === sessionId) ?? [],
+    questions: state?.questions.filter((row) => row.sessionId === sessionId) ?? [],
+    rounds: state?.rounds.filter((row) => row.sessionId === sessionId) ?? [],
+    answers: state?.answers.filter((row) => row.sessionId === sessionId) ?? [],
+    scores: state?.scores.filter((row) => row.sessionId === sessionId) ?? [],
+    finalResults: state?.finalResults.filter((row) => row.sessionId === sessionId) ?? [],
+    shareCards: state?.shareCards.filter((row) => row.sessionId === sessionId) ?? [],
+    reducerFailures: state?.operationTraces.filter((row) => row.sessionId === sessionId && !row.ok).slice(-8).reverse() ?? []
+  };
+  const participantPacks = scoped.questionPacks.filter((pack) => pack.participantId && participantIds.has(pack.participantId));
+  const roomPacks = scoped.questionPacks.filter((pack) => !pack.participantId);
+
+  return (
+    <div className="mt-5 space-y-5">
+      <div className="rounded-[24px] bg-slate-950 p-4 text-white">
+        <p className="text-xs font-black uppercase text-blue-200">Production realtime target</p>
+        <p className="mt-2 break-all text-sm font-black">Session: {session?.code ?? "missing"} · {session?.status ?? "unknown"}</p>
+        <p className="mt-1 text-sm font-bold text-slate-300">Open the terminal command: make diagnose SESSION={session?.code ?? "ARENA-42"}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <DiagnosticCount label="Participant rows" value={participants.length} />
+        <DiagnosticCount label="Admission tickets" value={scoped.admissionTickets.length} />
+        <DiagnosticCount label="Player intents" value={scoped.playerIntents.length} />
+        <DiagnosticCount label="Generation jobs" value={scoped.agentRequests.length} />
+        <DiagnosticCount label="Private packs" value={participantPacks.length} />
+        <DiagnosticCount label="Room packs" value={roomPacks.length} />
+        <DiagnosticCount label="Questions" value={scoped.questions.length} />
+        <DiagnosticCount label="Rounds" value={scoped.rounds.length} />
+        <DiagnosticCount label="Answers" value={scoped.answers.length} />
+        <DiagnosticCount label="Scores" value={scoped.scores.length} />
+        <DiagnosticCount label="Final results" value={scoped.finalResults.length} />
+        <DiagnosticCount label="Share cards" value={scoped.shareCards.length} />
+      </div>
+      <TechSection title="Recent reducer failures">
+        <div className="space-y-2">
+          {scoped.reducerFailures.map((failure) => (
+            <div key={failure.traceId} className="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100">
+              <p className="text-sm font-black text-rose-900">{failure.reducer}</p>
+              <p className="mt-1 text-xs font-bold text-rose-700">{failure.errorMessage ?? "No reducer error message stored."}</p>
+            </div>
+          ))}
+          {!scoped.reducerFailures.length ? <p className="text-sm font-bold text-slate-500">No reducer failures recorded for this session.</p> : null}
+        </div>
+      </TechSection>
+      <TechSection title="Recent phone errors">
+        <div className="space-y-2">
+          {clientErrors.map((error) => (
+            <div key={error.errorId} className="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-100">
+              <p className="text-sm font-black text-amber-900">{error.screen} · {error.errorCode}</p>
+              <p className="mt-1 text-xs font-bold text-amber-700">{error.message}</p>
+            </div>
+          ))}
+          {!clientErrors.length ? <p className="text-sm font-bold text-slate-500">No phone recovery errors recorded.</p> : null}
+        </div>
+      </TechSection>
+    </div>
+  );
+}
+
+function DiagnosticCount({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+      <p className="mt-1 text-3xl font-black text-slate-950">{value}</p>
     </div>
   );
 }

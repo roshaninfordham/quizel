@@ -102,7 +102,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     : `${session?.admittedCount ?? stats?.admittedRacers ?? admittedRacers}/${session?.maxRacers ?? 12} admitted`;
 
   useEffect(() => {
-    initSounds({ mutedByDefault: false });
+    initSounds({ mutedByDefault: true });
     const timer = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, []);
@@ -202,12 +202,13 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       (phase === "ready" || (phase === "generating" && questionCountRef.current >= QUESTION_COUNT)) &&
       !autoStartRef.current
     ) {
-      autoStartRef.current = true;
       const hasSimulatedRacers = participants.some((participant) => participant.isSimulated);
-      window.setTimeout(() => {
-        if (hasSimulatedRacers) startVisualRace(sessionId, callReducer);
-        else void startMatch(sessionId);
-      }, 450);
+      if (hasSimulatedRacers) {
+        autoStartRef.current = true;
+        window.setTimeout(() => {
+          startVisualRace(sessionId, callReducer);
+        }, 450);
+      }
     }
   }, [
     callReducer,
@@ -271,6 +272,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         events={events}
         participants={participants}
         session={session}
+        state={state}
         clientErrors={clientErrors}
       />
 

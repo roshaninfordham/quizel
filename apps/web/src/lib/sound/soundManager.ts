@@ -16,19 +16,19 @@ type SoundName =
   | "replay";
 
 const soundSpecs: Record<SoundName, { frequency: number; durationMs: number; type?: OscillatorType; volume: number }> = {
-  join: { frequency: 660, durationMs: 90, volume: 0.18 },
-  micStart: { frequency: 520, durationMs: 120, volume: 0.2 },
-  micStop: { frequency: 390, durationMs: 110, volume: 0.16 },
-  intentDetected: { frequency: 740, durationMs: 160, volume: 0.22 },
-  arenaAssigned: { frequency: 880, durationMs: 220, volume: 0.22 },
-  countdown: { frequency: 760, durationMs: 70, volume: 0.16 },
-  question: { frequency: 620, durationMs: 130, volume: 0.16 },
-  answerLock: { frequency: 540, durationMs: 110, volume: 0.2 },
-  correct: { frequency: 920, durationMs: 240, volume: 0.24 },
-  wrong: { frequency: 240, durationMs: 150, type: "triangle", volume: 0.14 },
-  rankUp: { frequency: 1040, durationMs: 180, volume: 0.2 },
-  winner: { frequency: 784, durationMs: 620, volume: 0.26 },
-  replay: { frequency: 480, durationMs: 180, type: "sawtooth", volume: 0.12 }
+  join: { frequency: 420, durationMs: 70, volume: 0.07 },
+  micStart: { frequency: 440, durationMs: 90, volume: 0.08 },
+  micStop: { frequency: 330, durationMs: 80, volume: 0.06 },
+  intentDetected: { frequency: 560, durationMs: 120, volume: 0.08 },
+  arenaAssigned: { frequency: 640, durationMs: 150, volume: 0.09 },
+  countdown: { frequency: 520, durationMs: 55, volume: 0.06 },
+  question: { frequency: 480, durationMs: 100, volume: 0.06 },
+  answerLock: { frequency: 360, durationMs: 70, type: "triangle", volume: 0.07 },
+  correct: { frequency: 660, durationMs: 170, volume: 0.09 },
+  wrong: { frequency: 220, durationMs: 110, type: "triangle", volume: 0.05 },
+  rankUp: { frequency: 740, durationMs: 140, volume: 0.08 },
+  winner: { frequency: 523, durationMs: 420, volume: 0.1 },
+  replay: { frequency: 300, durationMs: 130, type: "triangle", volume: 0.05 }
 };
 
 let muted = true;

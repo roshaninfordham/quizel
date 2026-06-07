@@ -11,9 +11,11 @@ import {
 } from "@quizrush/shared";
 import { AnswerButton, Button, ConnectionBadge, Panel, PhoneShell, ReconnectingOverlay, SoundToggle, cn } from "../components/ui";
 import { useSpeechIntent } from "../hooks/useSpeechIntent";
-import { useCreateShareCard, useJoinTournament, useRequestQuestions, useSubmitAnswer, useSubmitPlayerIntent, useSubmitTopicVote } from "../hooks/useArenaActions";
+import { useCreateShareCard, useSubmitAnswer } from "../hooks/useArenaActions";
 import {
+  getDeviceIdentity,
   getJoinedParticipantId,
+  setJoinedParticipantId,
   useCurrentQuestion,
   useCurrentRound,
   useSessionByCode,
@@ -46,6 +48,9 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const [now, setNow] = useState(Date.now());
   const [lastAnswerState, setLastAnswerState] = useState<"correct" | "wrong" | null>(null);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const [enterLoading, setEnterLoading] = useState(false);
+  const [enterRetrying, setEnterRetrying] = useState(false);
+  const [enterError, setEnterError] = useState<string | null>(null);
   const questionRenderedAtRef = useRef<number | null>(null);
   const renderedRoundIdRef = useRef<string | null>(null);
   const shareCardsRef = useRef(state.shareCards);
@@ -53,22 +58,21 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const parsedIntent = useMemo(() => parseIntentPreview(intentText), [intentText]);
   const participant = state.participants.find((candidate) => candidate.participantId === participantId);
   const round = useCurrentRound(sessionId);
-  const question = useCurrentQuestion(sessionId);
+  const question = useCurrentQuestion(sessionId, participantId);
   const score = getScore(state, sessionId, participantId);
   const finalResult = state.finalResults.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
   const shareCard = state.shareCards.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
   const answer = getAnswerForParticipant(state, round?.roundId, participantId ?? undefined);
   const totalPlayers = state.participants.filter((candidate) => candidate.sessionId === sessionId).length;
   const joinedVotes = state.topicVotes.filter((vote) => vote.participantId === participantId).map((vote) => vote.topic);
-  const sessionQuestions = state.questions.filter((candidate) => candidate.sessionId === sessionId);
+  const sessionQuestions = state.questions.filter(
+    (candidate) => candidate.sessionId === sessionId && (!participantId || candidate.participantId === participantId || candidate.participantId === null)
+  );
   const questionsReady = sessionQuestions.length >= QUESTION_COUNT;
   const arenaLabel = joinedVotes.length ? joinedVotes.map((topic) => topic.replace(/\s+(Systems|Strategy|Technology)$/i, "")).join(" x ") : session?.selectedTopic ?? parsedIntent.arenaName;
   const packSource = packSourceLabel(sessionQuestions[0]?.generatedBy, sessionQuestions[0]?.fairnessStatus, sessionQuestions[0]?.sourceUrl);
 
-  const { joinTournament, loading: joining, error: joinError } = useJoinTournament(code);
-  const { submitTopicVote, loading: voting, message: voteMessage, error: voteError } = useSubmitTopicVote();
-  const { submitPlayerIntent, loading: submittingIntent, error: intentError } = useSubmitPlayerIntent();
-  const { requestQuestions, loading: requesting, error: requestError } = useRequestQuestions();
+  const voteMessage = null;
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
   const { createShareCard, loading: sharing, error: shareError } = useCreateShareCard();
   const speech = useSpeechIntent((value) => setIntentText(value));
@@ -145,16 +149,60 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
 
   const enterArena = async () => {
     unlockAudioOnFirstTap();
-    const result = await joinTournament({ displayName: displayName.trim() || "Player", avatar });
-    if (result?.participant.participantId) {
-      setParticipantId(result.participant.participantId);
-      if ((result.participant as { admissionStatus?: string }).admissionStatus && (result.participant as { admissionStatus?: string }).admissionStatus !== "admitted") {
-        return;
+    if (enterLoading) return;
+    setEnterLoading(true);
+    setEnterRetrying(false);
+    setEnterError(null);
+    const identity = getDeviceIdentity();
+    try {
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        setEnterRetrying(attempt > 1);
+        try {
+          const joined = await callReducer<{ participant: { participantId: string; admissionStatus?: string } }>(
+            "join_session",
+            { code, displayName: displayName.trim() || "Player", avatar },
+            identity
+          );
+          if (!joined.ok || !joined.data?.participant?.participantId) throw new Error(joined.error || "Join did not return a participant row.");
+
+          const nextParticipantId = joined.data.participant.participantId;
+          if (joined.data.participant.admissionStatus && joined.data.participant.admissionStatus !== "admitted") {
+            setJoinedParticipantId(nextParticipantId, code);
+            setParticipantId(nextParticipantId);
+            return;
+          }
+
+          const intent = await callReducer("submit_player_intent", { sessionId, rawText: intentText, transcriptSource: speech.finalTranscript ? "speech" : "typed" }, identity);
+          if (!intent.ok) throw new Error(intent.error || "Intent commit failed.");
+
+          const vote = await callReducer("submit_topic_vote", { sessionId, topics: parsedIntent.topics }, identity);
+          if (!vote.ok) throw new Error(vote.error || "Topic commit failed.");
+
+          const pack = await callReducer("request_questions", { sessionId, topic: parsedIntent.arenaName, questionCount: QUESTION_COUNT }, identity);
+          if (!pack.ok) throw new Error(pack.error || "Quiz pack request failed.");
+
+          setJoinedParticipantId(nextParticipantId, code);
+          setParticipantId(nextParticipantId);
+          playArenaAssigned();
+          return;
+        } catch (error) {
+          if (attempt < 3) {
+            await sleep(350 * attempt);
+            continue;
+          }
+          const message = friendlyEnterError(error);
+          setEnterError(message);
+          await recordEnterArenaError(callReducer, {
+            sessionId,
+            participantId,
+            message,
+            rawError: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
-      await submitPlayerIntent(sessionId, intentText, speech.finalTranscript ? "speech" : "typed");
-      await submitTopicVote(sessionId, parsedIntent.topics);
-      await requestQuestions(sessionId, parsedIntent.arenaName);
-      playArenaAssigned();
+    } finally {
+      setEnterRetrying(false);
+      setEnterLoading(false);
     }
   };
 
@@ -250,7 +298,6 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
                 </button>
               ))}
             </div>
-            {joinError ? <ErrorMessage>{joinError}</ErrorMessage> : null}
             <Button onClick={continueToIntent} className="mt-8 w-full !min-h-16 !rounded-[28px] !text-xl" icon={<ArrowRight className="size-6" />}>
               Continue
             </Button>
@@ -310,15 +357,11 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
 
         {step === "confirm" ? (
           <Panel className="mt-auto">
-            <p className="text-sm font-black uppercase text-violet-700">Detected arena</p>
+            <p className="text-sm font-black uppercase text-violet-700">Private sprint</p>
             <div className="mt-4 rounded-[32px] bg-gradient-to-br from-violet-600 to-blue-600 p-6 text-white shadow-2xl shadow-violet-200">
               <Radio className="size-10" />
               <h1 className="mt-4 text-4xl font-black leading-tight">{parsedIntent.arenaName}</h1>
-              <p className="mt-3 text-lg font-bold text-blue-100">{parsedIntent.summary}</p>
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <IntentStat label="Skill level" value={parsedIntent.difficulty} />
-              <IntentStat label="Confidence" value={`${Math.round(parsedIntent.confidence * 100)}%`} />
+              <p className="mt-3 text-lg font-bold text-blue-100">Your private quiz will sync into the live arena.</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {parsedIntent.topics.map((topic) => (
@@ -327,13 +370,18 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
                 </span>
               ))}
             </div>
-            {joinError || intentError || voteError || requestError ? <ErrorMessage>{joinError || intentError || voteError || requestError}</ErrorMessage> : null}
+            {enterError ? (
+              <div className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                <p>{enterError}</p>
+                <p className="mt-1 text-xs font-black uppercase text-amber-700">Your profile was not corrupted. Retry safely.</p>
+              </div>
+            ) : null}
             <div className="mt-7 grid grid-cols-[0.42fr_0.58fr] gap-3">
               <Button onClick={() => setStep("intent")} variant="secondary" icon={<Pencil className="size-5" />}>
                 Edit
               </Button>
-              <Button onClick={enterArena} disabled={joining || submittingIntent || voting || requesting} icon={<Check className="size-5" />}>
-                {requesting || submittingIntent ? "Starting Agent" : "Enter Arena"}
+              <Button onClick={enterArena} disabled={enterLoading} icon={<Check className="size-5" />}>
+                {enterLoading ? (enterRetrying ? "Retrying Sync" : "Syncing") : "Enter Race"}
               </Button>
             </div>
           </Panel>
@@ -507,15 +555,6 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   );
 }
 
-function IntentStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[22px] bg-slate-50 p-4">
-      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-      <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
-    </div>
-  );
-}
-
 function WaitingStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[22px] bg-slate-50 p-4">
@@ -547,6 +586,51 @@ function ResultStat({ label, value }: { label: string; value: string }) {
 
 function ErrorMessage({ children }: { children: React.ReactNode }) {
   return <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{children}</p>;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function friendlyEnterError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/in progress|already live|playing/i.test(raw)) return "This sprint already started. Watch this one live and join the next sprint.";
+  if (/not found|join/i.test(raw)) return "Still syncing your arena. Tap Retry if this takes more than a few seconds.";
+  if (/timed out|timeout/i.test(raw)) return "Realtime sync is taking longer than expected. Tap Retry.";
+  return "Still syncing your arena. Tap Retry if this takes more than a few seconds.";
+}
+
+async function recordEnterArenaError(
+  callReducer: <T = unknown>(name: string, args: unknown, identity?: string) => Promise<{ ok: boolean; data?: T; error?: string }>,
+  input: { sessionId: string; participantId: string | null; message: string; rawError: string }
+): Promise<void> {
+  try {
+    await callReducer(
+      "record_client_error",
+      {
+        sessionId: input.sessionId,
+        participantId: input.participantId,
+        screen: "phone_enter_arena",
+        errorCode: "enter_arena_commit_failed",
+        message: input.message,
+        stackHash: `enter_${Math.abs(hashString(input.rawError)).toString(36)}`,
+        metadataJson: JSON.stringify({ rawError: input.rawError, path: window.location.pathname }),
+        userAgent: window.navigator.userAgent
+      },
+      getDeviceIdentity()
+    );
+  } catch {
+    // Best-effort diagnostics only; the recovery UI above remains the source of truth.
+  }
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return hash;
 }
 
 function waitForShareCard(
