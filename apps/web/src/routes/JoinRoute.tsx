@@ -76,17 +76,14 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const packReady =
     questionsReady ||
     Boolean(participantPack) ||
-    playerIntent?.status === "pack_ready" ||
-    session?.status === "ready" ||
-    session?.status === "playing";
+    playerIntent?.status === "pack_ready";
   const arenaLabel = joinedVotes.length ? joinedVotes.map((topic) => topic.replace(/\s+(Systems|Strategy|Technology)$/i, "")).join(" x ") : session?.selectedTopic ?? parsedIntent.arenaName;
   const packSource = packSourceLabel(
     sessionQuestions[0]?.generatedBy,
     sessionQuestions[0]?.fairnessStatus,
     sessionQuestions[0]?.sourceUrl,
     participantPack?.sourceType,
-    playerIntent?.status,
-    session?.status
+    playerIntent?.status
   );
 
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
@@ -680,15 +677,13 @@ function packSourceLabel(
   fairnessStatus?: string,
   sourceUrl?: string | null,
   sourceType?: string,
-  intentStatus?: string,
-  sessionStatus?: string
+  intentStatus?: string
 ): string {
   if (sourceType === "seed_fallback") return "Instant pack";
   if (sourceType === "template_grounded") return "Grounded web";
   if (sourceType === "grounded_llm") return "AI custom";
   if (sourceType === "exact_cache" || sourceType === "semantic_cache" || sourceType === "cache") return "Cached pack";
   if (intentStatus === "pack_ready") return "Instant pack";
-  if (sessionStatus === "ready" || sessionStatus === "playing") return "Instant pack";
   if (!generatedBy) return "Preparing";
   if (sourceUrl) return "Grounded web";
   if (fairnessStatus === "fallback") return "Instant pack";

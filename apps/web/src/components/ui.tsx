@@ -596,6 +596,7 @@ export function LiveAgentBuildPipeline({
 }) {
   const events = agentEvents.slice().sort((a, b) => b.createdAt - a.createdAt);
   const topic = playerIntent?.arenaName ?? questionPack?.displayTopic ?? "your topic";
+  const sprintTitle = topic === "your topic" ? "Building your sprint" : `Building your ${topic} sprint`;
   const hasIntent = Boolean(playerIntent);
   const hasPack = Boolean(questionPack) || questionsReady;
   const hasStoredQuestions = questionsReady;
@@ -687,7 +688,7 @@ export function LiveAgentBuildPipeline({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-black uppercase text-blue-200">Live build pipeline</p>
-          <h2 className="mt-1 text-2xl font-black leading-tight">Building your {topic} sprint</h2>
+          <h2 className="mt-1 text-2xl font-black leading-tight">{sprintTitle}</h2>
         </div>
         <div className="grid size-12 shrink-0 place-items-center rounded-full bg-white/10 text-2xl">{participant.avatar}</div>
       </div>
