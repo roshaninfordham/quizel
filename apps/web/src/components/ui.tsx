@@ -7,7 +7,9 @@ import {
   CheckCircle2,
   Clock,
   Gauge,
+  HelpCircle,
   Loader2,
+  Menu,
   Play,
   QrCode,
   Sparkles,
@@ -17,6 +19,7 @@ import {
   VolumeX,
   Wifi,
   WifiOff,
+  X,
   Zap
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -35,6 +38,7 @@ import {
   type Question,
   type Round,
   type Score,
+  type Session,
   percentile
 } from "@quizrush/shared";
 import type { ConnectionState } from "../lib/spacetime/client";
@@ -122,7 +126,9 @@ export function TopStatusBar({
   p95LatencyMs,
   reducerCalls,
   connectionState,
-  lastSyncAt
+  lastSyncAt,
+  onToggleTech,
+  techOpen = false
 }: {
   connectedCount: number;
   phase: string;
@@ -130,6 +136,8 @@ export function TopStatusBar({
   reducerCalls: number;
   connectionState: ConnectionState;
   lastSyncAt: number | null;
+  onToggleTech?: () => void;
+  techOpen?: boolean;
 }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-[32px] bg-white/95 px-5 py-4 shadow-xl shadow-slate-200/70 ring-1 ring-slate-200/70 backdrop-blur">
@@ -150,6 +158,20 @@ export function TopStatusBar({
         <StatusPill icon={<Gauge className="size-5" />} label={`p95 ${p95LatencyMs}ms`} />
         <StatusPill icon={<Activity className="size-5" />} label={`${reducerCalls} reducers`} />
         <ConnectionBadge state={connectionState} lastSyncAt={lastSyncAt} />
+        {onToggleTech ? (
+          <button
+            type="button"
+            onClick={onToggleTech}
+            className={cn(
+              "inline-flex size-11 items-center justify-center rounded-full transition",
+              techOpen ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+            )}
+            aria-label={techOpen ? "Close technical drawer" : "Open technical drawer"}
+            title="Technical details"
+          >
+            <Menu className="size-5" />
+          </button>
+        ) : null}
       </div>
     </header>
   );
@@ -509,26 +531,62 @@ export function LeaderboardPanel({ entries, compact = false }: { entries: Array<
   );
 }
 
-export function TournamentBracket({ entries }: { entries: Array<{ participant: Participant; score: Score }> }) {
-  const top16 = entries.slice(0, 16);
-  const top8 = entries.slice(0, 8);
-  const top4 = entries.slice(0, 4);
-  const top2 = entries.slice(0, 2);
+export function TournamentBracket({
+  entries,
+  activeRacers = entries.length,
+  raceSecondsRemaining = 25,
+  nextGateSeconds = 3,
+  capacityLabel
+}: {
+  entries: Array<{ participant: Participant; score: Score }>;
+  activeRacers?: number;
+  raceSecondsRemaining?: number;
+  nextGateSeconds?: number;
+  capacityLabel?: string;
+}) {
+  const admitted = entries.filter((entry) => entry.participant.admissionStatus === "admitted");
+  const top32 = admitted.slice(0, 32);
+  const top16 = admitted.slice(0, 16);
+  const top8 = admitted.slice(0, 8);
+  const top4 = admitted.slice(0, 4);
+  const top2 = admitted.slice(0, 2);
+  const champion = admitted[0] ? [admitted[0]] : [];
   return (
-    <Panel className="min-h-full overflow-hidden">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-black text-slate-950">Live Fixture</h2>
-        <span className="rounded-full bg-blue-100 px-3 py-1.5 text-sm font-black text-blue-700">Top 16 race</span>
+    <Panel className="relative min-h-full overflow-hidden bg-slate-950 p-5 text-white ring-slate-800">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(59,130,246,0.24),transparent_28%),radial-gradient(circle_at_78%_18%,rgba(168,85,247,0.2),transparent_24%)]" />
+      <div className="relative flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-black uppercase text-blue-200">Public broadcast</p>
+          <h2 className="mt-1 text-4xl font-black tracking-normal text-white">Champion Path Fixture</h2>
+        </div>
+        <div className="flex items-center gap-2 text-sm font-black">
+          <span className="rounded-full bg-white/10 px-3 py-2 text-blue-100">Race {raceSecondsRemaining}s</span>
+          <span className="rounded-full bg-amber-400 px-3 py-2 text-slate-950">Next cut {nextGateSeconds}s</span>
+          {capacityLabel ? <span className="rounded-full bg-white/10 px-3 py-2 text-blue-100">{capacityLabel}</span> : null}
+        </div>
       </div>
-      {top16.length ? (
-        <div className="mt-5 grid h-[calc(100%-72px)] grid-cols-[minmax(0,1.12fr)_minmax(0,0.9fr)_minmax(0,0.78fr)_minmax(0,0.74fr)] gap-3">
-          <FixtureColumn title="Top 16" entries={top16} dense />
+      {admitted.length ? (
+        <div className="relative mt-5 grid h-[calc(100%-88px)] grid-cols-[minmax(0,1.16fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,0.74fr)_minmax(0,0.82fr)] gap-3">
+          <FixtureColumn title="Racers" entries={top32} dense dark />
+          <FixtureColumn title="Top 16" entries={top16} dense dark />
           <FixtureColumn title="Top 8" entries={top8} />
           <FixtureColumn title="Top 4" entries={top4} />
           <FixtureColumn title="Final" entries={top2} />
+          <FixtureColumn title="Champion" entries={champion} champion />
+          {entries.length > top32.length ? (
+            <div className="absolute bottom-3 left-3 rounded-full bg-white/10 px-4 py-2 text-sm font-black text-blue-100">
+              +{entries.length - top32.length} racing in subscribed leaderboard
+            </div>
+          ) : null}
         </div>
       ) : (
-        <p className="mt-5 text-lg font-bold text-slate-500">The fixture fills as the first answers commit.</p>
+        <div className="relative mt-5 grid min-h-[560px] place-items-center rounded-[28px] border border-white/10 bg-white/5 text-center">
+          <div>
+            <Trophy className="mx-auto size-16 text-amber-300" />
+            <p className="mt-4 text-3xl font-black text-white">The fixture fills as racers commit answers.</p>
+            <p className="mt-2 text-lg font-bold text-blue-100">{activeRacers} admitted racers are being watched.</p>
+          </div>
+        </div>
       )}
     </Panel>
   );
@@ -538,26 +596,31 @@ function FixtureColumn({
   title,
   entries,
   dense = false
+  ,
+  dark = false,
+  champion = false
 }: {
   title: string;
   entries: Array<{ participant: Participant; score: Score }>;
   dense?: boolean;
+  dark?: boolean;
+  champion?: boolean;
 }) {
-  const slotCount = dense ? 16 : title === "Top 8" ? 8 : title === "Top 4" ? 4 : 2;
+  const slotCount = champion ? 1 : dense ? 16 : title === "Top 8" ? 8 : title === "Top 4" ? 4 : 2;
   return (
-    <div className="flex min-h-full min-w-0 flex-col rounded-[22px] border border-slate-200 bg-slate-50 p-2.5">
-      <p className="px-1 pb-2 text-xs font-black uppercase text-slate-500">{title}</p>
+    <div className={cn("flex min-h-full min-w-0 flex-col rounded-[22px] border p-2.5", dark || champion ? "border-white/10 bg-white/5" : "border-white/10 bg-white/10")}>
+      <p className={cn("px-1 pb-2 text-xs font-black uppercase", champion ? "text-amber-200" : "text-blue-100")}>{title}</p>
       <div
         className={cn(
           "grid flex-1 gap-2",
-          dense ? "grid-cols-2 grid-rows-8" : slotCount === 8 ? "grid-rows-8" : slotCount === 4 ? "grid-rows-4" : "grid-rows-2"
+          champion ? "grid-rows-1" : dense ? "grid-cols-2 grid-rows-8" : slotCount === 8 ? "grid-rows-8" : slotCount === 4 ? "grid-rows-4" : "grid-rows-2"
         )}
       >
         {entries.map((entry) => (
-          <FixtureSlot key={entry.participant.participantId} entry={entry} compact highlight={entry.score.currentRank === 1} />
+          <FixtureSlot key={entry.participant.participantId} entry={entry} compact={!champion} highlight={entry.score.currentRank === 1} large={champion} />
         ))}
         {Array.from({ length: Math.max(0, slotCount - entries.length) }).map((_, index) => (
-          <div key={index} className="rounded-2xl border border-dashed border-slate-200 bg-white/70" />
+          <div key={index} className="rounded-2xl border border-dashed border-white/10 bg-white/5" />
         ))}
       </div>
     </div>
@@ -580,8 +643,8 @@ function FixtureSlot({
       <motion.div
         layout
         className={cn(
-          "relative grid w-full min-w-0 place-items-center overflow-hidden rounded-2xl border bg-white shadow-sm",
-          highlight ? "border-amber-300 ring-2 ring-amber-200" : "border-slate-200"
+          "relative grid w-full min-w-0 place-items-center overflow-hidden rounded-2xl border bg-white/95 shadow-sm",
+          highlight ? "border-amber-300 ring-2 ring-amber-300/70" : "border-white/20"
         )}
         title={`${entry.score.currentRank}. ${entry.participant.displayName} ${entry.score.totalScore} pts`}
       >
@@ -599,16 +662,16 @@ function FixtureSlot({
       className={cn(
         "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-2xl border bg-white px-2.5 py-2 shadow-sm",
         highlight ? "border-amber-300 ring-2 ring-amber-200" : "border-slate-200",
-        large && "px-3 py-3"
+        large && "flex-col justify-center px-3 py-5 text-center"
       )}
     >
-      <span className={cn("font-black text-slate-500", compact ? "w-7 text-sm" : "w-8 text-base")}>#{entry.score.currentRank}</span>
+      <span className={cn("font-black text-slate-500", compact ? "w-7 text-sm" : large ? "text-sm" : "w-8 text-base")}>#{entry.score.currentRank}</span>
       <div className={cn("grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 shadow-sm shadow-blue-100", compact ? "size-8 text-lg" : large ? "size-12 text-2xl" : "size-10 text-xl")}>
         {entry.participant.avatar}
       </div>
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate font-black text-slate-950", compact ? "text-sm" : "text-base")}>{entry.participant.displayName}</p>
-        <p className="truncate text-xs font-bold text-slate-500">{entry.score.totalScore.toLocaleString()} pts</p>
+        <p className={cn("truncate font-black text-slate-950", compact ? "text-sm" : large ? "text-xl" : "text-base")}>{entry.participant.displayName}</p>
+        <p className={cn("truncate font-bold text-slate-500", large ? "text-sm" : "text-xs")}>{entry.score.totalScore.toLocaleString()} pts</p>
       </div>
     </motion.div>
   );
@@ -622,7 +685,7 @@ export function TechMetricStrip({ stats, eventsCount }: { stats?: LiveStats; eve
       <MetricStripItem label="events" value={eventsCount} />
       <MetricStripItem label="duplicate taps" value={stats?.duplicateAnswersRejected ?? 0} />
       <MetricStripItem label="measured p95" value={`${stats?.p95LatencyMs ?? 48}ms`} />
-      <MetricStripItem label="active clients" value={stats?.activeClients ?? 0} />
+      <MetricStripItem label="admitted" value={stats?.admittedRacers ?? 0} />
     </div>
   );
 }
@@ -708,6 +771,128 @@ export function RaceReplay({ events, participants }: { events: MatchEvent[]; par
         {!rankEvents.length ? <p className="col-span-3 text-lg font-bold text-slate-500">Replay events appear after answers commit.</p> : null}
       </div>
     </Panel>
+  );
+}
+
+export function TechDrawer({
+  open,
+  onClose,
+  stats,
+  events,
+  participants,
+  session
+}: {
+  open: boolean;
+  onClose: () => void;
+  stats?: LiveStats;
+  events: MatchEvent[];
+  participants: Participant[];
+  session?: Session;
+}) {
+  if (!open) return null;
+  const recentEvents = events.slice(-18).reverse();
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 backdrop-blur-sm" onClick={onClose}>
+      <aside
+        className="h-full w-full max-w-[540px] overflow-y-auto bg-white p-5 text-slate-950 shadow-2xl shadow-slate-950/30"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-violet-700">Technical details</p>
+            <h2 className="text-3xl font-black">Realtime race engine</h2>
+          </div>
+          <button type="button" onClick={onClose} className="grid size-11 place-items-center rounded-full bg-slate-100 text-slate-700" aria-label="Close technical drawer">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <MetricWithHelp
+            label="p95 answer commit"
+            value={`${stats?.p95AnswerCommitMs || stats?.p95LatencyMs || 0}ms`}
+            help="95th percentile of answer reducer commit latency measured from answer rows and operation traces. It includes network plus reducer processing."
+          />
+          <MetricWithHelp
+            label="subscription render"
+            value={`${stats?.p95SubscriptionRenderMs ?? 0}ms`}
+            help="Client-observed time from committed table update to rendered subscribed state. SpacetimeDB subscriptions preserve committed transaction order."
+          />
+          <MetricWithHelp
+            label="duplicate taps"
+            value={stats?.duplicateAnswersRejected ?? 0}
+            help="Count of rejected submit_answer attempts where the participant already had an Answer row for the round."
+          />
+          <MetricWithHelp
+            label="capacity"
+            value={`${session?.admittedCount ?? stats?.admittedRacers ?? 0}/${session?.maxRacers ?? 12}`}
+            help="Admission is capped by SessionCapacity. Users beyond the measured hard cap become waitlisted/spectators instead of overloading the race."
+          />
+        </div>
+
+        <TechSection title="Scoring Formula">
+          <pre className="whitespace-pre-wrap rounded-2xl bg-slate-950 p-4 text-sm font-bold leading-relaxed text-slate-100">
+{`responseMsServer = serverReceivedAtMs - round.startsAtMs
+if correct:
+  scoreDelta = 1000 + floor(1000 * (1 - responseMsServer / 2500)) + streakBonus
+else:
+  scoreDelta = 0
+
+rank = score desc, correct desc, total response time asc, fastest answer asc`}
+          </pre>
+        </TechSection>
+
+        <TechSection title="SpacetimeDB Flow">
+          <div className="space-y-2 text-sm font-bold text-slate-600">
+            <p>Phones call reducers. Reducers read hidden answer state, compute correctness, response time, score, and rank, then commit all rows transactionally.</p>
+            <p>The projector subscribes to public race state only: participants, scores, final results, live stats, and recent ledger rows when this drawer is open.</p>
+            <p>The main screen is product UI. The raw MatchEvent ledger stays here for judges and engineers.</p>
+          </div>
+        </TechSection>
+
+        <TechSection title="MatchEvent Ledger">
+          <div className="space-y-2">
+            {recentEvents.map((event) => {
+              const participant = participants.find((candidate) => candidate.participantId === event.participantId);
+              return (
+                <details key={event.eventId} className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+                  <summary className="cursor-pointer text-sm font-black text-slate-800">
+                    {event.eventType.replace("_", " ")} · {participant?.displayName ?? "system"} · {event.rankAfter ? `#${event.rankAfter}` : "ledger"}
+                  </summary>
+                  <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-bold text-slate-600">
+                    {JSON.stringify(event.payload, null, 2)}
+                  </pre>
+                </details>
+              );
+            })}
+            {!recentEvents.length ? <p className="text-sm font-bold text-slate-500">Ledger rows appear after reducers commit activity.</p> : null}
+          </div>
+        </TechSection>
+      </aside>
+    </div>
+  );
+}
+
+function MetricWithHelp({ label, value, help }: { label: string; value: React.ReactNode; help: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+        <span title={help} aria-label={help} className="inline-grid size-6 place-items-center rounded-full text-slate-400">
+          <HelpCircle className="size-4" />
+        </span>
+      </div>
+      <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function TechSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-5 rounded-[24px] bg-white p-4 ring-1 ring-slate-200">
+      <h3 className="text-xl font-black text-slate-950">{title}</h3>
+      <div className="mt-3">{children}</div>
+    </section>
   );
 }
 

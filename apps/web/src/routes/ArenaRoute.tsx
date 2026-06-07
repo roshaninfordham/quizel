@@ -17,9 +17,8 @@ import {
   LiveJoinFeed,
   ProjectorShell,
   QRHeroCard,
-  QuestionStage,
-  RaceReplay,
   ReconnectingOverlay,
+  TechDrawer,
   TechMetricStrip,
   TopStatusBar,
   TopicSwarm,
@@ -47,7 +46,6 @@ import {
 } from "../lib/spacetime/client";
 import { getLeaderboard, topicCounts } from "../lib/selectors";
 import { initSounds, playCountdownTick, playJoin, playWinner, unlockAudioOnFirstTap } from "../lib/sound/soundManager";
-import { TechRoute } from "./TechRoute";
 
 export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const { state, connectionState, lastSyncAt, callReducer } = useSpacetime();
@@ -58,7 +56,6 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const events = useMatchEvents(sessionId);
   const agentEvents = useAgentEvents(sessionId);
   const round = useCurrentRound(sessionId);
-  const question = useCurrentQuestion(sessionId);
   const answers = useAnswers(sessionId);
   const leaderboard = useMemo(() => getLeaderboard(state, sessionId), [sessionId, state]);
   const winner = leaderboard[0];
@@ -137,7 +134,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       void callReducer("live_tick", { sessionId }, "projector-live-tick").finally(() => {
         tickInFlightRef.current = false;
       });
-    }, 500);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [callReducer, sessionId]);
 
@@ -241,7 +238,6 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [callReducer, finishMatch, requestQuestions, resetDemo, seedQuestions, selectedTopic, sessionId, startMatch]);
 
-  const currentAnswers = round ? answers.filter((answer) => answer.roundId === round.roundId).length : 0;
   const secondsRemaining = round ? Math.ceil(Math.max(0, round.endsAt - now) / 1000) : 25;
   const raceSecondsRemaining =
     session?.matchStartedAt && phase === "playing"
@@ -256,31 +252,44 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         reducerCalls={stats?.reducerCalls ?? 0}
         connectionState={connectionState}
         lastSyncAt={lastSyncAt}
+        onToggleTech={() => setShowTech((current) => !current)}
+        techOpen={showTech}
       />
       <ReconnectingOverlay state={connectionState} />
-
-      {showTech ? <TechRoute code={session?.code ?? code} embedded /> : null}
+      <TechDrawer
+        open={showTech}
+        onClose={() => setShowTech(false)}
+        stats={stats}
+        events={events}
+        participants={participants}
+        session={session}
+      />
 
       {phase === "playing" ? (
-        <div className="grid flex-1 grid-cols-[0.82fr_1.4fr_0.88fr] gap-5">
-          <TournamentBracket entries={leaderboard} />
+        <div className="grid flex-1 grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)] gap-5">
           <div className="flex flex-col gap-5">
-            <QuestionStage
-              question={question}
-              round={round}
-              answersCount={currentAnswers}
-              secondsRemaining={secondsRemaining}
+            <TournamentBracket
+              entries={leaderboard}
+              activeRacers={participants.filter((participant) => participant.admissionStatus === "admitted").length}
               raceSecondsRemaining={raceSecondsRemaining}
+              nextGateSeconds={secondsRemaining}
+              capacityLabel={`${session?.admittedCount ?? stats?.admittedRacers ?? participants.length}/${session?.maxRacers ?? 12} admitted`}
             />
             <TechMetricStrip stats={stats} eventsCount={events.length} />
           </div>
           <LeaderboardPanel entries={leaderboard} compact />
         </div>
       ) : phase === "finished" || phase === "replay" ? (
-        <div className="grid flex-1 grid-cols-[1.2fr_0.8fr] gap-5">
+        <div className="grid flex-1 grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)] gap-5">
           <div className="flex flex-col gap-5">
             <WinnerExplosion winner={winner} totalPlayers={participants.length} />
-            <RaceReplay events={events} participants={participants} />
+            <TournamentBracket
+              entries={leaderboard}
+              activeRacers={participants.filter((participant) => participant.admissionStatus === "admitted").length}
+              raceSecondsRemaining={0}
+              nextGateSeconds={0}
+              capacityLabel="final committed"
+            />
           </div>
           <LeaderboardPanel entries={leaderboard} />
         </div>

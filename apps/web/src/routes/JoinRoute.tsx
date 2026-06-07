@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, Mic, Pencil, Radio, Sparkles, Square, Trophy } from "lucide-react";
+import { ArrowRight, Check, Mic, Pencil, Radio, Share2, Sparkles, Square, Trophy } from "lucide-react";
 import {
   AVATAR_CHOICES,
   DEFAULT_SESSION_CODE,
   INTENT_PLACEHOLDERS,
   QUESTION_COUNT,
   type OptionKey,
+  type ShareCard,
   percentile
 } from "@quizrush/shared";
 import { AnswerButton, Button, ConnectionBadge, Panel, PhoneShell, ReconnectingOverlay, SoundToggle, cn } from "../components/ui";
 import { useSpeechIntent } from "../hooks/useSpeechIntent";
-import { useJoinTournament, useRequestQuestions, useSubmitAnswer, useSubmitPlayerIntent, useSubmitTopicVote } from "../hooks/useArenaActions";
+import { useCreateShareCard, useJoinTournament, useRequestQuestions, useSubmitAnswer, useSubmitPlayerIntent, useSubmitTopicVote } from "../hooks/useArenaActions";
 import {
   getJoinedParticipantId,
   useCurrentQuestion,
@@ -44,25 +45,29 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const [intentText, setIntentText] = useState("");
   const [now, setNow] = useState(Date.now());
   const [lastAnswerState, setLastAnswerState] = useState<"correct" | "wrong" | null>(null);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
   const placeholder = useMemo(() => INTENT_PLACEHOLDERS[Math.floor(Math.random() * INTENT_PLACEHOLDERS.length)] ?? "AI agents, databases, and startups", []);
   const parsedIntent = useMemo(() => parseIntentPreview(intentText), [intentText]);
   const participant = state.participants.find((candidate) => candidate.participantId === participantId);
   const round = useCurrentRound(sessionId);
   const question = useCurrentQuestion(sessionId);
   const score = getScore(state, sessionId, participantId);
+  const finalResult = state.finalResults.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
+  const shareCard = state.shareCards.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
   const answer = getAnswerForParticipant(state, round?.roundId, participantId ?? undefined);
   const totalPlayers = state.participants.filter((candidate) => candidate.sessionId === sessionId).length;
   const joinedVotes = state.topicVotes.filter((vote) => vote.participantId === participantId).map((vote) => vote.topic);
   const sessionQuestions = state.questions.filter((candidate) => candidate.sessionId === sessionId);
   const questionsReady = sessionQuestions.length >= QUESTION_COUNT;
   const arenaLabel = joinedVotes.length ? joinedVotes.map((topic) => topic.replace(/\s+(Systems|Strategy|Technology)$/i, "")).join(" x ") : session?.selectedTopic ?? parsedIntent.arenaName;
-  const packSource = packSourceLabel(sessionQuestions[0]?.generatedBy, sessionQuestions[0]?.fairnessStatus);
+  const packSource = packSourceLabel(sessionQuestions[0]?.generatedBy, sessionQuestions[0]?.fairnessStatus, sessionQuestions[0]?.sourceUrl);
 
   const { joinTournament, loading: joining, error: joinError } = useJoinTournament(code);
   const { submitTopicVote, loading: voting, message: voteMessage, error: voteError } = useSubmitTopicVote();
   const { submitPlayerIntent, loading: submittingIntent, error: intentError } = useSubmitPlayerIntent();
   const { requestQuestions, loading: requesting, error: requestError } = useRequestQuestions();
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
+  const { createShareCard, loading: sharing, error: shareError } = useCreateShareCard();
   const speech = useSpeechIntent((value) => setIntentText(value));
 
   const options = useMemo<Array<[OptionKey, string]>>(
@@ -112,6 +117,9 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     const result = await joinTournament({ displayName: displayName.trim() || "Player", avatar });
     if (result?.participant.participantId) {
       setParticipantId(result.participant.participantId);
+      if ((result.participant as { admissionStatus?: string }).admissionStatus && (result.participant as { admissionStatus?: string }).admissionStatus !== "admitted") {
+        return;
+      }
       await submitPlayerIntent(sessionId, intentText, speech.finalTranscript ? "speech" : "typed");
       await submitTopicVote(sessionId, parsedIntent.topics);
       await requestQuestions(sessionId, parsedIntent.arenaName);
@@ -123,6 +131,31 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     if (!round) return;
     playAnswerLock();
     await submitAnswer(round.roundId, key);
+  };
+
+  const shareScore = async () => {
+    const created = (shareCard ?? (await createShareCard(sessionId, participantId))) as ShareCard | undefined;
+    const card = created ?? shareCard;
+    if (!card) {
+      setShareMessage("Share card is being created. Try again in a moment.");
+      return;
+    }
+    const url = `${window.location.origin}/share/${card.slug}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "QuizRush Arena score",
+          text: `${card.displayName} placed #${card.finalRank} with ${card.totalScore.toLocaleString()} points.`,
+          url
+        });
+        setShareMessage("Share sheet opened.");
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShareMessage("Share link copied.");
+      }
+    } catch {
+      setShareMessage(url);
+    }
   };
 
   const toggleMic = () => {
@@ -281,17 +314,46 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
             {participant.avatar}
           </div>
           <p className="mt-6 text-sm font-black uppercase text-violet-700">Personal result</p>
-          <h1 className="mt-2 text-5xl font-black text-slate-950">You placed #{score?.currentRank ?? "-"}</h1>
-          <p className="mt-2 text-xl font-black text-slate-600">{score?.totalScore.toLocaleString() ?? 0} points</p>
+          <h1 className="mt-2 text-5xl font-black text-slate-950">You placed #{finalResult?.finalRank ?? score?.currentRank ?? "-"}</h1>
+          <p className="mt-2 text-xl font-black text-slate-600">{(finalResult?.totalScore ?? score?.totalScore ?? 0).toLocaleString()} points</p>
           <div className="mt-6 grid grid-cols-2 gap-3 text-left">
-            <ResultStat label="Correct" value={`${score?.correctCount ?? 0}/${QUESTION_COUNT}`} />
-            <ResultStat label="Fastest" value={`${((score?.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`} />
-            <ResultStat label="Room" value={`Top ${percentile(score?.currentRank ?? totalPlayers, totalPlayers)}%`} />
+            <ResultStat label="Correct" value={`${finalResult?.correctCount ?? score?.correctCount ?? 0}/${finalResult?.questionCount ?? QUESTION_COUNT}`} />
+            <ResultStat label="Fastest" value={`${((finalResult?.fastestResponseMs ?? score?.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`} />
+            <ResultStat label="Room" value={`Top ${finalResult?.percentile ?? percentile(score?.currentRank ?? totalPlayers, totalPlayers)}%`} />
             <ResultStat label="Arena" value={joinedVotes[0] ?? session.selectedTopic ?? "Live"} />
           </div>
-          <p className="mt-6 rounded-[22px] bg-cyan-50 px-4 py-3 text-sm font-black text-cyan-800">
-            Watch the projector replay. It is rebuilt from the MatchEvent ledger.
+          <Button onClick={shareScore} disabled={sharing} className="mt-7 w-full" icon={<Share2 className="size-5" />}>
+            {sharing ? "Creating Link" : "Share Score"}
+          </Button>
+          {shareMessage ? <p className="mt-4 break-all rounded-[22px] bg-cyan-50 px-4 py-3 text-sm font-black text-cyan-800">{shareMessage}</p> : null}
+          {shareError ? <ErrorMessage>{shareError}</ErrorMessage> : null}
+        </Panel>
+        <div className="mt-auto" />
+      </PhoneShell>
+    );
+  }
+
+  if (participant.admissionStatus !== "admitted") {
+    const ticket = state.admissionTickets.find((candidate) => candidate.participantId === participant.participantId);
+    return (
+      <PhoneShell>
+        <div className="flex items-center justify-between gap-3">
+          <ConnectionBadge state={connectionState} lastSyncAt={lastSyncAt} />
+          <SoundToggle />
+        </div>
+        <Panel className="mt-auto text-center">
+          <div className="mx-auto grid size-24 place-items-center rounded-full bg-slate-100 text-5xl">{participant.avatar}</div>
+          <p className="mt-6 text-sm font-black uppercase text-violet-700">Arena capacity</p>
+          <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">
+            {participant.admissionStatus === "waitlisted" ? "You are in the spectator queue" : "This sprint is full"}
+          </h1>
+          <p className="mt-3 text-base font-bold text-slate-500">
+            The current deployment admits {session?.maxRacers ?? 12} realtime racers to protect answer latency and final result speed.
           </p>
+          <div className="mt-6 grid grid-cols-2 gap-3 text-left">
+            <ResultStat label="Status" value={participant.admissionStatus} />
+            <ResultStat label="Queue" value={ticket?.queuePosition ? `#${ticket.queuePosition}` : "watching"} />
+          </div>
         </Panel>
         <div className="mt-auto" />
       </PhoneShell>
@@ -369,7 +431,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           <div className="mt-4 grid gap-2">
             <ProgressStep complete label="Intent captured" />
             <ProgressStep complete={Boolean(session?.selectedTopic || joinedVotes.length)} label={`Arena detected${arenaLabel ? `: ${arenaLabel}` : ""}`} />
-            <ProgressStep complete={questionsReady} label={questionsReady ? `Instant quiz pack ready (${packSource})` : "Using instant cache/template path"} />
+            <ProgressStep complete={questionsReady} label={questionsReady ? `Quiz pack ready (${packSource})` : "Grounding facts and building pack"} />
             <ProgressStep complete={session?.status === "playing"} label={session?.status === "playing" ? "Race live" : "Starting when presenter presses S"} />
           </div>
         </div>
@@ -421,8 +483,9 @@ function ErrorMessage({ children }: { children: React.ReactNode }) {
   return <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{children}</p>;
 }
 
-function packSourceLabel(generatedBy?: string, fairnessStatus?: string): string {
+function packSourceLabel(generatedBy?: string, fairnessStatus?: string, sourceUrl?: string | null): string {
   if (!generatedBy) return "Preparing";
+  if (sourceUrl) return "Grounded web";
   if (fairnessStatus === "fallback") return "Instant pack";
   if (/quiz builder/i.test(generatedBy)) return "AI custom";
   return generatedBy;

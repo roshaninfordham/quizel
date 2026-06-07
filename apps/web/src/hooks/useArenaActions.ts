@@ -194,6 +194,21 @@ export function useFinishMatch() {
   return { ...runner, finishMatch };
 }
 
+export function useCreateShareCard() {
+  const { callReducer } = useSpacetime();
+  const runner = useActionRunner();
+  const createShareCard = useCallback(
+    (sessionId = DEFAULT_SESSION_ID, participantId?: string | null) =>
+      runner.run("Share card ready", async () => {
+        const receipt = await callReducer("create_share_card", { sessionId, participantId }, getDeviceIdentity());
+        if (!receipt.ok) throw new Error(receipt.error);
+        return receipt.data;
+      }),
+    [callReducer, runner]
+  );
+  return { ...runner, createShareCard };
+}
+
 export function useResetDemo() {
   const { callReducer } = useSpacetime();
   const runner = useActionRunner();

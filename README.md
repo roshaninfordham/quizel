@@ -8,7 +8,7 @@ QuizRush Arena uses educational game scoring only. There is no purchase, cash pr
 
 ## What It Does
 
-QuizRush Arena turns a room into a live multiplayer quiz race. The presenter runs `make online-public`, the projector shows a giant QR code, everyone joins from a phone, players type or speak their expertise, deterministic intent parsing converts that into live arena topics, AI agents generate and review seven rapid questions, and the arena shows every answer, score, rank jump, fixture movement, winner, and replay live.
+QuizRush Arena turns a room into a live multiplayer quiz race. The presenter runs `make online-public`, the projector shows a giant QR code, everyone joins from a phone, players type or speak their expertise, deterministic intent parsing converts that into live arena topics, AI agents generate and review ten rapid questions, phones show private quiz prompts, and the projector shows only the public Champion Path fixture, leaderboard, capacity state, and winner.
 
 ## Demo Flow
 
@@ -19,11 +19,11 @@ QuizRush Arena turns a room into a live multiplayer quiz race. The presenter run
 5. The phone shows a detected arena such as `AI Agents x Space Tech x Database Systems`.
 6. The 5-second intent window closes automatically.
 7. The phone immediately stores a `PlayerIntent`, starts `request_questions`, and commits a topic-specific instant pack while the Effect worker races cache/template paths and LLM refinement.
-8. The match starts automatically and phones answer seven rapid questions inside one 25-second race clock.
-9. Projector updates leaderboard and top-16 fixture lanes from committed state.
+8. The match starts automatically and phones answer ten rapid questions inside one 25-second race clock.
+9. Projector updates the Champion Path fixture and leaderboard from committed state without showing quiz questions.
 10. Winner screen shows champion, score, fastest answer, sound, and confetti.
-11. Replay reads the `MatchEvent` ledger to show how the race changed.
-12. Press `T` to show the SpacetimeDB tech proof overlay.
+11. Phones can create a reducer-backed score share link.
+12. Press `T` or the hamburger button to open the SpacetimeDB tech drawer with metrics, formulas, capacity, and the `MatchEvent` ledger.
 
 Projector keyboard controls:
 
@@ -47,7 +47,7 @@ Default local URLs:
 
 - Projector: http://localhost:5173/arena/ARENA-42
 - Phone QR: `make online` prints a LAN URL such as `http://YOUR_LAPTOP_IP:5173/join/ARENA-42`
-- Tech proof: http://localhost:5173/tech/ARENA-42
+- Tech proof: http://localhost:5173/tech/ARENA-42 or the in-arena hamburger drawer
 - Phone realtime gateway: `ws://YOUR_LAPTOP_IP:5173/quizrush-ws`
 - Worker realtime gateway: ws://127.0.0.1:8787
 
@@ -87,6 +87,56 @@ PUBLIC_BASE_URL=https://your-web-tunnel.example make online
 
 Only set `PUBLIC_REALTIME_URL` with `VITE_FORCE_REALTIME_URL=true` if you intentionally run a separate websocket tunnel.
 
+## Deploy on Vercel + SpaceTimeDB
+
+Vercel hosts the web app. SpaceTimeDB hosts the realtime database/reducer module. Do not use the local `/quizrush-ws` gateway for production Vercel links.
+
+The module is published as:
+
+```text
+Host: https://maincloud.spacetimedb.com
+Database: quizrush-live
+Dashboard: https://spacetimedb.com/quizrush-live
+```
+
+Publish or update SpaceTimeDB:
+
+```bash
+pnpm spacetime:build
+~/.local/bin/spacetime publish quizrush-live --server maincloud --module-path modules/spacetime --build-options='--lint-dir=' --yes=remote,migrate,break-clients,skip-login
+```
+
+Set these Vercel environment variables:
+
+```bash
+VITE_REALTIME_TRANSPORT=spacetimedb
+VITE_SPACETIMEDB_HOST=https://maincloud.spacetimedb.com
+VITE_SPACETIMEDB_MODULE=quizrush-live
+VITE_PUBLIC_APP_URL=https://YOUR-VERCEL-DOMAIN
+```
+
+Then deploy from the repo root. `vercel.json` builds only `@quizrush/web`, emits `apps/web/dist`, and rewrites deep links such as `/arena/ARENA-42` and `/join/ARENA-42` to the SPA.
+
+```bash
+pnpm --filter @quizrush/web build
+pnpm dlx vercel --prod
+```
+
+The direct SpaceTimeDB browser transport uses generated TypeScript bindings from `apps/web/src/lib/spacetime/module_bindings`, subscribes to the live tables, writes only through reducers, and persists the SpaceTimeDB auth token in local storage so a phone keeps the same participant identity after refresh.
+
+For LLM refinement, keep the Effect agent worker running as a long-lived process pointed at the same reducer contract. Vercel itself should not be the websocket worker runtime:
+
+```bash
+AGENT_TRANSPORT=local AGENT_REALTIME_URL=ws://127.0.0.1:8787 pnpm --filter @quizrush/agent-worker start
+
+# Production SpaceTimeDB worker mode:
+AGENT_TRANSPORT=spacetime \
+AGENT_SPACETIMEDB_HOST=https://maincloud.spacetimedb.com \
+AGENT_SPACETIMEDB_MODULE=quizrush-live \
+FIRECRAWL_API_KEY=... \
+pnpm --filter @quizrush/agent-worker start
+```
+
 ## Architecture
 
 ```mermaid
@@ -102,8 +152,9 @@ flowchart LR
 
     Gateway -->|same reducer contract| STDB
     Worker -->|subscribe AgentRequest / Session state| Gateway
-    Worker -->|generic LLM calls| LLM[Swappable LLM Provider]
-    Worker -->|submit_question_pack / record_agent_event| Gateway
+    Worker -->|Firecrawl search/scrape| WebFacts[Web Fact Sources]
+    Worker -->|grounded LLM calls| LLM[Swappable LLM Provider]
+    Worker -->|submit_topic_facts / submit_question_pack / record_agent_event| Gateway
 
     Gateway -->|live table snapshots| Phones
     Gateway -->|live table snapshots| Projector
@@ -116,11 +167,12 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 
 - Public projector arena at `/arena/:code`.
 - Single phone route at `/join/:code`.
+- Public score cards at `/share/:slug`.
 - Optional tech proof at `/tech/:code`.
 - Freeform expertise input with deterministic intent preview and optional Web Speech API mic enhancement.
 - Shared transcript cleanup removes repeated interim speech such as `Fruit Fruits Fruits` before reducers see it.
 - First-class `PlayerIntent` rows store raw expertise, cleaned text, canonical topics, topic key, arena name, confidence, and pack-ready status.
-- Realtime joins, expertise-derived topic votes, answers, scores, ranks, bracket, winner, and replay.
+- Realtime joins, expertise-derived topic votes, answers, scores, ranks, Champion Path fixture, winner, and share links.
 - Tasteful generated howler.js sound effects with phone sound off by default.
 - Live projector metrics refreshed by reducer-owned `live_tick` updates.
 - Simulated 100-player room load streamed in small reducer batches from the `A` key.
@@ -128,9 +180,12 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Reducer-owned game state in `packages/shared` and `modules/spacetime`.
 - One answer per participant per round.
 - Server-authoritative response time and score calculation.
+- `clientEventId` idempotency for answer retries.
+- Incremental `FinalResult`, `ShareCard`, `SessionCapacity`, and `AdmissionTicket` rows.
 - Duplicate answer rejection and metric tracking.
-- `MatchEvent` replay ledger.
-- Effect-based LLM worker with provider routing, retries, validation, safety guard support, Instant Quiz Engine cache/template racing, and topic-specific deterministic fallback.
+- `MatchEvent` replay ledger hidden in the technical drawer by default.
+- Effect-based LLM worker with Firecrawl grounding, provider routing, retries, validation, safety guard support, Instant Quiz Engine cache/template racing, and topic-specific deterministic fallback.
+- `TopicFact` rows plus question-level `factIds`, `sourceTitle`, and `sourceUrl` metadata for grounded packs.
 - NVIDIA model routing through environment variables in `.env.local`.
 - Deterministic topic-specific fallback questions if LLM calls fail or arrive too late.
 
@@ -150,12 +205,14 @@ phone intent
 -> deterministic normalization
 -> topic-specific instant question pack
 -> Effect worker exact/alias/semantic/template cache path
--> background LLM generation/refinement if it returns before the race locks
+-> Firecrawl compact fact retrieval when configured
+-> grounded LLM generation/refinement if it returns before the race locks
 ```
 
 - Intent Parser / Topic Router Agent: selects a tournament topic from live expertise signals.
 - Arena Router Agent: represented in the UI pipeline and currently backed by deterministic topic clustering for the single sprint arena.
-- Quiz Builder Agent: generates exactly seven short MCQ questions for the 25-second sprint.
+- Firecrawl Grounding Agent: fetches compact web facts for arbitrary topics and stores them through `submit_topic_facts`.
+- Quiz Builder Agent: generates exactly ten short MCQ questions for the 25-second sprint from provided facts when available.
 - Safety Guard Agent: optional safety review.
 - Fairness Guard: validates options, ambiguity, length, and public safety.
 - Host Commentator Agent: writes short round commentary.
@@ -177,7 +234,29 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm spacetime:build
+make load-smoke
+make capacity-report
 ```
+
+## Capacity
+
+Current measured production cap:
+
+```text
+MAX_PLAYERS_SOFT=10
+MAX_PLAYERS_HARD=12
+```
+
+Vercel serves the static frontend. SpacetimeDB is the realtime race engine. Do not claim a higher live-racer count until `docs/capacity-results/` contains a passing load-test artifact for that number.
+
+Architecture docs:
+
+- [Fixture architecture](docs/fixture-architecture.md)
+- [Scoring](docs/scoring.md)
+- [SpacetimeDB schema](docs/spacetimedb-schema.md)
+- [Realtime loop](docs/realtime-loop.md)
+- [Capacity](docs/capacity.md)
+- [Capacity report](docs/capacity-report.md)
 
 ## SpacetimeDB
 
@@ -197,6 +276,7 @@ submit_topic_vote
 submit_player_intent
 submit_parsed_intent
 request_questions
+submit_topic_facts
 submit_question_pack
 start_match
 start_round
@@ -228,6 +308,11 @@ pnpm typecheck
 pnpm test
 pnpm --filter @quizrush/web build
 ```
+
+Engineering notes:
+
+- Grounded quiz generation: `docs/grounded-quiz-generation.md`
+- Capacity assumptions: `docs/capacity-report.md`
 
 Manual golden path:
 

@@ -26,21 +26,21 @@ Optional backup: press `A` to stream 100 marked simulated players if the room is
 
 0:55-1:20
 
-The match starts automatically. Phones answer seven rapid questions inside the 25-second race clock.
+The match starts automatically. Phones answer ten rapid questions inside the 25-second race clock.
 
-“Now watch the leaderboard and top-16 bracket move after every tap. Scores are not client-side guesses; response time, correctness, rank, and duplicate-answer rejection happen in reducer-owned state.”
+“Now watch the public Champion Path fixture move after committed taps. The projector never shows private quiz questions. Scores are not client-side guesses; response time, correctness, rank, and duplicate-answer rejection happen in reducer-owned state.”
 
 1:20-1:35
 
-Winner screen and replay.
+Winner screen.
 
-“The replay is reconstructed from the MatchEvent ledger. This is the 25-second state race, not a canned animation.”
+“The result is already available because scores were updated incrementally during the race. The technical ledger is hidden from users but available in the drawer.”
 
 1:35-1:45
 
 Press `T`.
 
-“This overlay shows reducer calls, answer rate, duplicate rejections, p95 latency, current tables, subscriptions, and agent events.”
+“This drawer shows reducer calls, answer rate, duplicate rejections, p95 latency, scoring formulas, capacity, SpacetimeDB flow, and the MatchEvent ledger.”
 
 Close:
 
@@ -66,4 +66,4 @@ What is technically hard?
 
 What is mocked?
 
-“Production auth, profiles, and a permanent cloud deployment. The realtime match engine, public tunnel launch, reducer invariants, scoring, replay ledger, AI validation/fallback, and UI flow are working.”
+“Production auth and permanent user profiles. The Vercel frontend, SpacetimeDB reducer module, realtime match engine, reducer invariants, scoring, capacity cap, share cards, AI validation/fallback, and UI flow are working.”
