@@ -1,8 +1,14 @@
 import { schema, table, t } from "spacetimedb/server";
 
-const QUESTION_COUNT = 7;
+const QUESTION_COUNT = 10;
 const TOTAL_MATCH_MS = 25_000;
 const QUESTION_TIME_LIMIT_MS = Math.floor(TOTAL_MATCH_MS / QUESTION_COUNT);
+const ANSWER_GRACE_MS = 150;
+const CORRECTNESS_POINTS = 1000;
+const MAX_SPEED_BONUS = 1000;
+const STREAK_BONUS = 100;
+const MAX_PLAYERS_SOFT = 10;
+const MAX_PLAYERS_HARD = 12;
 const SIMULATED_ANSWER_BURST_SIZE = 8;
 const DEFAULT_TOPIC = "AI + Space + Startups";
 const DEFAULT_CODE = "ARENA-42";
@@ -18,6 +24,10 @@ const session = table(
     current_round: t.u32(),
     match_started_at_ms: t.option(t.u64()),
     match_finished_at_ms: t.option(t.u64()),
+    max_racers: t.u32().default(MAX_PLAYERS_HARD),
+    admitted_count: t.u32().default(0),
+    capacity_status: t.string().default("open"),
+    capacity_reason: t.option(t.string()).default(undefined),
     created_at_ms: t.u64(),
     updated_at_ms: t.u64()
   }
@@ -31,6 +41,8 @@ const participant = table(
     identity: t.string().index("btree"),
     display_name: t.string(),
     avatar: t.string(),
+    admission_status: t.string().default("admitted"),
+    champion_status: t.string().default("active"),
     joined_at_ms: t.u64(),
     last_seen_ms: t.u64(),
     is_simulated: t.bool(),
@@ -85,7 +97,10 @@ const question = table(
     topic: t.string(),
     generated_by: t.string(),
     fairness_status: t.string(),
-    created_at_ms: t.u64()
+    created_at_ms: t.u64(),
+    fact_ids_json: t.string().default("[]"),
+    source_title: t.string().default(""),
+    source_url: t.string().default("")
   }
 );
 
@@ -109,12 +124,20 @@ const answer = table(
     answer_id: t.string().primaryKey(),
     session_id: t.string().index("btree"),
     round_id: t.string().index("btree"),
+    question_id: t.string().default(""),
     participant_id: t.string().index("btree"),
     selected_option: t.string(),
     is_correct: t.bool(),
     response_ms: t.u32(),
+    response_ms_server: t.u32().default(0),
+    client_sent_at_ms: t.option(t.u64()).default(undefined),
+    client_event_id: t.string().default(""),
+    correctness_points: t.u32().default(0),
+    speed_bonus: t.u32().default(0),
+    streak_bonus: t.u32().default(0),
     score_delta: t.u32(),
-    server_received_at_ms: t.u64()
+    server_received_at_ms: t.u64(),
+    created_at_ms: t.u64().default(BigInt(0))
   }
 );
 
@@ -126,12 +149,86 @@ const score = table(
     participant_id: t.string().index("btree"),
     total_score: t.u32(),
     correct_count: t.u32(),
+    wrong_count: t.u32().default(0),
+    answered_count: t.u32().default(0),
     total_response_ms: t.u32(),
     fastest_response_ms: t.option(t.u32()),
+    average_response_ms: t.option(t.u32()).default(undefined),
+    normalized_score: t.f32().default(0),
+    streak_count: t.u32().default(0),
+    last_answer_correct: t.option(t.bool()).default(undefined),
+    champion_status: t.string().default("active"),
     current_rank: t.u32(),
     previous_rank: t.u32(),
     last_answer_at_ms: t.option(t.u64()),
     updated_at_ms: t.u64()
+  }
+);
+
+const final_result = table(
+  { name: "final_result", public: true },
+  {
+    final_result_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
+    participant_id: t.string().index("btree"),
+    final_rank: t.u32(),
+    total_participants: t.u32(),
+    champion_status: t.string(),
+    total_score: t.u32(),
+    correct_count: t.u32(),
+    question_count: t.u32(),
+    total_response_ms: t.u32(),
+    fastest_response_ms: t.option(t.u32()),
+    percentile: t.u32(),
+    created_at_ms: t.u64()
+  }
+);
+
+const share_card = table(
+  { name: "share_card", public: true },
+  {
+    share_id: t.string().primaryKey(),
+    slug: t.string().unique(),
+    session_id: t.string().index("btree"),
+    participant_id: t.string().index("btree"),
+    display_name: t.string(),
+    avatar: t.string(),
+    final_rank: t.u32(),
+    total_participants: t.u32(),
+    champion_status: t.string(),
+    total_score: t.u32(),
+    correct_count: t.u32(),
+    question_count: t.u32(),
+    fastest_response_ms: t.option(t.u32()),
+    created_at_ms: t.u64(),
+    view_count: t.u32()
+  }
+);
+
+const session_capacity = table(
+  { name: "session_capacity", public: true },
+  {
+    session_id: t.string().primaryKey(),
+    max_racers_soft: t.u32(),
+    max_racers_hard: t.u32(),
+    admitted_count: t.u32(),
+    waitlisted_count: t.u32(),
+    spectator_count: t.u32(),
+    status: t.string(),
+    reason: t.option(t.string()),
+    updated_at_ms: t.u64()
+  }
+);
+
+const admission_ticket = table(
+  { name: "admission_ticket", public: true },
+  {
+    ticket_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
+    participant_id: t.string().index("btree"),
+    status: t.string(),
+    queue_position: t.option(t.u32()),
+    issued_at_ms: t.u64()
   }
 );
 
@@ -191,7 +288,12 @@ const live_stats = table(
     reducer_calls: t.u32(),
     duplicate_answers_rejected: t.u32(),
     p95_latency_ms: t.u32(),
+    p95_answer_commit_ms: t.u32().default(48),
+    p95_subscription_render_ms: t.u32().default(120),
     active_clients: t.u32(),
+    admitted_racers: t.u32().default(0),
+    waitlisted_users: t.u32().default(0),
+    capacity_status: t.string().default("open"),
     updated_at_ms: t.u64()
   }
 );
@@ -223,6 +325,22 @@ const operation_trace = table(
   }
 );
 
+const topic_fact = table(
+  { name: "topic_fact", public: true },
+  {
+    fact_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
+    topic_key: t.string().index("btree"),
+    display_name: t.string(),
+    source_title: t.string(),
+    source_url: t.string(),
+    source_type: t.string(),
+    fact_text: t.string(),
+    confidence: t.f32(),
+    created_at_ms: t.u64()
+  }
+);
+
 const spacetimedb = schema({
   session,
   participant,
@@ -232,12 +350,17 @@ const spacetimedb = schema({
   round,
   answer,
   score,
+  final_result,
+  share_card,
+  session_capacity,
+  admission_ticket,
   match_event,
   agent_request,
   agent_event,
   live_stats,
   audit_event,
-  operation_trace
+  operation_trace,
+  topic_fact
 });
 
 export default spacetimedb;
@@ -265,26 +388,33 @@ export const join_session = spacetimedb.reducer({ code: t.string(), display_name
   for (const existing of ctx.db.participant.session_id.filter(current.session_id)) {
     if (existing.identity === caller) {
       ctx.db.participant.participant_id.update({ ...existing, display_name: cleanName(display_name), avatar, last_seen_ms: nowMs() });
+      recalcStats(ctx, current.session_id);
       return;
     }
   }
 
   const now = nowMs();
-  const participant_id = id("participant");
+  const capacity = updateCapacity(ctx, current.session_id, now);
+  const admission_status = capacity.admitted_count < capacity.max_racers_hard ? "admitted" : "waitlisted";
+  const champion_status = admission_status === "admitted" ? "active" : "spectator";
+  const participant_id = id(ctx, "participant");
   ctx.db.participant.insert({
     participant_id,
     session_id: current.session_id,
     identity: caller,
     display_name: cleanName(display_name),
     avatar: avatar || "🚀",
+    admission_status,
+    champion_status,
     joined_at_ms: now,
     last_seen_ms: now,
     is_simulated: false,
     client_latency_ms: undefined
   });
-  ctx.db.score.insert(emptyScore(current.session_id, participant_id, now));
+  ctx.db.score.insert(emptyScore(current.session_id, participant_id, now, champion_status));
+  issueAdmissionTicket(ctx, current.session_id, participant_id, admission_status, now);
   ctx.db.session.session_id.update({ ...current, status: current.status === "lobby" ? "topic_voting" : current.status, updated_at_ms: now });
-  insertMatchEvent(ctx, current.session_id, participant_id, "join", undefined, undefined, undefined, `{"displayName":${JSON.stringify(cleanName(display_name))}}`);
+  insertMatchEvent(ctx, current.session_id, participant_id, admission_status === "admitted" ? "join" : "waitlisted", undefined, undefined, undefined, JSON.stringify({ displayName: cleanName(display_name), admission_status }));
   recalcStats(ctx, current.session_id);
   traceOperation(ctx, current.session_id, "join_session", true, 1, undefined);
 });
@@ -296,7 +426,7 @@ export const submit_topic_vote = spacetimedb.reducer({ session_id: t.string(), t
   const now = nowMs();
   for (const topic of topics) {
     ctx.db.topic_vote.insert({
-      vote_id: id("topic-vote"),
+      vote_id: id(ctx, "topic-vote"),
       session_id,
       participant_id: participantRow.participant_id,
       topic,
@@ -318,7 +448,7 @@ export const submit_player_intent = spacetimedb.reducer(
     const now = nowMs();
     ctx.db.player_intent.participant_id.delete(participantRow.participant_id);
     ctx.db.player_intent.insert({
-      intent_id: id("player-intent"),
+      intent_id: id(ctx, "player-intent"),
       session_id,
       participant_id: participantRow.participant_id,
       raw_text: raw_text.trim().slice(0, 300),
@@ -404,7 +534,7 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
     updated_at_ms: now
   });
   ctx.db.agent_request.insert({
-    request_id: id("agent-request"),
+    request_id: id(ctx, "agent-request"),
     session_id,
     request_type: "quiz_generation",
     topic: selected_topic,
@@ -431,9 +561,60 @@ export const submit_question_batch = spacetimedb.reducer(
   (ctx, input) => submitQuestionPackInternal(ctx, input.session_id, input.selected_topic, input.questions_json, input.request_id)
 );
 
+export const submit_topic_facts = spacetimedb.reducer(
+  { session_id: t.string(), topic_key: t.string(), facts_json: t.string() },
+  (ctx, { session_id, topic_key, facts_json }) => {
+    requireSession(ctx, session_id);
+    const parsed = JSON.parse(facts_json) as {
+      facts?: Array<{
+        factId?: string;
+        fact_id?: string;
+        topicKey?: string;
+        topic_key?: string;
+        displayName?: string;
+        display_name?: string;
+        sourceTitle?: string;
+        source_title?: string;
+        sourceUrl?: string;
+        source_url?: string;
+        sourceType?: string;
+        source_type?: string;
+        factText?: string;
+        fact_text?: string;
+        confidence?: number;
+      }>;
+    };
+    if (!Array.isArray(parsed.facts)) throw new Error("facts_json must include facts array.");
+    const now = nowMs();
+    for (const item of parsed.facts.slice(0, 12)) {
+      const fact_text = cleanText(item.factText ?? item.fact_text ?? "", 360);
+      if (fact_text.length < 12) continue;
+      const fact_id = cleanText(item.factId ?? item.fact_id ?? `${topic_key}-fact-${ctx.random.integerInRange(0, 1_000_000)}`, 80);
+      const existing = ctx.db.topic_fact.fact_id.find(fact_id);
+      const row = {
+        fact_id,
+        session_id,
+        topic_key: cleanText(item.topicKey ?? item.topic_key ?? topic_key, 96),
+        display_name: cleanText(item.displayName ?? item.display_name ?? topic_key, 120),
+        source_title: cleanText(item.sourceTitle ?? item.source_title ?? "Firecrawl result", 160),
+        source_url: cleanText(item.sourceUrl ?? item.source_url ?? "https://firecrawl.dev", 260),
+        source_type: cleanText(item.sourceType ?? item.source_type ?? "firecrawl", 32),
+        fact_text,
+        confidence: clamp01(item.confidence ?? 0.78),
+        created_at_ms: now
+      };
+      if (existing) ctx.db.topic_fact.fact_id.update(row);
+      else ctx.db.topic_fact.insert(row);
+    }
+    insertAgentEvent(ctx, session_id, "Firecrawl Grounding Agent", "facts_committed", `Compact facts stored for ${topic_key}.`, 0.86, "complete");
+    bumpStats(ctx, session_id);
+    traceOperation(ctx, session_id, "submit_topic_facts", true, 1, undefined);
+  }
+);
+
 export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
   const current = requireSession(ctx, session_id);
-  if (Array.from(ctx.db.participant.session_id.filter(session_id)).length === 0) {
+  if (Array.from(ctx.db.participant.session_id.filter(session_id)).filter((participant) => participant.admission_status === "admitted").length === 0) {
     throw new Error("At least one participant must join before the match starts.");
   }
   if (Array.from(ctx.db.question.session_id.filter(session_id)).length < current.question_count) {
@@ -441,14 +622,30 @@ export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx,
   }
   ctx.db.round.session_id.delete(session_id);
   ctx.db.answer.session_id.delete(session_id);
+  ctx.db.final_result.session_id.delete(session_id);
+  ctx.db.share_card.session_id.delete(session_id);
   const now = nowMs();
+  for (const participant of ctx.db.participant.session_id.filter(session_id)) {
+    ctx.db.participant.participant_id.update({
+      ...participant,
+      champion_status: participant.admission_status === "admitted" ? "active" : "spectator"
+    });
+  }
   for (const item of ctx.db.score.session_id.filter(session_id)) {
+    const participantRow = ctx.db.participant.participant_id.find(item.participant_id);
     ctx.db.score.score_id.update({
       ...item,
       total_score: 0,
       correct_count: 0,
+      wrong_count: 0,
+      answered_count: 0,
       total_response_ms: 0,
       fastest_response_ms: undefined,
+      average_response_ms: undefined,
+      normalized_score: 0,
+      streak_count: 0,
+      last_answer_correct: undefined,
+      champion_status: participantRow?.admission_status === "admitted" ? "active" : "spectator",
       current_rank: 1,
       previous_rank: 1,
       last_answer_at_ms: undefined,
@@ -475,11 +672,14 @@ export const start_round = spacetimedb.reducer({ session_id: t.string(), questio
   traceOperation(ctx, session_id, "start_round", true, 1, undefined);
 });
 
-export const submit_answer = spacetimedb.reducer({ round_id: t.string(), selected_option: t.string() }, (ctx, { round_id, selected_option }) => {
+export const submit_answer = spacetimedb.reducer(
+  { round_id: t.string(), selected_option: t.string(), client_event_id: t.option(t.string()), client_sent_at_ms: t.option(t.u64()) },
+  (ctx, { round_id, selected_option, client_event_id, client_sent_at_ms }) => {
   if (!["A", "B", "C", "D"].includes(selected_option)) throw new Error("selected_option must be A/B/C/D.");
   const currentRound = requireRound(ctx, round_id);
   if (currentRound.status !== "active") throw new Error("Round is not active.");
   const participantRow = requireParticipantForSender(ctx, currentRound.session_id);
+  if (participantRow.admission_status !== "admitted") throw new Error("Only admitted racers can submit answers.");
   for (const existing of ctx.db.answer.round_id.filter(round_id)) {
     if (existing.participant_id === participantRow.participant_id) {
       const stats = requireStats(ctx, currentRound.session_id);
@@ -491,38 +691,61 @@ export const submit_answer = spacetimedb.reducer({ round_id: t.string(), selecte
       throw new Error("Duplicate answer rejected.");
     }
   }
+  if (client_event_id) {
+    for (const existing of ctx.db.answer.participant_id.filter(participantRow.participant_id)) {
+      if (existing.client_event_id === client_event_id) throw new Error("Duplicate answer event rejected.");
+    }
+  }
   const currentQuestion = requireQuestion(ctx, currentRound.question_id);
   const now = nowMs();
-  if (now > currentRound.ends_at_ms) throw new Error("Round has ended.");
+  if (now > currentRound.ends_at_ms + BigInt(ANSWER_GRACE_MS)) throw new Error("Round has ended.");
   const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms), QUESTION_TIME_LIMIT_MS));
   const is_correct = selected_option === currentQuestion.correct_option;
-  const score_delta = computeAnswerScore(is_correct, response_ms);
+  const currentScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
+  const scoreParts = computeAnswerScoreParts(is_correct, response_ms, currentScore.last_answer_correct === true);
   ctx.db.answer.insert({
-    answer_id: id("answer"),
+    answer_id: id(ctx, "answer"),
     session_id: currentRound.session_id,
     round_id,
+    question_id: currentRound.question_id,
     participant_id: participantRow.participant_id,
     selected_option,
     is_correct,
     response_ms,
-    score_delta,
-    server_received_at_ms: now
+    response_ms_server: response_ms,
+    client_sent_at_ms,
+    client_event_id: client_event_id ?? "",
+    correctness_points: scoreParts.correctness_points,
+    speed_bonus: scoreParts.speed_bonus,
+    streak_bonus: scoreParts.streak_bonus,
+    score_delta: scoreParts.score_delta,
+    server_received_at_ms: now,
+    created_at_ms: now
   });
-  const currentScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
+  const nextCorrect = currentScore.correct_count + (is_correct ? 1 : 0);
+  const nextAnswered = currentScore.answered_count + 1;
+  const nextResponseTotal = currentScore.total_response_ms + (is_correct ? response_ms : 0);
+  const nextStreak = is_correct ? currentScore.streak_count + 1 : 0;
   ctx.db.score.score_id.update({
     ...currentScore,
-    total_score: currentScore.total_score + score_delta,
-    correct_count: currentScore.correct_count + (is_correct ? 1 : 0),
-    total_response_ms: currentScore.total_response_ms + response_ms,
+    total_score: currentScore.total_score + scoreParts.score_delta,
+    correct_count: nextCorrect,
+    wrong_count: currentScore.wrong_count + (is_correct ? 0 : 1),
+    answered_count: nextAnswered,
+    total_response_ms: nextResponseTotal,
     fastest_response_ms:
-      currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms),
+      is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms,
+    average_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
+    normalized_score: normalizedScore(nextCorrect, nextResponseTotal, nextStreak, requireSession(ctx, currentRound.session_id).question_count),
+    streak_count: nextStreak,
+    last_answer_correct: is_correct,
     last_answer_at_ms: now,
     updated_at_ms: now
   });
   recomputeRanks(ctx, currentRound.session_id);
   const updatedScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
   insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, response_ms }));
-  insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ score_delta }));
+  insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify(scoreParts));
   recalcStats(ctx, currentRound.session_id);
   traceOperation(ctx, currentRound.session_id, "submit_answer", true, 1, undefined);
 });
@@ -547,6 +770,37 @@ export const finish_match = spacetimedb.reducer({ session_id: t.string() }, (ctx
   finishMatchInternal(ctx, session_id);
   bumpStats(ctx, session_id);
   traceOperation(ctx, session_id, "finish_match", true, 1, undefined);
+});
+
+export const create_share_card = spacetimedb.reducer({ session_id: t.string(), participant_id: t.option(t.string()) }, (ctx, { session_id, participant_id }) => {
+  const participantRow = participant_id ? ctx.db.participant.participant_id.find(participant_id) : participantForSender(ctx, session_id);
+  if (!participantRow || participantRow.session_id !== session_id) throw new Error("Participant not found for share card.");
+  const result = ctx.db.final_result.final_result_id.find(`${session_id}:${participantRow.participant_id}`);
+  if (!result) throw new Error("Final result is not ready.");
+  const existing = Array.from(ctx.db.share_card.participant_id.filter(participantRow.participant_id)).find((card) => card.session_id === session_id);
+  if (existing) return;
+  const slug = uniqueShareSlug(ctx, participantRow.display_name);
+  const now = nowMs();
+  ctx.db.share_card.insert({
+    share_id: id(ctx, "share"),
+    slug,
+    session_id,
+    participant_id: participantRow.participant_id,
+    display_name: participantRow.display_name,
+    avatar: participantRow.avatar,
+    final_rank: result.final_rank,
+    total_participants: result.total_participants,
+    champion_status: result.champion_status,
+    total_score: result.total_score,
+    correct_count: result.correct_count,
+    question_count: result.question_count,
+    fastest_response_ms: result.fastest_response_ms,
+    created_at_ms: now,
+    view_count: 0
+  });
+  insertMatchEvent(ctx, session_id, participantRow.participant_id, "share_created", undefined, result.total_score, result.final_rank, JSON.stringify({ slug }));
+  bumpStats(ctx, session_id);
+  traceOperation(ctx, session_id, "create_share_card", true, 1, undefined);
 });
 
 export const heartbeat = spacetimedb.reducer({ session_id: t.string(), client_latency_ms: t.option(t.u32()) }, (ctx, { session_id, client_latency_ms }) => {
@@ -578,19 +832,22 @@ export const add_simulated_players = spacetimedb.reducer({ session_id: t.string(
   const avatars = ["🚀", "🧠", "⚡", "✨", "🔥", "🐯"];
   const limit = Math.min(250, count);
   for (let i = 0; i < limit; i += 1) {
-    const participant_id = id("sim");
+    const participant_id = id(ctx, "sim");
     ctx.db.participant.insert({
       participant_id,
       session_id,
       identity: `sim-${participant_id}`,
       display_name: `Rusher ${i + 1}`,
       avatar: avatars[i % avatars.length] ?? "🚀",
+      admission_status: "admitted",
+      champion_status: "active",
       joined_at_ms: now,
       last_seen_ms: now,
       is_simulated: true,
       client_latency_ms: 35 + (i % 70)
     });
-    ctx.db.score.insert(emptyScore(session_id, participant_id, now));
+    ctx.db.score.insert(emptyScore(session_id, participant_id, now, "active"));
+    issueAdmissionTicket(ctx, session_id, participant_id, "admitted", now);
     insertMatchEvent(ctx, session_id, participant_id, "join", undefined, undefined, undefined, "{\"simulated\":true}");
   }
   const current = requireSession(ctx, session_id);
@@ -619,32 +876,49 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
     const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms) + (index % 5) * 9, QUESTION_TIME_LIMIT_MS));
     const is_correct = (index + currentRound.order_index + numericSuffix(item.participant_id)) % 5 !== 0;
     const selected_option = is_correct ? currentQuestion.correct_option : wrongOptions[index % wrongOptions.length] ?? "A";
-    const score_delta = computeAnswerScore(is_correct, response_ms);
+    const currentScore = requireScore(ctx, session_id, item.participant_id);
+    const scoreParts = computeAnswerScoreParts(is_correct, response_ms, currentScore.last_answer_correct === true);
     ctx.db.answer.insert({
-      answer_id: id("answer"),
+      answer_id: id(ctx, "answer"),
       session_id,
       round_id: currentRound.round_id,
+      question_id: currentRound.question_id,
       participant_id: item.participant_id,
       selected_option,
       is_correct,
       response_ms,
-      score_delta,
-      server_received_at_ms: now + BigInt(index)
+      response_ms_server: response_ms,
+      client_sent_at_ms: undefined,
+      client_event_id: `sim-${item.participant_id}-${currentRound.round_id}`,
+      correctness_points: scoreParts.correctness_points,
+      speed_bonus: scoreParts.speed_bonus,
+      streak_bonus: scoreParts.streak_bonus,
+      score_delta: scoreParts.score_delta,
+      server_received_at_ms: now + BigInt(index),
+      created_at_ms: now + BigInt(index)
     });
-    const currentScore = requireScore(ctx, session_id, item.participant_id);
+    const nextCorrect = currentScore.correct_count + (is_correct ? 1 : 0);
+    const nextResponseTotal = currentScore.total_response_ms + (is_correct ? response_ms : 0);
+    const nextStreak = is_correct ? currentScore.streak_count + 1 : 0;
     ctx.db.score.score_id.update({
       ...currentScore,
-      total_score: currentScore.total_score + score_delta,
-      correct_count: currentScore.correct_count + (is_correct ? 1 : 0),
-      total_response_ms: currentScore.total_response_ms + response_ms,
+      total_score: currentScore.total_score + scoreParts.score_delta,
+      correct_count: nextCorrect,
+      wrong_count: currentScore.wrong_count + (is_correct ? 0 : 1),
+      answered_count: currentScore.answered_count + 1,
+      total_response_ms: nextResponseTotal,
       fastest_response_ms:
-        currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms),
+        is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms,
+      average_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
+      normalized_score: normalizedScore(nextCorrect, nextResponseTotal, nextStreak, requireSession(ctx, session_id).question_count),
+      streak_count: nextStreak,
+      last_answer_correct: is_correct,
       last_answer_at_ms: now + BigInt(index),
       updated_at_ms: now + BigInt(index)
     });
     const updatedScore = requireScore(ctx, session_id, item.participant_id);
     insertMatchEvent(ctx, session_id, item.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, response_ms, simulated: true }));
-    insertMatchEvent(ctx, session_id, item.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ score_delta, simulated: true }));
+    insertMatchEvent(ctx, session_id, item.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ ...scoreParts, simulated: true }));
   });
 
   if (candidates.length) {
@@ -682,10 +956,15 @@ function createSessionRow(ctx: ReducerCtx, code: string, question_count: number)
     current_round: 0,
     match_started_at_ms: undefined,
     match_finished_at_ms: undefined,
+    max_racers: MAX_PLAYERS_HARD,
+    admitted_count: 0,
+    capacity_status: "open",
+    capacity_reason: undefined,
     created_at_ms: now,
     updated_at_ms: now
   });
   ctx.db.live_stats.insert(emptyStats("session-demo", now));
+  ctx.db.session_capacity.insert(emptyCapacity("session-demo", now));
   insertAgentEvent(ctx, "session-demo", "Seed Fallback Provider", "fallback_ready", "Topic-specific deterministic backup questions are ready if the LLM is unavailable.", 1, "complete");
 }
 
@@ -714,6 +993,12 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
       correctOption: string;
       explanation: string;
       topic?: string;
+      factIds?: string[];
+      fact_ids?: string[];
+      sourceTitle?: string;
+      source_title?: string;
+      sourceUrl?: string;
+      source_url?: string;
     }>;
   };
   if (!Array.isArray(parsed.questions) || parsed.questions.length < current.question_count) {
@@ -722,10 +1007,11 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
   ctx.db.question.session_id.delete(session_id);
   ctx.db.round.session_id.delete(session_id);
   const now = nowMs();
+  const isAgentPack = Boolean(request_id) || sender(ctx) === "agent-worker";
   parsed.questions.slice(0, current.question_count).forEach((item, index) => {
     if (!item.options || !["A", "B", "C", "D"].includes(item.correctOption)) throw new Error("Malformed question option.");
     ctx.db.question.insert({
-      question_id: id("question"),
+      question_id: id(ctx, "question"),
       session_id,
       order_index: index + 1,
       question_text: item.questionText,
@@ -736,8 +1022,11 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
       correct_option: item.correctOption,
       explanation: item.explanation,
       topic: item.topic || selected_topic,
-      generated_by: sender(ctx) === "agent-worker" ? "Quiz Builder Agent" : "Seed Fallback Provider",
-      fairness_status: sender(ctx) === "agent-worker" ? "approved" : "fallback",
+      fact_ids_json: JSON.stringify(Array.isArray(item.factIds) ? item.factIds : Array.isArray(item.fact_ids) ? item.fact_ids : []),
+      source_title: item.sourceTitle ?? item.source_title ?? "",
+      source_url: item.sourceUrl ?? item.source_url ?? "",
+      generated_by: isAgentPack ? "Quiz Builder Agent" : "Seed Fallback Provider",
+      fairness_status: isAgentPack ? "approved" : "fallback",
       created_at_ms: now
     });
   });
@@ -777,7 +1066,7 @@ function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order:
     });
   } else {
     ctx.db.round.insert({
-      round_id: id("round"),
+      round_id: id(ctx, "round"),
       session_id,
       question_id: questionRow.question_id,
       order_index: question_order,
@@ -822,6 +1111,30 @@ function compareScores(a: ScoreRow, b: ScoreRow): number {
   return a.participant_id.localeCompare(b.participant_id);
 }
 
+function snapshotFinalResults(ctx: ReducerCtx, session_id: string, now: bigint) {
+  const current = requireSession(ctx, session_id);
+  ctx.db.final_result.session_id.delete(session_id);
+  const scores = Array.from(ctx.db.score.session_id.filter(session_id)).sort(compareScores);
+  const total = scores.length;
+  scores.forEach((score, index) => {
+    ctx.db.final_result.insert({
+      final_result_id: `${session_id}:${score.participant_id}`,
+      session_id,
+      participant_id: score.participant_id,
+      final_rank: index + 1,
+      total_participants: total,
+      champion_status: index === 0 ? "champion" : score.champion_status === "spectator" ? "spectator" : "finished",
+      total_score: score.total_score,
+      correct_count: score.correct_count,
+      question_count: current.question_count,
+      total_response_ms: score.total_response_ms,
+      fastest_response_ms: score.fastest_response_ms,
+      percentile: percentileRank(index + 1, total),
+      created_at_ms: now
+    });
+  });
+}
+
 function finishMatchInternal(ctx: ReducerCtx, session_id: string) {
   const current = requireSession(ctx, session_id);
   if (current.status === "finished") return;
@@ -829,26 +1142,131 @@ function finishMatchInternal(ctx: ReducerCtx, session_id: string) {
   for (const active of ctx.db.round.session_id.filter(session_id)) {
     if (active.status === "active") ctx.db.round.round_id.update({ ...active, status: "resolved", resolved_at_ms: now });
   }
+  snapshotFinalResults(ctx, session_id, now);
   ctx.db.session.session_id.update({ ...current, status: "finished", match_finished_at_ms: now, updated_at_ms: now });
   const winner = Array.from(ctx.db.score.session_id.filter(session_id)).sort(compareScores)[0];
+  if (winner) {
+    ctx.db.score.score_id.update({ ...winner, champion_status: "champion", updated_at_ms: now });
+    const participantRow = ctx.db.participant.participant_id.find(winner.participant_id);
+    if (participantRow) ctx.db.participant.participant_id.update({ ...participantRow, champion_status: "champion" });
+    const final = ctx.db.final_result.final_result_id.find(`${session_id}:${winner.participant_id}`);
+    if (final) ctx.db.final_result.final_result_id.update({ ...final, champion_status: "champion" });
+  }
   insertMatchEvent(ctx, session_id, winner?.participant_id, "match_finished", undefined, winner?.total_score, winner?.current_rank, "{}");
 }
 
-function computeAnswerScore(is_correct: boolean, response_ms: number): number {
-  if (!is_correct) return 0;
-  const speed = Math.floor(1000 * Math.max(0, Math.min(1, 1 - response_ms / QUESTION_TIME_LIMIT_MS)));
-  return 1000 + speed;
+function updateCapacity(ctx: ReducerCtx, session_id: string, now: bigint) {
+  let capacity = ctx.db.session_capacity.session_id.find(session_id);
+  if (!capacity) {
+    capacity = emptyCapacity(session_id, now);
+    ctx.db.session_capacity.insert(capacity);
+  }
+  const participants = Array.from(ctx.db.participant.session_id.filter(session_id));
+  const admitted_count = participants.filter((participant) => participant.admission_status === "admitted").length;
+  const waitlisted_count = participants.filter((participant) => participant.admission_status === "waitlisted").length;
+  const spectator_count = participants.filter((participant) => participant.admission_status === "spectator").length;
+  const status = admitted_count >= capacity.max_racers_hard ? "full" : admitted_count >= capacity.max_racers_soft ? "soft_full" : "open";
+  const reason =
+    status === "full"
+      ? "Measured hard cap reached for current deployment."
+      : status === "soft_full"
+        ? "Soft cap reached; admission is conservative until the next load test."
+        : undefined;
+  const next = {
+    ...capacity,
+    admitted_count,
+    waitlisted_count,
+    spectator_count,
+    status,
+    reason,
+    updated_at_ms: now
+  };
+  ctx.db.session_capacity.session_id.update(next);
+  const current = ctx.db.session.session_id.find(session_id);
+  if (current) {
+    ctx.db.session.session_id.update({
+      ...current,
+      max_racers: next.max_racers_hard,
+      admitted_count,
+      capacity_status: status,
+      capacity_reason: reason,
+      updated_at_ms: now
+    });
+  }
+  return next;
 }
 
-function emptyScore(session_id: string, participant_id: string, now: bigint) {
+function issueAdmissionTicket(ctx: ReducerCtx, session_id: string, participant_id: string, status: string, now: bigint) {
+  const existing = Array.from(ctx.db.admission_ticket.participant_id.filter(participant_id)).find((ticket) => ticket.session_id === session_id);
+  if (existing) return existing;
+  const queue_position =
+    status === "waitlisted"
+      ? Array.from(ctx.db.admission_ticket.session_id.filter(session_id)).filter((ticket) => ticket.status === "waitlisted").length + 1
+      : undefined;
+  const ticket = {
+    ticket_id: id(ctx, "admission"),
+    session_id,
+    participant_id,
+    status,
+    queue_position,
+    issued_at_ms: now
+  };
+  ctx.db.admission_ticket.insert(ticket);
+  return ticket;
+}
+
+function normalizedScore(correct_count: number, total_response_ms: number, streak_count: number, question_count: number): number {
+  const accuracy = question_count > 0 ? correct_count / question_count : 0;
+  const average = Math.round(total_response_ms / Math.max(1, correct_count));
+  const speed = 1 - Math.max(0, Math.min(1, average / QUESTION_TIME_LIMIT_MS));
+  const streak = Math.max(0, Math.min(1, streak_count / Math.max(1, question_count)));
+  return Math.round((0.7 * accuracy + 0.25 * speed + 0.05 * streak) * 100_000) / 1000;
+}
+
+function percentileRank(rank: number, total: number): number {
+  if (total <= 0) return 100;
+  return Math.max(1, Math.min(100, Math.ceil((rank * 100) / total)));
+}
+
+function uniqueShareSlug(ctx: ReducerCtx, display_name: string): string {
+  const base = display_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "player";
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const slug = `${base}-${ctx.random.integerInRange(100000, 999999)}`;
+    if (!ctx.db.share_card.slug.find(slug)) return slug;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+function computeAnswerScoreParts(is_correct: boolean, response_ms: number, previous_correct: boolean) {
+  if (!is_correct) {
+    return { correctness_points: 0, speed_bonus: 0, streak_bonus: 0, score_delta: 0 };
+  }
+  const speed_bonus = Math.floor(MAX_SPEED_BONUS * Math.max(0, Math.min(1, 1 - response_ms / QUESTION_TIME_LIMIT_MS)));
+  const streak_bonus = previous_correct ? STREAK_BONUS : 0;
+  return {
+    correctness_points: CORRECTNESS_POINTS,
+    speed_bonus,
+    streak_bonus,
+    score_delta: CORRECTNESS_POINTS + speed_bonus + streak_bonus
+  };
+}
+
+function emptyScore(session_id: string, participant_id: string, now: bigint, champion_status = "active") {
   return {
     score_id: `${session_id}:${participant_id}`,
     session_id,
     participant_id,
     total_score: 0,
     correct_count: 0,
+    wrong_count: 0,
+    answered_count: 0,
     total_response_ms: 0,
     fastest_response_ms: undefined,
+    average_response_ms: undefined,
+    normalized_score: 0,
+    streak_count: 0,
+    last_answer_correct: undefined,
+    champion_status,
     current_rank: 1,
     previous_rank: 1,
     last_answer_at_ms: undefined,
@@ -861,9 +1279,14 @@ function resetSessionTables(ctx: ReducerCtx, session_id: string) {
   ctx.db.topic_vote.session_id.delete(session_id);
   ctx.db.player_intent.session_id.delete(session_id);
   ctx.db.question.session_id.delete(session_id);
+  ctx.db.topic_fact.session_id.delete(session_id);
   ctx.db.round.session_id.delete(session_id);
   ctx.db.answer.session_id.delete(session_id);
   ctx.db.score.session_id.delete(session_id);
+  ctx.db.final_result.session_id.delete(session_id);
+  ctx.db.share_card.session_id.delete(session_id);
+  ctx.db.session_capacity.session_id.delete(session_id);
+  ctx.db.admission_ticket.session_id.delete(session_id);
   ctx.db.match_event.session_id.delete(session_id);
   ctx.db.agent_request.session_id.delete(session_id);
   ctx.db.agent_event.session_id.delete(session_id);
@@ -926,6 +1349,7 @@ function recalcStats(ctx: ReducerCtx, session_id: string) {
   const stats = requireStats(ctx, session_id);
   const now = nowMs();
   const participants = Array.from(ctx.db.participant.session_id.filter(session_id));
+  const capacity = updateCapacity(ctx, session_id, now);
   const answers = Array.from(ctx.db.answer.session_id.filter(session_id));
   const latencies = participants
     .map((item) => item.client_latency_ms)
@@ -940,6 +1364,11 @@ function recalcStats(ctx: ReducerCtx, session_id: string) {
     answers_per_sec: answers.filter((item) => now - item.server_received_at_ms <= BigInt(1000)).length,
     active_clients: participants.filter((item) => now - item.last_seen_ms <= BigInt(15_000)).length,
     p95_latency_ms: latencies.length ? latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95))] ?? 48 : 48,
+    p95_answer_commit_ms: stats.p95_answer_commit_ms,
+    p95_subscription_render_ms: stats.p95_subscription_render_ms,
+    admitted_racers: capacity.admitted_count,
+    waitlisted_users: capacity.waitlisted_count,
+    capacity_status: capacity.status,
     updated_at_ms: now
   });
 }
@@ -960,7 +1389,26 @@ function emptyStats(session_id: string, now: bigint) {
     reducer_calls: 0,
     duplicate_answers_rejected: 0,
     p95_latency_ms: 48,
+    p95_answer_commit_ms: 48,
+    p95_subscription_render_ms: 120,
     active_clients: 0,
+    admitted_racers: 0,
+    waitlisted_users: 0,
+    capacity_status: "open",
+    updated_at_ms: now
+  };
+}
+
+function emptyCapacity(session_id: string, now: bigint) {
+  return {
+    session_id,
+    max_racers_soft: MAX_PLAYERS_SOFT,
+    max_racers_hard: MAX_PLAYERS_HARD,
+    admitted_count: 0,
+    waitlisted_count: 0,
+    spectator_count: 0,
+    status: "open",
+    reason: undefined,
     updated_at_ms: now
   };
 }
@@ -976,7 +1424,7 @@ function insertMatchEvent(
   payload_json: string
 ) {
   ctx.db.match_event.insert({
-    event_id: id("event"),
+    event_id: id(ctx, "event"),
     session_id,
     participant_id,
     event_type,
@@ -990,7 +1438,7 @@ function insertMatchEvent(
 
 function insertAgentEvent(ctx: ReducerCtx, session_id: string, agent_name: string, event_type: string, content: string, confidence: number, status: string) {
   ctx.db.agent_event.insert({
-    event_id: id("agent-event"),
+    event_id: id(ctx, "agent-event"),
     session_id,
     agent_name,
     event_type,
@@ -1003,7 +1451,7 @@ function insertAgentEvent(ctx: ReducerCtx, session_id: string, agent_name: strin
 
 function traceOperation(ctx: ReducerCtx, session_id: string, reducer: string, ok: boolean, duration_ms: number, error_message: string | undefined) {
   ctx.db.operation_trace.insert({
-    trace_id: id("trace"),
+    trace_id: id(ctx, "trace"),
     session_id,
     reducer,
     identity: sender(ctx),
@@ -1017,7 +1465,7 @@ function traceOperation(ctx: ReducerCtx, session_id: string, reducer: string, ok
 
 function insertAudit(ctx: ReducerCtx, session_id: string, actor_identity: string, event_type: string, message: string) {
   ctx.db.audit_event.insert({
-    audit_id: id("audit"),
+    audit_id: id(ctx, "audit"),
     session_id,
     actor_identity,
     event_type,
@@ -1042,7 +1490,17 @@ function topicFromVotes(ctx: ReducerCtx, session_id: string): string {
 function fallbackQuestionsForTopic(topic: string, count: number) {
   const normalized = normalizeTopic(topic);
   const lower = normalized.toLowerCase();
-  const pack = lower.includes("visa") || lower.includes("immigration")
+  const pack = lower.includes("andaman")
+    ? [
+        fq("The {topic} are in which body of water?", ["Bay of Bengal", "Arabian Sea", "Red Sea", "Baltic Sea"], "A", "The Andaman Islands lie in the Bay of Bengal.", normalized),
+        fq("Which Indian union territory includes the {topic}?", ["Andaman and Nicobar Islands", "Lakshadweep", "Delhi", "Puducherry"], "A", "The Andaman Islands are part of the Andaman and Nicobar Islands union territory.", normalized),
+        fq("What is the capital city of Andaman and Nicobar Islands?", ["Port Blair", "Kavaratti", "Panaji", "Kohima"], "A", "Port Blair is the capital of the Andaman and Nicobar Islands.", normalized),
+        fq("Which colonial prison is a major Port Blair landmark?", ["Cellular Jail", "Tihar Jail", "Aga Khan Palace", "Red Fort"], "A", "Cellular Jail in Port Blair is a major historic landmark.", normalized),
+        fq("Which island is also known as Swaraj Dweep?", ["Havelock Island", "Ross Island", "Neil Island", "Barren Island"], "A", "Havelock Island was renamed Swaraj Dweep.", normalized),
+        fq("What natural feature is Barren Island known for?", ["Active volcano", "Hot desert", "Salt glacier", "Coral atoll only"], "A", "Barren Island is known for India's only confirmed active volcano.", normalized),
+        fq("The Jarawa people are associated with which region?", ["Andaman Islands", "Sundarbans", "Thar Desert", "Nilgiri Hills"], "A", "The Jarawa are an Indigenous people of the Andaman Islands.", normalized)
+      ]
+    : lower.includes("visa") || lower.includes("immigration")
     ? [
         fq("In the {topic}, what is a visa generally used for?", ["Requesting entry", "Owning property", "Paying taxes", "Voting"], "A", "A visa is generally used to request permission to travel to a country for a stated purpose.", normalized),
         fq("Which document is a visa usually linked with?", ["Passport", "School ID", "Receipt", "Boarding pass"], "A", "Visas are usually placed in or electronically linked to a passport.", normalized),
@@ -1063,13 +1521,13 @@ function fallbackQuestionsForTopic(topic: string, count: number) {
           fq("Why do fruits ripen?", ["Seed dispersal", "Battery charging", "Rock melting", "Cloud forming"], "A", "Ripening can help seeds spread.", normalized)
         ]
     : [
-        fq("In {topic}, what helps make answers reliable?", ["Clear definitions", "Random guesses", "Hidden rules", "Long delays"], "A", "Clear definitions make a fast quiz on {topic} fair and answerable.", normalized),
-        fq("What is the best first step when learning {topic}?", ["Know key terms", "Skip basics", "Ignore context", "Avoid examples"], "A", "Key terms give players a shared starting point for {topic}.", normalized),
-        fq("A good {topic} question should be...", ["Unambiguous", "Tricky only", "Personal", "Unverifiable"], "A", "Unambiguous questions keep a rapid tournament fair.", normalized),
-        fq("Which signal should shape this arena?", ["Player intent", "Screen size", "Join order", "Button color"], "A", "QuizRush uses submitted expertise intent to shape the arena topic.", normalized),
-        fq("For a fair {topic} sprint, scoring should reward...", ["Accuracy and speed", "Random taps", "Slow loading", "Duplicate answers"], "A", "The race rewards correct answers and fast server-received response time.", normalized),
-        fq("What should an AI quiz avoid in {topic}?", ["Unsafe claims", "Clear options", "Short text", "One answer"], "A", "Agent guardrails avoid unsafe claims and ambiguous answer choices.", normalized),
-        fq("Why keep {topic} questions short?", ["Fast reading", "More scrolling", "Harder tapping", "Less fairness"], "A", "Short questions fit phone screens and keep the 25-second sprint moving.", normalized)
+        fq("Which planet is known as the Red Planet?", ["Mars", "Venus", "Jupiter", "Mercury"], "A", "Mars is commonly called the Red Planet because of its reddish appearance.", "General Knowledge"),
+        fq("What gas do plants absorb during photosynthesis?", ["Carbon dioxide", "Oxygen", "Helium", "Nitrogen"], "A", "Plants absorb carbon dioxide during photosynthesis.", "General Knowledge"),
+        fq("Which ocean is the largest on Earth?", ["Pacific Ocean", "Indian Ocean", "Atlantic Ocean", "Arctic Ocean"], "A", "The Pacific Ocean is Earth's largest ocean.", "General Knowledge"),
+        fq("Who wrote the play Romeo and Juliet?", ["William Shakespeare", "Charles Dickens", "Jane Austen", "Mark Twain"], "A", "Romeo and Juliet is a play by William Shakespeare.", "General Knowledge"),
+        fq("What is the boiling point of water at sea level?", ["100°C", "50°C", "0°C", "200°C"], "A", "At standard sea-level pressure, water boils at 100°C.", "General Knowledge"),
+        fq("Which organ pumps blood through the human body?", ["Heart", "Liver", "Lung", "Kidney"], "A", "The heart pumps blood through the circulatory system.", "General Knowledge"),
+        fq("Which continent is the Sahara Desert in?", ["Africa", "Asia", "Europe", "Australia"], "A", "The Sahara Desert is in Africa.", "General Knowledge")
       ];
   const questions = [];
   for (let index = 0; index < count; index += 1) questions.push(pack[index % pack.length]);
@@ -1077,12 +1535,14 @@ function fallbackQuestionsForTopic(topic: string, count: number) {
 }
 
 function fq(questionText: string, options: [string, string, string, string], correctOption: string, explanation: string, topic: string) {
+  const renderedQuestion = questionText.replace(/\{topic\}/g, topic);
   return {
-    questionText: questionText.replace(/\{topic\}/g, topic),
+    questionText: renderedQuestion,
     options: { A: options[0], B: options[1], C: options[2], D: options[3] },
     correctOption,
     explanation: explanation.replace(/\{topic\}/g, topic),
-    topic
+    topic,
+    factIds: [topicKey(`${topic}-${renderedQuestion}`).slice(0, 72)]
   };
 }
 
@@ -1108,6 +1568,7 @@ function normalizeIntentForModule(raw: string) {
       .trim()
   );
   const topics: string[] = [];
+  if (/\b(andaman|andaman islands|andaman and nicobar|andaman nicobar|port blair|cellular jail|havelock|swaraj dweep)\b/i.test(cleaned)) topics.push("Andaman Islands");
   if (/\b(us visa|visa system|immigration|uscis|embassy|consulate|green card|h-?1b|f-?1|b-?1|b-?2)\b/i.test(cleaned)) topics.push("US Visa System");
   if (/\b(ai|artificial intelligence|agent|agents|llm|machine learning|prompt|automation)\b/i.test(cleaned)) topics.push("AI Agents");
   if (/\b(space|rocket|nasa|orbit|satellite|mars|moon|spacex|astronomy)\b/i.test(cleaned)) topics.push("Space Technology");
@@ -1203,6 +1664,15 @@ function cleanName(name: string): string {
   return name.trim().slice(0, 24) || "Player";
 }
 
+function cleanText(value: string, maxLength: number): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
 function numericSuffix(value: string): number {
   const match = value.match(/(\d+)$/);
   return match ? Number(match[1]) : 0;
@@ -1216,6 +1686,6 @@ function nowMs(): bigint {
   return BigInt(Date.now());
 }
 
-function id(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+function id(ctx: ReducerCtx, prefix: string): string {
+  return `${prefix}-${Date.now()}-${ctx.random.integerInRange(0, 1_000_000)}`;
 }

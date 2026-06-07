@@ -1,0 +1,119 @@
+{
+  "runId": "load-2026-06-07T06-15-43-317Z",
+  "startedAt": "2026-06-07T06:15:43.319Z",
+  "config": {
+    "users": 13,
+    "topics": 5,
+    "host": "https://maincloud.spacetimedb.com",
+    "module": "quizrush-live",
+    "appUrl": "https://quizel-eta.vercel.app",
+    "subscribeAllTables": true,
+    "connectConcurrency": 13,
+    "joinConcurrency": 13,
+    "answerConcurrency": 39
+  },
+  "staticVercel": {
+    "attempted": 13,
+    "ok": 13,
+    "failed": 0,
+    "p50Ms": 71,
+    "p95Ms": 99
+  },
+  "realtime": {
+    "connected": 13,
+    "joined": 13,
+    "joinFailed": 0,
+    "answerAttempts": 91,
+    "answerSendOk": 91,
+    "answerSendFailed": 0,
+    "answerCommitted": 0,
+    "duplicateRejected": 0,
+    "roundsResolved": 6,
+    "finalStatus": "playing",
+    "participantsAfterRun": 13,
+    "answersAfterRun": 0,
+    "scoresAfterRun": 13
+  },
+  "timings": {
+    "connect": {
+      "count": 13,
+      "ok": 13,
+      "failed": 0,
+      "minMs": 64,
+      "p50Ms": 71,
+      "p95Ms": 93,
+      "maxMs": 93
+    },
+    "join": {
+      "count": 13,
+      "ok": 13,
+      "failed": 0,
+      "minMs": 64,
+      "p50Ms": 84,
+      "p95Ms": 88,
+      "maxMs": 88
+    },
+    "answer": {
+      "count": 91,
+      "ok": 91,
+      "failed": 0,
+      "minMs": 13,
+      "p50Ms": 31,
+      "p95Ms": 45,
+      "maxMs": 47
+    },
+    "roundResolve": {
+      "count": 28,
+      "ok": 26,
+      "failed": 2,
+      "minMs": 0,
+      "p50Ms": 0,
+      "p95Ms": 23,
+      "maxMs": 4013
+    },
+    "startMatch": {
+      "count": 1,
+      "ok": 1,
+      "failed": 0,
+      "minMs": 20,
+      "p50Ms": 20,
+      "p95Ms": 20,
+      "maxMs": 20
+    },
+    "staticFetch": {
+      "count": 13,
+      "ok": 13,
+      "failed": 0,
+      "minMs": 68,
+      "p50Ms": 71,
+      "p95Ms": 99,
+      "maxMs": 99
+    }
+  },
+  "throughput": {
+    "answerWindowMs": 4424,
+    "successfulAnswersPerSec": 0
+  },
+  "observed": {
+    "reducerCalls": 37,
+    "liveStatsAnswersPerSec": 0,
+    "duplicateAnswersRejected": 0,
+    "p95LatencyMs": 48,
+    "topScore": 0
+  },
+  "errors": {
+    "connect": [],
+    "join": [],
+    "answer": [],
+    "roundResolve": [
+      "The instance encountered a fatal error.",
+      "Timed out waiting for condition."
+    ]
+  },
+  "recommendation": {
+    "status": "fail",
+    "notes": [
+      "Only 0/91 expected answers were visible as committed Answer rows."
+    ]
+  }
+}

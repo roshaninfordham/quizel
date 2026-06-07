@@ -16,6 +16,13 @@ import {
   type Session,
   type TopicVote
 } from "@quizrush/shared";
+import type { DbConnection } from "./module_bindings";
+import {
+  buildDirectSpacetimeConnection,
+  callDirectReducer,
+  registerDirectSnapshotListeners,
+  snapshotFromDirectConnection
+} from "./directClient";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected" | "error";
 
@@ -34,6 +41,7 @@ export function connectToSpacetime(): {
   host: string;
   module: string;
   realtimeUrl: string;
+  transport: "gateway" | "spacetimedb";
 } {
   const host = import.meta.env.VITE_SPACETIMEDB_HOST ?? "ws://localhost:3000";
   const module = import.meta.env.VITE_SPACETIMEDB_MODULE ?? "quizrush-arena";
@@ -41,7 +49,12 @@ export function connectToSpacetime(): {
   const forceConfiguredRealtimeUrl = String(import.meta.env.VITE_FORCE_REALTIME_URL ?? "").toLowerCase() === "true";
   const sameOriginRealtimeUrl = browserRealtimeUrlFrom(window.location.origin);
   const realtimeUrl = forceConfiguredRealtimeUrl && configuredRealtimeUrl ? configuredRealtimeUrl : sameOriginRealtimeUrl;
-  return { host, module, realtimeUrl };
+  const explicitTransport = String(import.meta.env.VITE_REALTIME_TRANSPORT ?? import.meta.env.VITE_SPACETIMEDB_TRANSPORT ?? "")
+    .trim()
+    .toLowerCase();
+  const forceDirect = String(import.meta.env.VITE_SPACETIMEDB_DIRECT ?? "").toLowerCase() === "true";
+  const transport = shouldUseDirectSpacetime(host, explicitTransport, forceDirect) ? "spacetimedb" : "gateway";
+  return { host, module, realtimeUrl, transport };
 }
 
 export function browserRealtimeUrlFrom(baseUrl: string): string {
@@ -59,6 +72,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(Date.now());
   const socketRef = useRef<WebSocket | null>(null);
+  const directConnectionRef = useRef<DbConnection | null>(null);
+  const directStateVersionRef = useRef(0);
   const pendingRef = useRef(new Map<string, (receipt: ReducerReceipt) => void>());
 
   useEffect(() => {
@@ -75,10 +90,49 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
   useEffect(() => {
     let closedByEffect = false;
     let retryTimer: number | undefined;
+    let removeDirectListeners: (() => void) | undefined;
 
     const connect = () => {
-      const { realtimeUrl } = connectToSpacetime();
+      const { host, module, realtimeUrl, transport } = connectToSpacetime();
       setConnectionState((current) => (current === "connected" ? "connected" : "connecting"));
+
+      if (transport === "spacetimedb") {
+        const emitDirectSnapshot = (connection: DbConnection) => {
+          if (closedByEffect) return;
+          directStateVersionRef.current += 1;
+          setState(snapshotFromDirectConnection(connection));
+          setStateVersion(directStateVersionRef.current);
+          setLastSyncAt(Date.now());
+        };
+
+        const connection = buildDirectSpacetimeConnection({
+          host,
+          module,
+          onConnect: (connectedConnection) => {
+            if (closedByEffect) return;
+            directConnectionRef.current = connectedConnection;
+            setConnectionState("connected");
+            removeDirectListeners = registerDirectSnapshotListeners(connectedConnection, () => emitDirectSnapshot(connectedConnection));
+            connectedConnection
+              .subscriptionBuilder()
+              .onApplied(() => emitDirectSnapshot(connectedConnection))
+              .onError(() => setConnectionState("error"))
+              .subscribeToAllTables();
+          },
+          onConnectError: () => {
+            if (closedByEffect) return;
+            setConnectionState("error");
+          },
+          onDisconnect: (error) => {
+            if (closedByEffect) return;
+            directConnectionRef.current = null;
+            setConnectionState(error ? "error" : "disconnected");
+          }
+        });
+        directConnectionRef.current = connection;
+        return;
+      }
+
       const socket = new WebSocket(realtimeUrl);
       socketRef.current = socket;
 
@@ -124,12 +178,25 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
     return () => {
       closedByEffect = true;
       if (retryTimer) window.clearTimeout(retryTimer);
+      removeDirectListeners?.();
+      directConnectionRef.current?.disconnect();
+      directConnectionRef.current = null;
       socketRef.current?.close();
     };
   }, []);
 
   const callReducer = useCallback(
     async <T,>(name: string, args: unknown, identity = getDeviceIdentity()) => {
+      const directConnection = directConnectionRef.current;
+      if (directConnection && connectToSpacetime().transport === "spacetimedb") {
+        const result = await callDirectReducer<T>(directConnection, name, args, directStateVersionRef.current);
+        directStateVersionRef.current = result.receipt.stateVersion;
+        setState(result.snapshot);
+        setStateVersion(result.receipt.stateVersion);
+        setLastSyncAt(Date.now());
+        return result.receipt;
+      }
+
       const socket = socketRef.current;
       if (socket && socket.readyState === WebSocket.OPEN) {
         const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -164,6 +231,25 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
   );
 
   return React.createElement(RealtimeContext.Provider, { value }, children);
+}
+
+function shouldUseDirectSpacetime(host: string, explicitTransport: string, forceDirect: boolean): boolean {
+  if (["spacetimedb", "direct", "stdb"].includes(explicitTransport) || forceDirect) return true;
+  if (["gateway", "local", "websocket", "ws"].includes(explicitTransport)) return false;
+  if (!import.meta.env.VITE_SPACETIMEDB_HOST) return false;
+  return !isLocalBrowserHost(window.location.hostname) && !isLocalUrl(host);
+}
+
+function isLocalUrl(value: string): boolean {
+  try {
+    return isLocalBrowserHost(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalBrowserHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1" || hostname === "[::1]";
 }
 
 export function useSpacetime(): RealtimeContextValue {

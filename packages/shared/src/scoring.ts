@@ -1,14 +1,37 @@
-import { CORRECT_BASE_POINTS, MAX_SPEED_BONUS, QUESTION_TIME_LIMIT_MS } from "./constants";
+import { CORRECT_BASE_POINTS, MAX_SPEED_BONUS, QUESTION_TIME_LIMIT_MS, STREAK_BONUS } from "./constants";
 import type { Score } from "./types";
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function computeAnswerScore(input: { isCorrect: boolean; responseMs: number }): number {
-  if (!input.isCorrect) return 0;
+export interface AnswerScoreBreakdown {
+  correctnessPoints: number;
+  speedBonus: number;
+  streakBonus: number;
+  scoreDelta: number;
+}
+
+export function computeAnswerScoreBreakdown(input: {
+  isCorrect: boolean;
+  responseMs: number;
+  previousAnswerWasCorrect?: boolean;
+}): AnswerScoreBreakdown {
+  if (!input.isCorrect) {
+    return { correctnessPoints: 0, speedBonus: 0, streakBonus: 0, scoreDelta: 0 };
+  }
   const speedBonus = Math.floor(MAX_SPEED_BONUS * clamp(1 - input.responseMs / QUESTION_TIME_LIMIT_MS, 0, 1));
-  return CORRECT_BASE_POINTS + speedBonus;
+  const streakBonus = input.previousAnswerWasCorrect ? STREAK_BONUS : 0;
+  return {
+    correctnessPoints: CORRECT_BASE_POINTS,
+    speedBonus,
+    streakBonus,
+    scoreDelta: CORRECT_BASE_POINTS + speedBonus + streakBonus
+  };
+}
+
+export function computeAnswerScore(input: { isCorrect: boolean; responseMs: number; previousAnswerWasCorrect?: boolean }): number {
+  return computeAnswerScoreBreakdown(input).scoreDelta;
 }
 
 export function compareScores(a: Score, b: Score): number {

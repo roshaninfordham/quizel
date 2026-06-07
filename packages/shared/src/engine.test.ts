@@ -68,6 +68,18 @@ describe("QuizRush reducer invariants", () => {
     expect(questions.map((question) => Object.values(question.options).join(" ")).join(" ")).not.toContain("SpacetimeDB");
   });
 
+  it("builds factual Andaman Islands fallback questions and bans meta-learning prompts", () => {
+    const questions = buildTopicFallbackQuestions("Andaman", QUESTION_COUNT);
+    const joined = questions.map((question) => `${question.questionText} ${question.explanation}`).join(" ");
+
+    expect(questions).toHaveLength(QUESTION_COUNT);
+    expect(questions[0]?.topic).toBe("Andaman Islands");
+    expect(joined).toContain("Bay of Bengal");
+    expect(joined).toContain("Port Blair");
+    expect(joined).not.toMatch(/best first step|good .* question should|before studying|valid quiz/i);
+    expect(questions.every((question) => question.factIds?.length)).toBe(true);
+  });
+
   it("submit_question_pack validates the LLM JSON shape and readies the match", () => {
     const engine = new QuizRushEngine();
     const bad = engine.callReducer("submit_question_pack", {

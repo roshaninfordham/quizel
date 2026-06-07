@@ -13,6 +13,7 @@
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
+    "load:prod": "tsx scripts/load-production.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "reset:demo": "tsx scripts/demo-reset.ts",
     "spacetime:build": "~/.local/bin/spacetime build --module-path modules/spacetime --lint-dir=",

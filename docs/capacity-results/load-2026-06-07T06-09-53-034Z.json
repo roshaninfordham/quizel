@@ -1,0 +1,116 @@
+{
+  "runId": "load-2026-06-07T06-09-53-034Z",
+  "startedAt": "2026-06-07T06:09:53.036Z",
+  "config": {
+    "users": 25,
+    "topics": 5,
+    "host": "https://maincloud.spacetimedb.com",
+    "module": "quizrush-live",
+    "appUrl": "https://quizel-eta.vercel.app",
+    "subscribeAllTables": true,
+    "connectConcurrency": 25,
+    "joinConcurrency": 25,
+    "answerConcurrency": 75
+  },
+  "staticVercel": {
+    "attempted": 25,
+    "ok": 25,
+    "failed": 0,
+    "p50Ms": 77,
+    "p95Ms": 97
+  },
+  "realtime": {
+    "connected": 25,
+    "joined": 25,
+    "joinFailed": 0,
+    "answerAttempts": 175,
+    "answerSendOk": 175,
+    "answerSendFailed": 0,
+    "answerCommitted": 175,
+    "duplicateRejected": 0,
+    "roundsResolved": 7,
+    "finalStatus": "finished",
+    "participantsAfterRun": 25,
+    "answersAfterRun": 175,
+    "scoresAfterRun": 25
+  },
+  "timings": {
+    "connect": {
+      "count": 25,
+      "ok": 25,
+      "failed": 0,
+      "minMs": 72,
+      "p50Ms": 91,
+      "p95Ms": 103,
+      "maxMs": 125
+    },
+    "join": {
+      "count": 25,
+      "ok": 25,
+      "failed": 0,
+      "minMs": 115,
+      "p50Ms": 183,
+      "p95Ms": 192,
+      "maxMs": 192
+    },
+    "answer": {
+      "count": 175,
+      "ok": 175,
+      "failed": 0,
+      "minMs": 17,
+      "p50Ms": 248,
+      "p95Ms": 1792,
+      "maxMs": 2004
+    },
+    "roundResolve": {
+      "count": 14,
+      "ok": 14,
+      "failed": 0,
+      "minMs": 0,
+      "p50Ms": 26,
+      "p95Ms": 947,
+      "maxMs": 947
+    },
+    "startMatch": {
+      "count": 1,
+      "ok": 1,
+      "failed": 0,
+      "minMs": 23,
+      "p50Ms": 23,
+      "p95Ms": 23,
+      "maxMs": 23
+    },
+    "staticFetch": {
+      "count": 25,
+      "ok": 25,
+      "failed": 0,
+      "minMs": 71,
+      "p50Ms": 77,
+      "p95Ms": 97,
+      "maxMs": 117
+    }
+  },
+  "throughput": {
+    "answerWindowMs": 7536,
+    "successfulAnswersPerSec": 23.22
+  },
+  "observed": {
+    "reducerCalls": 35,
+    "liveStatsAnswersPerSec": 50,
+    "duplicateAnswersRejected": 0,
+    "p95LatencyMs": 48,
+    "topScore": 11943
+  },
+  "errors": {
+    "connect": [],
+    "join": [],
+    "answer": [],
+    "roundResolve": []
+  },
+  "recommendation": {
+    "status": "degraded",
+    "notes": [
+      "Answer reducer p95 observed at 1792ms, above 750ms target."
+    ]
+  }
+}

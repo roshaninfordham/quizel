@@ -1,0 +1,122 @@
+{
+  "runId": "load-2026-06-07T06-08-49-037Z",
+  "startedAt": "2026-06-07T06:08:49.040Z",
+  "config": {
+    "users": 100,
+    "topics": 10,
+    "host": "https://maincloud.spacetimedb.com",
+    "module": "quizrush-live",
+    "appUrl": "https://quizel-eta.vercel.app",
+    "subscribeAllTables": true,
+    "connectConcurrency": 50,
+    "joinConcurrency": 50,
+    "answerConcurrency": 200
+  },
+  "staticVercel": {
+    "attempted": 100,
+    "ok": 100,
+    "failed": 0,
+    "p50Ms": 26,
+    "p95Ms": 150
+  },
+  "realtime": {
+    "connected": 100,
+    "joined": 100,
+    "joinFailed": 0,
+    "answerAttempts": 700,
+    "answerSendOk": 300,
+    "answerSendFailed": 400,
+    "answerCommitted": 300,
+    "duplicateRejected": 0,
+    "roundsResolved": 7,
+    "finalStatus": "finished",
+    "participantsAfterRun": 100,
+    "answersAfterRun": 300,
+    "scoresAfterRun": 100
+  },
+  "timings": {
+    "connect": {
+      "count": 100,
+      "ok": 100,
+      "failed": 0,
+      "minMs": 83,
+      "p50Ms": 127,
+      "p95Ms": 158,
+      "maxMs": 166
+    },
+    "join": {
+      "count": 100,
+      "ok": 100,
+      "failed": 0,
+      "minMs": 386,
+      "p50Ms": 766,
+      "p95Ms": 1267,
+      "maxMs": 1276
+    },
+    "answer": {
+      "count": 700,
+      "ok": 300,
+      "failed": 400,
+      "minMs": 13,
+      "p50Ms": 126,
+      "p95Ms": 9256,
+      "maxMs": 10740
+    },
+    "roundResolve": {
+      "count": 14,
+      "ok": 10,
+      "failed": 4,
+      "minMs": 1,
+      "p50Ms": 78,
+      "p95Ms": 4027,
+      "maxMs": 4027
+    },
+    "startMatch": {
+      "count": 1,
+      "ok": 1,
+      "failed": 0,
+      "minMs": 86,
+      "p50Ms": 86,
+      "p95Ms": 86,
+      "maxMs": 86
+    },
+    "staticFetch": {
+      "count": 100,
+      "ok": 100,
+      "failed": 0,
+      "minMs": 13,
+      "p50Ms": 26,
+      "p95Ms": 150,
+      "maxMs": 255
+    }
+  },
+  "throughput": {
+    "answerWindowMs": 45564,
+    "successfulAnswersPerSec": 6.58
+  },
+  "observed": {
+    "reducerCalls": 110,
+    "liveStatsAnswersPerSec": 100,
+    "duplicateAnswersRejected": 0,
+    "p95LatencyMs": 48,
+    "topScore": 5940
+  },
+  "errors": {
+    "connect": [],
+    "join": [],
+    "answer": [
+      "The instance encountered a fatal error."
+    ],
+    "roundResolve": [
+      "Timed out waiting for condition."
+    ]
+  },
+  "recommendation": {
+    "status": "fail",
+    "notes": [
+      "400 answer writes failed or arrived late.",
+      "Only 300/700 expected answers were visible as committed Answer rows.",
+      "Answer reducer p95 observed at 9256ms, above 750ms target."
+    ]
+  }
+}

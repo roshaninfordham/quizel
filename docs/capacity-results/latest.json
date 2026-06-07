@@ -1,0 +1,116 @@
+{
+  "runId": "load-2026-06-07T06-55-18-900Z",
+  "startedAt": "2026-06-07T06:55:18.901Z",
+  "config": {
+    "users": 10,
+    "topics": 3,
+    "host": "https://maincloud.spacetimedb.com",
+    "module": "quizrush-live",
+    "appUrl": "https://quizel-eta.vercel.app",
+    "subscribeAllTables": true,
+    "connectConcurrency": 10,
+    "joinConcurrency": 10,
+    "answerConcurrency": 25
+  },
+  "staticVercel": {
+    "attempted": 10,
+    "ok": 10,
+    "failed": 0,
+    "p50Ms": 126,
+    "p95Ms": 175
+  },
+  "realtime": {
+    "connected": 10,
+    "joined": 10,
+    "joinFailed": 0,
+    "answerAttempts": 100,
+    "answerSendOk": 100,
+    "answerSendFailed": 0,
+    "answerCommitted": 100,
+    "duplicateRejected": 0,
+    "roundsResolved": 10,
+    "finalStatus": "finished",
+    "participantsAfterRun": 10,
+    "answersAfterRun": 100,
+    "scoresAfterRun": 10
+  },
+  "timings": {
+    "connect": {
+      "count": 10,
+      "ok": 10,
+      "failed": 0,
+      "minMs": 64,
+      "p50Ms": 70,
+      "p95Ms": 79,
+      "maxMs": 79
+    },
+    "join": {
+      "count": 10,
+      "ok": 10,
+      "failed": 0,
+      "minMs": 41,
+      "p50Ms": 47,
+      "p95Ms": 57,
+      "maxMs": 57
+    },
+    "answer": {
+      "count": 100,
+      "ok": 100,
+      "failed": 0,
+      "minMs": 14,
+      "p50Ms": 25,
+      "p95Ms": 35,
+      "maxMs": 38
+    },
+    "roundResolve": {
+      "count": 40,
+      "ok": 40,
+      "failed": 0,
+      "minMs": 0,
+      "p50Ms": 0,
+      "p95Ms": 26,
+      "maxMs": 27
+    },
+    "startMatch": {
+      "count": 1,
+      "ok": 1,
+      "failed": 0,
+      "minMs": 19,
+      "p50Ms": 19,
+      "p95Ms": 19,
+      "maxMs": 19
+    },
+    "staticFetch": {
+      "count": 10,
+      "ok": 10,
+      "failed": 0,
+      "minMs": 121,
+      "p50Ms": 126,
+      "p95Ms": 175,
+      "maxMs": 175
+    }
+  },
+  "throughput": {
+    "answerWindowMs": 576,
+    "successfulAnswersPerSec": 173.5
+  },
+  "observed": {
+    "reducerCalls": 23,
+    "liveStatsAnswersPerSec": 100,
+    "duplicateAnswersRejected": 0,
+    "p95LatencyMs": 48,
+    "topScore": 16553
+  },
+  "errors": {
+    "connect": [],
+    "join": [],
+    "answer": [],
+    "roundResolve": []
+  },
+  "recommendation": {
+    "status": "pass",
+    "notes": [
+      "No connection, join, or answer failures at this load level."
+    ]
+  }
+}

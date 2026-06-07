@@ -26,16 +26,16 @@ export const SEEDED_DEMO_QUESTIONS: QuestionInput[] = [
     topic: "Realtime Systems"
   },
   {
-    questionText: "Which signal should shape the arena topic?",
+    questionText: "Which row stores replayable quiz events?",
     options: {
-      A: "Expertise notes",
+      A: "MatchEvent",
       B: "Random ads",
       C: "Browser width",
       D: "File names"
     },
     correctOption: "A",
-    explanation: "The agent pipeline turns room expertise signals into one short quiz theme.",
-    topic: "AI Agents"
+    explanation: "MatchEvent rows record committed actions that can rebuild the live replay.",
+    topic: "SpacetimeDB"
   },
   {
     questionText: "What powers the instant replay?",
@@ -84,5 +84,41 @@ export const SEEDED_DEMO_QUESTIONS: QuestionInput[] = [
     correctOption: "A",
     explanation: "Correct answers earn more speed bonus when the server receives them earlier.",
     topic: "Scoring"
+  },
+  {
+    questionText: "Who should calculate official response time?",
+    options: {
+      A: "The browser",
+      B: "The reducer",
+      C: "The projector",
+      D: "The QR code"
+    },
+    correctOption: "B",
+    explanation: "The reducer uses server receipt time and the round start time for official scoring.",
+    topic: "Scoring"
+  },
+  {
+    questionText: "What happens after capacity is full?",
+    options: {
+      A: "Users overload reducers",
+      B: "Users get waitlisted",
+      C: "Scores double",
+      D: "Questions vanish"
+    },
+    correctOption: "B",
+    explanation: "Admission control waitlists users beyond the measured hard cap to protect latency.",
+    topic: "Capacity"
+  },
+  {
+    questionText: "What does the projector show during play?",
+    options: {
+      A: "Private questions",
+      B: "Correct answers",
+      C: "Champion Path",
+      D: "Raw JSON"
+    },
+    correctOption: "C",
+    explanation: "The public screen shows the live fixture and leaderboard, not private quiz content.",
+    topic: "UX"
   }
 ];

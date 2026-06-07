@@ -5,11 +5,12 @@ import { selectLlmProvider } from "../llm/service";
 import type { LlmProvider } from "../llm/provider";
 import type { WorkerConfig } from "../effects/config";
 import { selectInstantQuizPack } from "../quiz/InstantQuizEngine";
+import { makeDirectSpacetimeClient } from "./directSpacetimeClient";
 import { makeRealtimeClient, requireOk, type RealtimeClient } from "./realtimeClient";
 
 export function runRealtimeAgentWorker(config: WorkerConfig, provider: LlmProvider): Effect.Effect<void, never> {
   return Effect.forever(
-    makeRealtimeClient(config.realtime.url).pipe(
+    makeAgentRealtimeClient(config).pipe(
       Effect.flatMap((client) => runConnectedLoop(client, config, provider).pipe(Effect.ensuring(client.close()))),
       Effect.catchAll((error) =>
         Effect.logWarning("Agent worker reconnecting", { error: error.message }).pipe(
@@ -18,6 +19,16 @@ export function runRealtimeAgentWorker(config: WorkerConfig, provider: LlmProvid
       )
     )
   );
+}
+
+function makeAgentRealtimeClient(config: WorkerConfig) {
+  if (config.realtime.transport === "spacetime") {
+    return makeDirectSpacetimeClient({
+      host: config.realtime.spacetimeHost,
+      module: config.realtime.spacetimeModule
+    });
+  }
+  return makeRealtimeClient(config.realtime.url);
 }
 
 function runConnectedLoop(client: RealtimeClient, config: WorkerConfig, provider: LlmProvider): Effect.Effect<void, never> {
@@ -160,7 +171,8 @@ function processAgentRequest(
       {
         timeoutMs: config.llm.timeoutMs,
         maxRetries: config.llm.maxRetries,
-        enableSafetyGuard: config.llm.safetyGuardEnabled
+        enableSafetyGuard: config.llm.safetyGuardEnabled,
+        grounding: firecrawlGroundingConfig(config)
       },
       {
         topic: routing.selectedTopic,
@@ -176,6 +188,14 @@ function processAgentRequest(
         content: event.content,
         confidence: event.confidence,
         status: event.status
+      }).pipe(Effect.flatMap(requireOk), Effect.catchAll(() => Effect.void));
+    }
+
+    if (result.facts.length) {
+      yield* client.callReducer("submit_topic_facts", {
+        sessionId: request.sessionId,
+        topicKey: result.topicKey,
+        facts: result.facts
       }).pipe(Effect.flatMap(requireOk), Effect.catchAll(() => Effect.void));
     }
 
@@ -197,6 +217,18 @@ function processAgentRequest(
       }).pipe(Effect.flatMap(requireOk), Effect.catchAll(() => Effect.void))
     )
   );
+}
+
+function firecrawlGroundingConfig(config: WorkerConfig) {
+  return {
+    enabled: config.grounding.firecrawlEnabled,
+    apiKey: config.grounding.firecrawlApiKey,
+    apiBaseUrl: config.grounding.firecrawlApiBaseUrl,
+    timeoutMs: config.grounding.firecrawlTimeoutMs,
+    limit: config.grounding.firecrawlLimit,
+    maxFacts: config.grounding.firecrawlMaxFacts,
+    country: config.grounding.firecrawlCountry
+  };
 }
 
 function processResolvedRound(

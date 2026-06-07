@@ -8,6 +8,6 @@ build
 *.log
 coverage
 src/module_bindings
-apps/web/src/lib/spacetime/module_bindings
 target
 .spacetime
+.vercel
