@@ -49,20 +49,32 @@ The harness:
 - Waits for committed `Answer` rows, `Score` rows, round transitions, and final session status.
 - Writes results under `docs/capacity-results/`.
 
-Latest 10-question smoke result after the refactor:
+Latest 10-question smoke result after the public/secret question split, scheduled timing, and durable share-card refactor:
 
 ```text
-Run: docs/capacity-results/load-2026-06-07T06-55-18-900Z.json
+Run: docs/capacity-results/load-2026-06-07T07-33-20-128Z.json
 Users: 10
 Connected: 10 / 10
 Joined: 10 / 10
 Committed answers: 100 / 100
 Rounds resolved: 10 / 10
 Final status: finished
-Answer p50: 25ms
-Answer p95: 35ms
-Static Vercel fetch p95: 175ms
+Answer p50: 35ms
+Answer p95: 52ms
+Static Vercel fetch p95: 192ms
 Result: pass
+```
+
+Share-card verification after the same deployment:
+
+```text
+Run: docs/capacity-results/load-2026-06-07T07-34-19-595Z.json
+Users: 2
+Committed answers: 20 / 20
+Final status: finished
+Created ShareCard slug: L93grEmbfPFa
+Share route: https://quizel-eta.vercel.app/share/L93grEmbfPFa
+Share route HTTP status: 200
 ```
 
 Previous 7-question boundary result:

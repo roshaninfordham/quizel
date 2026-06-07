@@ -1,5 +1,37 @@
 # SpacetimeDB Schema
 
+The current authoritative race path uses these tables:
+
+- `Session`
+- `Participant`
+- `PlayerIntent`
+- `QuestionPack`
+- `QuestionPublic`
+- `QuestionSecret` private server table
+- `TopicFact`
+- `Round`
+- `Answer`
+- `Score`
+- `FinalResult`
+- `ShareCard`
+- `MatchEvent`
+- `AgentEvent`
+- `LiveStats`
+- `SessionCapacity`
+- `AdmissionTicket`
+
+```mermaid
+flowchart LR
+  Phone[Phone] -->|submit_answer| DB[(SpacetimeDB)]
+  DB -->|reads hidden correct answer| Secret[QuestionSecret]
+  DB --> Answer[Answer]
+  DB --> Score[Score]
+  DB --> Final[FinalResult]
+  Phone -->|create_share_card| DB
+  DB --> Share[ShareCard]
+  Share --> Page[/share/:slug]
+```
+
 The database module is in `modules/spacetime`. It is the authoritative race contract for Vercel clients and the Effect worker.
 
 ```mermaid

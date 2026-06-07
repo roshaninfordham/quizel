@@ -143,7 +143,7 @@ async function main() {
       }),
       "request_questions"
     );
-    await waitFor(() => Array.from(operator!.connection.db.question.iter()).filter((row) => row.sessionId === sessionId).length >= QUESTION_COUNT);
+    await waitFor(() => Array.from(operator!.connection.db.question_public.iter()).filter((row) => row.sessionId === sessionId).length >= QUESTION_COUNT);
 
     const connected = await mapLimit(
       Array.from({ length: users }, (_, id) => id),
@@ -188,15 +188,19 @@ async function main() {
         fatalError = roundSample.error ?? `Timed out waiting for round ${roundIndex}.`;
         break;
       }
-      const question = operator.connection.db.question.question_id.find(round.questionId);
-      const correctOption = question?.correctOption ?? "A";
+      const startsAtMs = typeof round.startsAtMs === "bigint" ? Number(round.startsAtMs) : round.startsAtMs;
+      const waitMs = startsAtMs - Date.now() + 25;
+      if (waitMs > 0) await sleep(waitMs);
       const beforeRoundAnswers = roundAnswerCount(operator.connection, round.roundId);
       await mapLimit(clients, answerConcurrency, async (client) => {
-        const selectedOption = (client.id + roundIndex) % 5 === 0 ? wrongOption(correctOption) : correctOption;
+        const selectedOption = (["A", "B", "C", "D"] as const)[(client.id + roundIndex) % 4] ?? "A";
         const sample = await timed(async () =>
           client.connection.reducers.submitAnswer({
             roundId: round.roundId,
-            selectedOption
+            selectedOption,
+            clientQuestionRenderedAtMs: BigInt(Math.max(0, Math.round(performance.now() - 250))),
+            clientClickedAtMs: BigInt(Math.round(performance.now())),
+            clientSentAtMs: BigInt(Date.now())
           })
         );
         answerSamples.push(sample);
@@ -437,10 +441,6 @@ function roundAnswerCount(connection: DbConnection, roundId: string): number {
 
 function joinedCount(samples: TimedSample[]): number {
   return samples.filter((sample) => sample.ok).length;
-}
-
-function wrongOption(correct: string): string {
-  return ["A", "B", "C", "D"].find((option) => option !== correct) ?? "A";
 }
 
 function topicFor(index: number): string {

@@ -149,11 +149,23 @@ export function useSubmitAnswer() {
   const { callReducer } = useSpacetime();
   const runner = useActionRunner();
   const submitAnswer = useCallback(
-    (roundId: string, selectedOption: OptionKey) =>
+    (
+      roundId: string,
+      selectedOption: OptionKey,
+      timing: { clientQuestionRenderedAtMs?: number | null; clientClickedAtMs?: number | null } = {}
+    ) =>
       runner.run("Locked in", async () => {
         const receipt = await callReducer(
           "submit_answer",
-          { roundId, selectedOption, clientSentAt: Date.now(), clientEventId: nanoid() },
+          {
+            roundId,
+            selectedOption,
+            clientSentAt: Date.now(),
+            clientQuestionRenderedAtMs:
+              typeof timing.clientQuestionRenderedAtMs === "number" ? Math.round(timing.clientQuestionRenderedAtMs) : undefined,
+            clientClickedAtMs: typeof timing.clientClickedAtMs === "number" ? Math.round(timing.clientClickedAtMs) : undefined,
+            clientEventId: nanoid()
+          },
           getDeviceIdentity()
         );
         if (!receipt.ok) throw new Error(receipt.error);
@@ -207,6 +219,21 @@ export function useCreateShareCard() {
     [callReducer, runner]
   );
   return { ...runner, createShareCard };
+}
+
+export function useIncrementShareView() {
+  const { callReducer } = useSpacetime();
+  const runner = useActionRunner();
+  const incrementShareView = useCallback(
+    (slug: string) =>
+      runner.run("Score card viewed", async () => {
+        const receipt = await callReducer("increment_share_view", { slug }, getDeviceIdentity());
+        if (!receipt.ok) throw new Error(receipt.error);
+        return receipt.data;
+      }),
+    [callReducer, runner]
+  );
+  return { ...runner, incrementShareView };
 }
 
 export function useResetDemo() {

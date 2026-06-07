@@ -1,13 +1,30 @@
-import { Trophy } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Loader2, Trophy } from "lucide-react";
 import { DEFAULT_SESSION_CODE, QUESTION_COUNT } from "@quizrush/shared";
 import { Button, Panel, PhoneShell } from "../components/ui";
+import { useIncrementShareView } from "../hooks/useArenaActions";
 import { useSpacetime } from "../lib/spacetime/client";
 
 export function ShareRoute({ slug }: { slug: string }) {
   const { state } = useSpacetime();
+  const [expiredLoading, setExpiredLoading] = useState(false);
+  const [viewRecordedFor, setViewRecordedFor] = useState<string | null>(null);
+  const { incrementShareView } = useIncrementShareView();
   const share = state.shareCards.find((candidate) => candidate.slug === slug);
   const session = share ? state.sessions.find((candidate) => candidate.sessionId === share.sessionId) : undefined;
   const joinPath = `/join/${session?.code ?? DEFAULT_SESSION_CODE}`;
+
+  useEffect(() => {
+    setExpiredLoading(false);
+    const timeout = window.setTimeout(() => setExpiredLoading(true), 2800);
+    return () => window.clearTimeout(timeout);
+  }, [slug]);
+
+  useEffect(() => {
+    if (!share || viewRecordedFor === share.slug) return;
+    setViewRecordedFor(share.slug);
+    void incrementShareView(share.slug);
+  }, [incrementShareView, share, viewRecordedFor]);
 
   return (
     <PhoneShell>
@@ -27,15 +44,21 @@ export function ShareRoute({ slug }: { slug: string }) {
             <div className="mt-6 grid grid-cols-2 gap-3 text-left">
               <ShareStat label="Score" value={share.totalScore.toLocaleString()} />
               <ShareStat label="Correct" value={`${share.correctCount}/${share.questionCount || QUESTION_COUNT}`} />
-              <ShareStat label="Fastest" value={`${((share.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`} />
+              <ShareStat label="Fastest" value={`${((share.fastestResponseMsOfficial ?? share.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`} />
               <ShareStat label="Room" value={`${share.totalParticipants} racers`} />
             </div>
+          </>
+        ) : !expiredLoading ? (
+          <>
+            <Loader2 className="mx-auto size-20 animate-spin text-violet-600" />
+            <h1 className="mt-4 text-4xl font-black text-slate-950">Loading score card…</h1>
+            <p className="mt-2 text-base font-bold text-slate-500">Connecting to the live SpacetimeDB share row.</p>
           </>
         ) : (
           <>
             <Trophy className="mx-auto size-20 text-amber-500" />
-            <h1 className="mt-4 text-4xl font-black text-slate-950">Score card not found</h1>
-            <p className="mt-2 text-base font-bold text-slate-500">The share row may not have synced yet or the link is invalid.</p>
+            <h1 className="mt-4 text-4xl font-black text-slate-950">Score card not found or expired.</h1>
+            <p className="mt-2 text-base font-bold text-slate-500">This link does not match a durable QuizRush score card.</p>
           </>
         )}
         <Button onClick={() => window.location.assign(joinPath)} className="mt-8 w-full">

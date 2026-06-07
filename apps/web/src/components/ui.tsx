@@ -908,18 +908,20 @@ export function AnswerButton({
   optionKey,
   text,
   state,
-  onClick
+  onClick,
+  disabled = false
 }: {
   optionKey: OptionKey;
   text: string;
   state: "idle" | "locked" | "correct" | "wrong";
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={state !== "idle"}
+      disabled={disabled || state !== "idle"}
       className={cn(
         "flex min-h-16 items-center gap-4 rounded-[22px] border-2 px-4 py-4 text-left text-lg font-black transition active:scale-[0.98] disabled:cursor-not-allowed",
         state === "idle" && "border-slate-200 bg-white text-slate-950 shadow-lg shadow-slate-200/70",

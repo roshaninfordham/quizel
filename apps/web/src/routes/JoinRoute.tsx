@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, Mic, Pencil, Radio, Share2, Sparkles, Square, Trophy } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Check, Clock3, Mic, Pencil, Radio, Share2, Sparkles, Square } from "lucide-react";
 import {
   AVATAR_CHOICES,
   DEFAULT_SESSION_CODE,
@@ -46,6 +46,8 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const [now, setNow] = useState(Date.now());
   const [lastAnswerState, setLastAnswerState] = useState<"correct" | "wrong" | null>(null);
   const [shareMessage, setShareMessage] = useState<string | null>(null);
+  const questionRenderedAtRef = useRef<number | null>(null);
+  const renderedRoundIdRef = useRef<string | null>(null);
   const placeholder = useMemo(() => INTENT_PLACEHOLDERS[Math.floor(Math.random() * INTENT_PLACEHOLDERS.length)] ?? "AI agents, databases, and startups", []);
   const parsedIntent = useMemo(() => parseIntentPreview(intentText), [intentText]);
   const participant = state.participants.find((candidate) => candidate.participantId === participantId);
@@ -101,6 +103,20 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     setLastAnswerState(null);
   }, [answer, round]);
 
+  useEffect(() => {
+    questionRenderedAtRef.current = null;
+    renderedRoundIdRef.current = null;
+    setLastAnswerState(null);
+  }, [round?.roundId, question?.questionId]);
+
+  useEffect(() => {
+    if (!round || !question || answer) return;
+    if (now < round.startsAt || now > round.endsAt) return;
+    if (renderedRoundIdRef.current === round.roundId && questionRenderedAtRef.current !== null) return;
+    renderedRoundIdRef.current = round.roundId;
+    questionRenderedAtRef.current = performance.now();
+  }, [answer, now, question, round]);
+
   const continueToIntent = () => {
     unlockAudioOnFirstTap();
     setStep("intent");
@@ -129,8 +145,13 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
 
   const submitLockedAnswer = async (key: OptionKey) => {
     if (!round) return;
+    if (Date.now() < round.startsAt || Date.now() > round.endsAt) return;
+    const clickedAt = performance.now();
     playAnswerLock();
-    await submitAnswer(round.roundId, key);
+    await submitAnswer(round.roundId, key, {
+      clientQuestionRenderedAtMs: questionRenderedAtRef.current,
+      clientClickedAtMs: clickedAt
+    });
   };
 
   const shareScore = async () => {
@@ -318,9 +339,15 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           <p className="mt-2 text-xl font-black text-slate-600">{(finalResult?.totalScore ?? score?.totalScore ?? 0).toLocaleString()} points</p>
           <div className="mt-6 grid grid-cols-2 gap-3 text-left">
             <ResultStat label="Correct" value={`${finalResult?.correctCount ?? score?.correctCount ?? 0}/${finalResult?.questionCount ?? QUESTION_COUNT}`} />
-            <ResultStat label="Fastest" value={`${((finalResult?.fastestResponseMs ?? score?.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`} />
+            <ResultStat
+              label="Fastest"
+              value={`${((finalResult?.fastestOfficialResponseMs ?? finalResult?.fastestResponseMs ?? score?.fastestOfficialResponseMs ?? score?.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`}
+            />
+            <ResultStat
+              label="Total time"
+              value={`${((finalResult?.totalOfficialResponseMs ?? finalResult?.totalResponseMs ?? score?.totalOfficialResponseMs ?? score?.totalResponseMs ?? 0) / 1000).toFixed(2)}s`}
+            />
             <ResultStat label="Room" value={`Top ${finalResult?.percentile ?? percentile(score?.currentRank ?? totalPlayers, totalPlayers)}%`} />
-            <ResultStat label="Arena" value={joinedVotes[0] ?? session.selectedTopic ?? "Live"} />
           </div>
           <Button onClick={shareScore} disabled={sharing} className="mt-7 w-full" icon={<Share2 className="size-5" />}>
             {sharing ? "Creating Link" : "Share Score"}
@@ -361,6 +388,10 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   }
 
   if (session?.status === "playing" && round && question) {
+    const startsInMs = Math.max(0, round.startsAt - now);
+    const roundStarted = startsInMs <= 0;
+    const roundEnded = now > round.endsAt;
+    const timeRemainingMs = Math.max(0, round.endsAt - Math.max(now, round.startsAt));
     return (
       <PhoneShell>
         <div className="flex items-center justify-between gap-3">
@@ -374,9 +405,14 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
               <p className="mt-1 text-sm font-bold text-slate-500">Rank #{score?.currentRank ?? "-"} · {score?.totalScore.toLocaleString() ?? 0} pts</p>
             </div>
             <div className="grid size-16 place-items-center rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-2xl font-black text-white">
-              {Math.ceil(Math.max(0, round.endsAt - now) / 1000)}
+              {roundStarted ? Math.ceil(timeRemainingMs / 1000) : <Clock3 className="size-7" />}
             </div>
           </div>
+          {!roundStarted ? (
+            <p className="mt-5 rounded-[20px] bg-amber-50 px-4 py-3 text-center text-sm font-black text-amber-800">
+              Starts in {(startsInMs / 1000).toFixed(1)}s
+            </p>
+          ) : null}
           <h1 className="mt-6 text-3xl font-black leading-tight text-slate-950">{question.questionText}</h1>
           <div className="mt-6 grid gap-3">
             {options.map(([key, text]) => (
@@ -386,12 +422,13 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
                 text={text}
                 state={answer ? (round.status === "resolved" ? (answer.isCorrect ? "correct" : "wrong") : "locked") : "idle"}
                 onClick={() => void submitLockedAnswer(key)}
+                disabled={!roundStarted || roundEnded || Boolean(answer)}
               />
             ))}
           </div>
           {answer ? (
             <p className="mt-5 rounded-[20px] bg-violet-50 px-4 py-3 text-center text-sm font-black text-violet-800">
-              Locked in · Server received {(answer.responseMs / 1000).toFixed(2)}s
+              Locked in · Official response {(answer.officialResponseMs / 1000).toFixed(2)}s
             </p>
           ) : null}
           {answerError && !answer ? <ErrorMessage>{answerError}</ErrorMessage> : null}
