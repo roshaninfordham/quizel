@@ -4,6 +4,7 @@ import type { LlmProvider } from "../llm/provider";
 import { LlmProviderError } from "../llm/errors";
 import { generateQuizQuestions, routeTopic } from "./quizAgents";
 import { MockLlmProvider } from "../llm/providers/MockLlmProvider";
+import { FallbackSeedProvider } from "../llm/providers/FallbackSeedProvider";
 import { demoQuestions } from "../fallbacks/demoQuestions";
 
 class FailingProvider implements LlmProvider {
@@ -206,5 +207,61 @@ describe("agent fallback behavior", () => {
     expect(result.facts.length).toBeGreaterThan(0);
     expect(result.questions.every((question) => question.factIds?.length && question.sourceUrl)).toBe(true);
     expect(result.events.map((event) => event.agentName)).toContain("Firecrawl Grounding Agent");
+  });
+
+  it("uses Firecrawl facts for template questions when no LLM provider is configured", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              web: [
+                {
+                  title: "Quantum sensor overview",
+                  url: "https://example.edu/quantum-sensors",
+                  description:
+                    "Quantum sensors use quantum states to measure physical quantities with high sensitivity. Atomic clocks are a well-known example of quantum sensing technology.",
+                  markdown:
+                    "Magnetometers can use quantum effects to detect tiny magnetic fields. Quantum sensing is used in navigation, timing, and precision measurement."
+                }
+              ]
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
+      )
+    );
+
+    const result = await Effect.runPromise(
+      generateQuizQuestions(
+        new FallbackSeedProvider(),
+        {
+          timeoutMs: 100,
+          maxRetries: 0,
+          grounding: {
+            enabled: true,
+            apiKey: "fc-test",
+            apiBaseUrl: "https://api.firecrawl.dev",
+            timeoutMs: 100,
+            limit: 2,
+            maxFacts: 6,
+            country: "US"
+          }
+        },
+        {
+          topic: "quantum sensors",
+          questionCount: 5
+        }
+      )
+    );
+
+    const joined = result.questions.map((question) => `${question.questionText} ${question.options.A} ${question.explanation}`).join(" ");
+    expect(result.status).toBe("complete");
+    expect(result.facts.length).toBeGreaterThan(0);
+    expect(joined).toMatch(/quantum|sensor|magnetometer|atomic/i);
+    expect(joined).not.toMatch(/Red Planet|Romeo|photosynthesis/i);
+    expect(result.questions.every((question) => question.factIds?.length && question.sourceUrl)).toBe(true);
   });
 });

@@ -13,9 +13,12 @@ const packTopics = [
   "Andaman Islands",
   "Fruit Science",
   "AI Agents",
+  "SpacetimeDB",
   "Database Systems",
   "Startup Strategy",
   "Space Technology",
+  "Formula 1",
+  "Argentina",
   "Math Logic",
   "World History",
   "Sports Strategy",
@@ -40,12 +43,18 @@ function aliasesFor(title: string): string[] {
       return ["fruit", "fruits", "nutrition", "biology", "food science"];
     case "AI Agents":
       return ["ai", "llm", "agents", "automation", "prompts"];
+    case "SpacetimeDB":
+      return ["spacetimedb", "spacetime db", "realtime database", "reducers", "subscriptions"];
     case "Database Systems":
       return ["database", "databases", "db", "sql", "spacetimedb", "postgres"];
     case "Startup Strategy":
       return ["startup", "startups", "founder", "pitch", "venture", "growth"];
     case "Space Technology":
       return ["space", "rocket", "satellite", "orbit", "nasa", "spacex"];
+    case "Formula 1":
+      return ["f1", "formula one", "grand prix", "motorsport", "racing"];
+    case "Argentina":
+      return ["argentina", "buenos aires", "andes", "patagonia", "south america"];
     case "Math Logic":
       return ["math", "logic", "probability", "statistics", "puzzles"];
     case "World History":

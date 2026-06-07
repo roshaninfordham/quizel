@@ -26,6 +26,7 @@ import {
   topicRouterSchema
 } from "../schemas/agentSchemas";
 import { validateGroundedQuestionPack } from "../quiz/validateQuestionPack";
+import { buildTemplateGroundedQuestions } from "../quiz/templateGroundedQuestions";
 
 export interface AgentConfig {
   timeoutMs: number;
@@ -244,29 +245,40 @@ export function generateQuizQuestions(
       ),
       Effect.catchAll((error) =>
         fetchGroundingFacts(config, input.topic).pipe(
-          Effect.map((grounding) => ({
-            questions: buildTopicFallbackQuestions(grounding.displayName, requestedCount),
-            status: "fallback" as const,
-            events: [
-              grounding.event,
-              {
-                agentName: "Quiz Builder Agent",
-                eventType: "fallback_used",
-                content: `Using deterministic ${grounding.displayName} questions because ${error.name} occurred.`,
-                confidence: 1,
-                status: "fallback" as const
-              },
-              {
-                agentName: "Fairness Agent",
-                eventType: "fallback_approved",
-                content: "Topic-specific fallback questions are schema-valid and pre-reviewed for a public hackathon audience.",
-                confidence: 1,
-                status: "fallback" as const
-              }
-            ].filter((event): event is AgentEventDraft => Boolean(event)),
-            facts: grounding.facts,
-            topicKey: grounding.topicKey
-          }))
+          Effect.map((grounding) => {
+            const groundedTemplate = grounding.facts.length
+              ? buildTemplateGroundedQuestions(grounding.displayName, grounding.facts, requestedCount)
+              : [];
+            return {
+              questions: groundedTemplate.length
+                ? groundedTemplate
+                : buildTopicFallbackQuestions(grounding.displayName, requestedCount),
+              status: "fallback" as const,
+              events: [
+                grounding.event,
+                {
+                  agentName: "Quiz Builder Agent",
+                  eventType: groundedTemplate.length ? "template_grounded_fallback_used" : "fallback_used",
+                  content: groundedTemplate.length
+                    ? `Using ${groundedTemplate.length} source-backed template questions for ${grounding.displayName} because ${error.name} occurred.`
+                    : `Using deterministic ${grounding.displayName} questions because ${error.name} occurred.`,
+                  confidence: groundedTemplate.length ? 0.84 : 1,
+                  status: "fallback" as const
+                },
+                {
+                  agentName: "Fairness Agent",
+                  eventType: "fallback_approved",
+                  content: groundedTemplate.length
+                    ? "Template-grounded fallback questions cite compact retrieved facts."
+                    : "Topic-specific fallback questions are schema-valid and pre-reviewed for a public hackathon audience.",
+                  confidence: 1,
+                  status: "fallback" as const
+                }
+              ].filter((event): event is AgentEventDraft => Boolean(event)),
+              facts: grounding.facts,
+              topicKey: grounding.topicKey
+            };
+          })
         )
       )
     );

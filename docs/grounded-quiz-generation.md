@@ -61,6 +61,8 @@ FIRECRAWL_MAX_FACTS=10
 
 The worker uses Firecrawl search with scraped summary/markdown formats, extracts 5-10 compact facts, writes those facts through the `submit_topic_facts` reducer, and then asks the LLM to generate questions using only those facts. Large raw pages are never stored in SpacetimeDB.
 
+If Firecrawl facts exist but no LLM provider is configured, the fallback provider now creates source-backed template MCQs from the compact facts instead of publishing unrelated generic trivia. That path is intentionally conservative: every generated template question carries a `factId`, `sourceTitle`, and `sourceUrl`, and the Tech Drawer records the fallback event.
+
 Runtime path:
 
 ```text
@@ -70,6 +72,7 @@ player intent
 -> Firecrawl Grounding Agent
 -> compact TopicFact rows
 -> grounded LLM generation from FactCards only
+-> template-grounded fallback if LLM is unavailable
 -> validation
 -> SpacetimeDB submit_question_pack
 ```

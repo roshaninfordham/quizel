@@ -1,12 +1,17 @@
 import { Effect } from "effect";
 import { buildTopicFallbackQuestions } from "@quizrush/shared";
+import { buildTemplateGroundedQuestions, type TemplateGroundingFact } from "../../quiz/templateGroundedQuestions";
 import type { LlmError } from "../errors";
 import type { GenerateJsonInput, LlmProvider } from "../provider";
 
 export class FallbackSeedProvider implements LlmProvider {
   public generateJson<T>(input: GenerateJsonInput): Effect.Effect<T, LlmError> {
     const topic = topicFromInput(input);
-    const questions = buildTopicFallbackQuestions(topic, questionCountFromInput(input));
+    const questionCount = questionCountFromInput(input);
+    const facts = factsFromInput(input);
+    const questions = facts.length
+      ? buildTemplateGroundedQuestions(topic, facts, questionCount)
+      : buildTopicFallbackQuestions(topic, questionCount);
 
     if (input.schemaName === "FairnessReview") {
       return Effect.succeed({
@@ -72,5 +77,16 @@ function questionCountFromInput(input: GenerateJsonInput): number {
     return parsed.question_count || 7;
   } catch {
     return 7;
+  }
+}
+
+function factsFromInput(input: GenerateJsonInput): TemplateGroundingFact[] {
+  if (input.schemaName !== "QuizQuestionBatch") return [];
+  try {
+    const parsed = JSON.parse(input.user) as { facts?: TemplateGroundingFact[]; fact_cards?: TemplateGroundingFact[] };
+    if (Array.isArray(parsed.fact_cards)) return parsed.fact_cards;
+    return Array.isArray(parsed.facts) ? parsed.facts : [];
+  } catch {
+    return [];
   }
 }

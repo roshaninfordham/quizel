@@ -306,7 +306,9 @@ sequenceDiagram
 - Effect-based LLM worker with Firecrawl grounding, provider routing, retries, validation, safety guard support, Instant Quiz Engine cache/template racing, and topic-specific deterministic fallback.
 - `TopicFact` rows plus question-level `factIds`, `sourceTitle`, and `sourceUrl` metadata for grounded packs.
 - NVIDIA model routing through environment variables in `.env.local`.
+- Quick-start topic chips on phones for low-latency seeded packs: Space, AI Agents, SpacetimeDB, Databases, Andaman Islands, Formula 1, Argentina, Math, History, and Startups.
 - Deterministic topic-specific fallback questions if LLM calls fail or arrive too late.
+- Firecrawl fact fallback can still publish source-backed template MCQs when web facts exist but no LLM provider is configured.
 
 ## What Is Prototype Scope
 
@@ -326,6 +328,7 @@ phone intent
 -> Effect worker exact/alias/semantic/template cache path
 -> Firecrawl compact fact retrieval when configured
 -> grounded LLM generation/refinement if it returns before the race locks
+-> source-backed template questions if Firecrawl facts exist but no LLM is available
 ```
 
 - Intent Parser / Topic Router Agent: selects a tournament topic from live expertise signals.

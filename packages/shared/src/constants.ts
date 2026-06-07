@@ -29,6 +29,18 @@ export const SIMULATED_ANSWER_BURST_SIZE = 8;
 export const DEFAULT_TOPICS = ["AI", "Space", "Tech", "Math", "History", "Startups"];
 export const DEFAULT_SELECTED_TOPIC = "AI + Space + Startups";
 export const AVATAR_CHOICES = ["🚀", "🧠", "⚡", "🐼", "🦊", "🐯", "✨", "🔥"];
+export const INTENT_SUGGESTIONS = [
+  "Space",
+  "AI Agents",
+  "SpacetimeDB",
+  "Databases",
+  "Andaman Islands",
+  "Formula 1",
+  "Argentina",
+  "Math Logic",
+  "World History",
+  "Startup Strategy"
+];
 export const INTENT_PLACEHOLDERS = [
   "AI agents, databases, and startups",
   "Space missions and physics",

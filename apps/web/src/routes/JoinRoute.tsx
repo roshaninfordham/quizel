@@ -4,6 +4,7 @@ import {
   AVATAR_CHOICES,
   DEFAULT_SESSION_CODE,
   INTENT_PLACEHOLDERS,
+  INTENT_SUGGESTIONS,
   QUESTION_COUNT,
   type OptionKey,
   type ShareCard,
@@ -64,13 +65,28 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const shareCard = state.shareCards.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
   const answer = getAnswerForParticipant(state, round?.roundId, participantId ?? undefined);
   const totalPlayers = state.participants.filter((candidate) => candidate.sessionId === sessionId).length;
+  const playerIntent = state.playerIntents.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
   const joinedVotes = state.topicVotes.filter((vote) => vote.participantId === participantId).map((vote) => vote.topic);
+  const participantPack = state.questionPacks.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
   const sessionQuestions = state.questions.filter(
     (candidate) => candidate.sessionId === sessionId && (!participantId || candidate.participantId === participantId || candidate.participantId === null)
   );
   const questionsReady = sessionQuestions.length >= QUESTION_COUNT;
+  const packReady =
+    questionsReady ||
+    Boolean(participantPack) ||
+    playerIntent?.status === "pack_ready" ||
+    session?.status === "ready" ||
+    session?.status === "playing";
   const arenaLabel = joinedVotes.length ? joinedVotes.map((topic) => topic.replace(/\s+(Systems|Strategy|Technology)$/i, "")).join(" x ") : session?.selectedTopic ?? parsedIntent.arenaName;
-  const packSource = packSourceLabel(sessionQuestions[0]?.generatedBy, sessionQuestions[0]?.fairnessStatus, sessionQuestions[0]?.sourceUrl);
+  const packSource = packSourceLabel(
+    sessionQuestions[0]?.generatedBy,
+    sessionQuestions[0]?.fairnessStatus,
+    sessionQuestions[0]?.sourceUrl,
+    participantPack?.sourceType,
+    playerIntent?.status,
+    session?.status
+  );
 
   const voteMessage = null;
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
@@ -309,6 +325,30 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
             <p className="text-sm font-black uppercase text-violet-700">Expertise intent</p>
             <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">What do you want to compete in?</h1>
             <p className="mt-3 text-base font-bold text-slate-500">Type or say your strongest topics. AI will place you in the right arena.</p>
+            <div className="mt-5">
+              <p className="text-xs font-black uppercase text-slate-500">Quick starts</p>
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {INTENT_SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => {
+                      unlockAudioOnFirstTap();
+                      setIntentText(suggestion);
+                      playIntentDetected();
+                    }}
+                    className={cn(
+                      "shrink-0 rounded-full px-4 py-3 text-sm font-black transition active:scale-95",
+                      intentText.trim().toLowerCase() === suggestion.toLowerCase()
+                        ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-100"
+                        : "bg-white text-slate-700 ring-2 ring-slate-200"
+                    )}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-7 rounded-[30px] bg-slate-50 p-3 ring-2 ring-slate-200 focus-within:bg-white focus-within:ring-violet-500">
               <textarea
                 value={intentText}
@@ -524,7 +564,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       <Panel className="mt-auto">
         <p className="text-sm font-black uppercase text-violet-700">You're in, {participant.displayName}</p>
         <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">
-          {session?.status === "generating" || session?.status === "ready" ? "AI is building the sprint" : "Arena is forming"}
+          {packReady ? "Sprint ready" : session?.status === "generating" || session?.status === "ready" ? "AI is building the sprint" : "Arena is forming"}
         </h1>
         <p className="mt-3 text-base font-bold text-slate-500">
           You are racing in <span className="font-black text-slate-950">{arenaLabel}</span>.
@@ -539,13 +579,13 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           <div className="flex items-center gap-3">
             <Sparkles className="size-6 text-violet-700" />
             <p className="text-base font-black text-slate-950">
-              {questionsReady ? "Sprint ready. Watch the projector countdown." : voteMessage ? "Expertise synced. Building instant pack..." : "AI is clustering live room intent."}
+              {packReady ? "Sprint ready. Watch the projector countdown." : voteMessage ? "Expertise synced. Building instant pack..." : "AI is clustering live room intent."}
             </p>
           </div>
           <div className="mt-4 grid gap-2">
             <ProgressStep complete label="Intent captured" />
             <ProgressStep complete={Boolean(session?.selectedTopic || joinedVotes.length)} label={`Arena detected${arenaLabel ? `: ${arenaLabel}` : ""}`} />
-            <ProgressStep complete={questionsReady} label={questionsReady ? `Quiz pack ready (${packSource})` : "Grounding facts and building pack"} />
+            <ProgressStep complete={packReady} label={packReady ? `Quiz pack ready (${packSource})` : "Grounding facts and building pack"} />
             <ProgressStep complete={session?.status === "playing"} label={session?.status === "playing" ? "Race live" : "Starting when presenter presses S"} />
           </div>
         </div>
@@ -653,7 +693,20 @@ function waitForShareCard(
   });
 }
 
-function packSourceLabel(generatedBy?: string, fairnessStatus?: string, sourceUrl?: string | null): string {
+function packSourceLabel(
+  generatedBy?: string,
+  fairnessStatus?: string,
+  sourceUrl?: string | null,
+  sourceType?: string,
+  intentStatus?: string,
+  sessionStatus?: string
+): string {
+  if (sourceType === "seed_fallback") return "Instant pack";
+  if (sourceType === "template_grounded") return "Grounded web";
+  if (sourceType === "grounded_llm") return "AI custom";
+  if (sourceType === "exact_cache" || sourceType === "semantic_cache" || sourceType === "cache") return "Cached pack";
+  if (intentStatus === "pack_ready") return "Instant pack";
+  if (sessionStatus === "ready" || sessionStatus === "playing") return "Instant pack";
   if (!generatedBy) return "Preparing";
   if (sourceUrl) return "Grounded web";
   if (fairnessStatus === "fallback") return "Instant pack";

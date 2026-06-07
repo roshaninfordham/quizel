@@ -22,9 +22,12 @@ const topicRules: Array<{ topic: string; match: RegExp }> = [
   { topic: "Andaman Islands", match: /\b(andaman|andaman islands|andaman and nicobar|andaman nicobar|port blair|cellular jail|havelock|swaraj dweep)\b/i },
   { topic: "US Visa System", match: /\b(us visa|u\.s\. visa|visa system|immigration|uscis|embassy|consulate|green card|h-?1b|f-?1|b-?1|b-?2)\b/i },
   { topic: "AI Agents", match: /\b(ai|artificial intelligence|agent|agents|llm|llms|machine learning|model|models|prompt|prompts|automation)\b/i },
+  { topic: "SpacetimeDB", match: /\b(spacetime\s*db|spacetimedb|space\s*time\s*db)\b/i },
   { topic: "Space Technology", match: /\b(space|rocket|rockets|nasa|orbit|satellite|satellites|mars|moon|spacex|astronomy)\b/i },
   { topic: "Database Systems", match: /\b(database|databases|db|sql|spacetimedb|redis|postgres|backend|distributed)\b/i },
   { topic: "Startup Strategy", match: /\b(startup|startups|founder|founders|vc|venture|pitch|product|growth|business)\b/i },
+  { topic: "Formula 1", match: /\b(f1|formula 1|formula one|grand prix|motorsport|race car|racing)\b/i },
+  { topic: "Argentina", match: /\b(argentina|buenos aires|patagonia|pampas|andes|messi|tango)\b/i },
   { topic: "Fruit Science", match: /\b(fruit|fruits|nutrition|nutrient|nutrients|diet|biology|botany|food science)\b/i },
   { topic: "Math Logic", match: /\b(math|probability|logic|algebra|calculus|statistics|puzzle|puzzles)\b/i },
   { topic: "World History", match: /\b(history|empire|empires|war|ancient|civilization|geography|politics)\b/i },
@@ -36,8 +39,11 @@ const topicRules: Array<{ topic: string; match: RegExp }> = [
 const topicDisplay: Record<string, string> = {
   "AI Agents": "AI",
   "Space Technology": "Space",
+  "SpacetimeDB": "SpacetimeDB",
   "Database Systems": "Databases",
   "Startup Strategy": "Startups",
+  "Formula 1": "Formula 1",
+  "Argentina": "Argentina",
   "Fruit Science": "Fruit Science",
   "Math Logic": "Math Logic",
   "World History": "History",
@@ -158,8 +164,14 @@ function dedupeTopics(topics: string[]): string[] {
 }
 
 function suppressBroadTopics(topics: string[]): string[] {
+  if (topics.includes("SpacetimeDB")) {
+    return topics.filter((topic) => topic !== "Database Systems" && topic !== "Space Technology");
+  }
+  if (topics.includes("Formula 1")) {
+    return topics.filter((topic) => topic !== "Sports Strategy");
+  }
   const hasSpecificScience = topics.some((topic) =>
-    ["Fruit Science", "Space Technology", "Database Systems", "AI Agents"].includes(topic)
+    ["Fruit Science", "Space Technology", "SpacetimeDB", "Database Systems", "AI Agents"].includes(topic)
   );
   if (!hasSpecificScience) return topics;
   return topics.filter((topic) => topic !== "Science");

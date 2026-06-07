@@ -56,6 +56,34 @@ describe("intent normalization", () => {
     expect(intent.displayArenaName).toBe("AI x Databases x Startups");
   });
 
+  it("keeps SpacetimeDB as its own fast-path arena", () => {
+    const intent = normalizeIntent("spacetimedb reducers and subscriptions");
+    const questions = buildTopicFallbackQuestions(intent.displayArenaName, 7);
+    const joined = questions.map((question) => `${question.questionText} ${question.explanation}`).join(" ");
+
+    expect(intent.canonicalTopics).toContain("SpacetimeDB");
+    expect(intent.displayArenaName).toBe("SpacetimeDB");
+    expect(joined).toMatch(/reducer|subscription|SpacetimeDB/i);
+    expect(joined).not.toMatch(/Red Planet|photosynthesis|Romeo/i);
+  });
+
+  it("serves deterministic specific packs for quick-start suggestions", () => {
+    const cases = [
+      ["AI Agents", /guardrail|model|schema/i],
+      ["Databases", /primary key|transaction|index/i],
+      ["Formula 1", /Grand Prix|DRS|pit stop/i],
+      ["Argentina", /Buenos Aires|Patagonia|Andes/i]
+    ] as const;
+
+    for (const [topic, matcher] of cases) {
+      const questions = buildTopicFallbackQuestions(topic, 7);
+      const joined = questions.map((question) => `${question.questionText} ${question.explanation}`).join(" ");
+      expect(joined).toMatch(matcher);
+      expect(joined).not.toMatch(/best first step|which option is most relevant|Red Planet/i);
+      expect(questions.every((question) => question.factIds?.length)).toBe(true);
+    }
+  });
+
   it("falls back to a clean custom arena instead of generic science", () => {
     const intent = normalizeIntent("ancient Tamil astronomy mixed with AI startups");
 

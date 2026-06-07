@@ -1896,6 +1896,110 @@ function fallbackQuestionsForTopic(topic: string, count: number) {
         fq("At a US port of entry, who decides admission?", ["Border officer", "Taxi driver", "Tour guide", "Travel blogger"], "A", "A border officer makes the final admission decision at the port of entry.", normalized),
         fq("Why do forms ask for travel purpose?", ["Match the visa", "Pick an airline", "Choose a meal", "Rate a hotel"], "A", "Travel purpose helps match a person to the correct visa category.", normalized)
       ]
+    : lower.includes("spacetimedb")
+      ? [
+          fq("In {topic}, what is a reducer primarily responsible for?", ["Changing database state", "Compressing images", "Drawing CSS", "Hosting DNS"], "A", "Reducers mutate SpacetimeDB tables transactionally.", normalized),
+          fq("Which feature lets clients react when subscribed data changes?", ["Subscriptions", "Static exports", "Cookies", "Image sprites"], "A", "Clients subscribe to queries and receive row updates.", normalized),
+          fq("Why should quiz scoring run in {topic} reducers?", ["The browser is untrusted", "CSS is slower", "Avatars need fonts", "QR codes need cameras"], "A", "Server-side reducers keep score and ranking authoritative.", normalized),
+          fq("Which race data should be stored as rows in {topic}?", ["Answers and scores", "Only button colors", "Only background images", "Only CSS shadows"], "A", "Answers, timing, scores, brackets, final results, and share cards are database rows.", normalized),
+          fq("What makes reducers useful for multiplayer state?", ["Transactional commits", "Bigger fonts", "Offline images", "Manual refresh"], "A", "Reducer commits keep shared state consistent for subscribers.", normalized),
+          fq("What should the projector render from {topic}?", ["Subscribed bracket rows", "Private correct answers", "Browser guesses", "Raw API keys"], "A", "The projector renders public subscribed rows such as bracket and leaderboard state.", normalized),
+          fq("What should a phone never receive before round resolution?", ["QuestionSecret rows", "QuestionPublic text", "Its own score", "Its avatar"], "A", "Correct answers stay hidden until the round resolves.", normalized),
+          fq("Why store ShareCard slugs in {topic}?", ["Links survive refresh", "Names become longer", "Timers stop", "Buttons become purple"], "A", "A share URL points to a persisted ShareCard row.", normalized),
+          fq("Official answer timing starts from which value?", ["Round startsAtServerMs", "User nickname", "Screen width", "Avatar emoji"], "A", "Official response time uses the scheduled server start timestamp.", normalized),
+          fq("What is Vercel's best role in this architecture?", ["Host the frontend", "Own live scores", "Store secret answers", "Run reducer state"], "A", "Vercel hosts UI while SpacetimeDB owns realtime state.", normalized)
+        ]
+    : lower.includes("database") || lower.includes("databases") || lower.includes("sql") || lower.includes("postgres")
+      ? [
+          fq("In {topic}, what is a primary key used for?", ["Uniquely identifying rows", "Styling buttons", "Compressing images", "Playing sounds"], "A", "A primary key uniquely identifies a row.", normalized),
+          fq("What does an index usually improve?", ["Lookup speed", "Image brightness", "Font size", "Audio volume"], "A", "Indexes help databases find rows efficiently.", normalized),
+          fq("What does transaction atomicity mean?", ["All-or-nothing commit", "Rows are alphabetical", "Images load first", "Queries use emojis"], "A", "Atomicity means changes fully commit or roll back.", normalized),
+          fq("Which operation filters rows by condition?", ["WHERE", "PAINT", "BEEP", "ZOOM"], "A", "WHERE filters rows matching a condition.", normalized),
+          fq("Why separate public questions from secret answers?", ["Protect correct answers", "Remove indexes", "Slow subscriptions", "Hide avatars"], "A", "Separate secret rows prevent early answer leakage.", normalized),
+          fq("What does a foreign key usually represent?", ["A row relationship", "A color palette", "A sound effect", "A QR code"], "A", "Foreign keys model relationships between records.", normalized),
+          fq("What is a database transaction?", ["A grouped unit of work", "A button animation", "A domain name", "A microphone event"], "A", "A transaction groups changes so they commit consistently.", normalized),
+          fq("Why store leaderboard rows in the database?", ["All clients share one truth", "Fonts render faster", "Images shrink", "Sound gets louder"], "A", "Subscribed leaderboard rows give every client the same ranking.", normalized),
+          fq("Which field connects answers back to one player?", ["participantId", "borderRadius", "zIndex", "lineHeight"], "A", "participantId associates answers, scores, and final results with one user.", normalized),
+          fq("What should happen to duplicate answers?", ["Reject them", "Count both", "Double score", "Hide the round"], "A", "A unique participant-round rule should reject duplicates.", normalized)
+        ]
+    : lower.includes("ai") || lower.includes("agent") || lower.includes("llm") || lower.includes("artificial intelligence")
+      ? [
+          fq("In {topic}, what does an agent usually combine?", ["Model reasoning plus tools", "Only CSS", "Only random numbers", "Only image filters"], "A", "Agents combine model reasoning with tools, memory, or workflow steps.", normalized),
+          fq("Why should a quiz agent cite source facts?", ["Reduce hallucinations", "Make fonts bigger", "Skip validation", "Hide answers"], "A", "Grounding questions in facts reduces unsupported claims.", normalized),
+          fq("What is a guardrail in an AI quiz pipeline?", ["A validation or safety rule", "A database password", "A color token", "A screen size"], "A", "Guardrails keep output safe, relevant, and valid.", normalized),
+          fq("What does JSON schema validation prevent?", ["Malformed model output", "Fast tapping", "Avatar uploads", "QR scanning"], "A", "Schema validation rejects output that does not match the expected structure.", normalized),
+          fq("Why use cache-first generation?", ["Lower latency and cost", "More duplicate answers", "Larger images", "Less scoring"], "A", "Cache-first generation serves common topics quickly.", normalized),
+          fq("What should happen if LLM JSON is invalid?", ["Reject or fallback", "Publish anyway", "Give everyone points", "Show raw JSON"], "A", "Invalid model output should be rejected or replaced safely.", normalized),
+          fq("What is a tool call useful for?", ["Fetching external facts", "Changing scores directly", "Bypassing reducers", "Guessing identities"], "A", "Tools let agents retrieve facts before generating content.", normalized),
+          fq("Why keep scoring out of the AI agent?", ["Scores must be deterministic", "Agents cannot read text", "Browsers need secrets", "Topics need no facts"], "A", "Scoring must be deterministic and reducer-owned.", normalized),
+          fq("What does a fallback pack protect?", ["Continuity under API failure", "Unlimited spending", "Question secrecy", "CSS layout"], "A", "Fallback packs keep the game playable when external APIs are slow.", normalized),
+          fq("Which step should approve MCQs before publishing?", ["Quality guard", "Leaderboard UI", "Confetti effect", "QR renderer"], "A", "A quality guard rejects generic, unsafe, or unsupported questions.", normalized)
+        ]
+    : lower.includes("startup") || lower.includes("founder") || lower.includes("venture")
+      ? [
+          fq("In {topic}, what does product-market fit mean?", ["Strong demand for a product", "A logo color match", "A legal filing only", "A random feature list"], "A", "Product-market fit means a product satisfies a real market need.", normalized),
+          fq("What is an MVP?", ["Minimum viable product", "Maximum viral pitch", "Monthly vendor plan", "Market value price"], "A", "An MVP tests core value with the simplest useful product.", normalized),
+          fq("Why track retention?", ["See if users return", "Pick fonts", "Buy domains", "Avoid testing"], "A", "Retention shows whether users keep finding value.", normalized),
+          fq("What does runway measure?", ["Time before cash runs out", "Office length", "Server uptime only", "Number of competitors"], "A", "Runway estimates how long a company can operate before more cash is needed.", normalized),
+          fq("What is a pitch deck for?", ["Explaining the business", "Changing database rows", "Recording answer time", "Drawing brackets"], "A", "A pitch deck summarizes problem, solution, market, traction, and ask.", normalized),
+          fq("Why interview users early?", ["Validate pain points", "Increase buttons", "Avoid tests", "Replace analytics"], "A", "Interviews test whether the problem is real.", normalized),
+          fq("What is go-to-market strategy?", ["Plan to reach customers", "A color system", "A schema", "A transcript"], "A", "Go-to-market explains how a product reaches and retains customers.", normalized),
+          fq("Which metric matters for subscriptions?", ["Monthly recurring revenue", "Screen brightness", "Keyboard height", "Icon radius"], "A", "MRR tracks predictable subscription income.", normalized),
+          fq("What does churn mean?", ["Customers leaving", "New logo creation", "Server migration", "Question shuffling"], "A", "Churn measures users or revenue lost.", normalized),
+          fq("Why define an ICP?", ["Focus on ideal customers", "Avoid all sales", "Hide the product", "Disable analytics"], "A", "An ideal customer profile focuses product and messaging.", normalized)
+        ]
+    : lower.includes("formula 1") || lower.includes("f1") || lower.includes("grand prix")
+      ? [
+          fq("In {topic}, what is a Grand Prix?", ["A championship race event", "A tire brand only", "A pit-lane speed limit", "A steering wheel button"], "A", "A Grand Prix is an event on the Formula 1 calendar.", normalized),
+          fq("What does DRS help a car do?", ["Reduce drag on straights", "Add fuel mid-race", "Change drivers", "Start the safety car"], "A", "DRS opens a rear wing flap to reduce drag.", normalized),
+          fq("What is a pit stop mainly used for?", ["Changing tires", "Selling tickets", "Painting cars", "Replacing drivers every lap"], "A", "Pit stops are mainly used to change tires or repair damage.", normalized),
+          fq("What does pole position mean?", ["Starting first", "Finishing last", "Fastest pit stop", "Most penalties"], "A", "Pole position is the first starting spot.", normalized),
+          fq("Which body governs Formula 1 rules?", ["FIA", "NASA", "FIFA", "UNESCO"], "A", "The FIA governs international motorsport rules.", normalized),
+          fq("What is a constructor?", ["Team that builds/runs cars", "Track photographer", "Broadcast host", "Helmet painter"], "A", "A constructor is a team responsible for entering and running cars.", normalized),
+          fq("Why do tire compounds matter?", ["Grip and durability", "Driver nationality", "Race city", "TV graphics"], "A", "Compounds trade grip, degradation, and strategy options.", normalized),
+          fq("What does a safety car do?", ["Controls pace after hazards", "Awards bonus points", "Refuels cars", "Ends qualifying"], "A", "A safety car slows the field when conditions are unsafe.", normalized),
+          fq("What does qualifying determine?", ["Starting grid order", "Team budgets", "Race commentary", "Fan seating"], "A", "Qualifying determines where drivers start.", normalized),
+          fq("What does an undercut try to gain?", ["Track position via early stop", "More radio messages", "Slower tire change", "Later race start"], "A", "An undercut pits earlier to gain time on fresh tires.", normalized)
+        ]
+    : lower.includes("argentina") || lower.includes("buenos aires") || lower.includes("patagonia")
+      ? [
+          fq("What is the capital of {topic}?", ["Buenos Aires", "Santiago", "Lima", "Montevideo"], "A", "Buenos Aires is Argentina's capital.", normalized),
+          fq("{topic} is mainly on which continent?", ["South America", "Europe", "Asia", "Africa"], "A", "Argentina is in southern South America.", normalized),
+          fq("Which mountain range runs along western Argentina?", ["Andes", "Alps", "Himalayas", "Rockies"], "A", "The Andes form much of Argentina's western border region.", normalized),
+          fq("What is Patagonia known for?", ["Southern landscapes and glaciers", "Tropical deserts only", "Ancient pyramids", "Coral reefs only"], "A", "Patagonia is known for mountains, steppe, and glaciers.", normalized),
+          fq("Which dance is strongly associated with Argentina?", ["Tango", "Flamenco", "Ballet only", "Kabuki"], "A", "Tango is strongly associated with Argentina.", normalized),
+          fq("What is the Pampas region famous for?", ["Grasslands and agriculture", "Polar ice caps", "Volcanic islands", "Tundra forests"], "A", "The Pampas are fertile grasslands.", normalized),
+          fq("Which language is most widely spoken in Argentina?", ["Spanish", "Portuguese", "French", "German"], "A", "Spanish is Argentina's official and most widely spoken language.", normalized),
+          fq("What is Aconcagua?", ["Highest mountain in the Americas", "A coastal city", "A river delta", "A rainforest"], "A", "Aconcagua is the highest mountain in the Americas.", normalized),
+          fq("Which sport is especially popular in Argentina?", ["Football", "Cricket", "Sumo", "Ice hockey only"], "A", "Football is central to Argentina's sports culture.", normalized),
+          fq("Which ocean borders Argentina to the east?", ["Atlantic Ocean", "Pacific Ocean", "Indian Ocean", "Arctic Ocean"], "A", "Argentina's east coast borders the South Atlantic.", normalized)
+        ]
+    : lower.includes("math") || lower.includes("logic") || lower.includes("probability")
+      ? [
+          fq("In {topic}, what is a prime number?", ["A number with exactly two positive factors", "Any even number", "A decimal only", "A negative fraction"], "A", "A prime number has exactly two positive factors.", normalized),
+          fq("What does probability measure?", ["How likely an event is", "How loud a sound is", "How bright a color is", "How long a word is"], "A", "Probability measures likelihood.", normalized),
+          fq("What is 3 squared?", ["9", "6", "12", "27"], "A", "Three squared is 3 multiplied by 3.", normalized),
+          fq("What does a variable represent?", ["Unknown or changing value", "A fixed font", "A picture file", "A sound clip"], "A", "A variable represents an unknown or changing value.", normalized),
+          fq("In logic, what does AND require?", ["Both statements true", "Either statement true", "No statement true", "Only first false"], "A", "AND is true only when both statements are true.", normalized),
+          fq("What is the median?", ["Middle value", "Largest value", "Smallest value", "Sum of all values"], "A", "The median is the middle ordered value.", normalized),
+          fq("What does percent mean?", ["Per hundred", "Per thousand only", "Square root", "Prime factor"], "A", "Percent means per hundred.", normalized),
+          fq("What is an equation?", ["Two expressions are equal", "A random list", "A color code", "A database index"], "A", "An equation states equality between expressions.", normalized),
+          fq("What is 1/2 as a decimal?", ["0.5", "0.2", "1.5", "2.0"], "A", "One half equals 0.5.", normalized),
+          fq("What can a graph show?", ["Relationships between quantities", "Only spelling rules", "Only sound waves", "Only avatar colors"], "A", "Graphs visualize relationships or patterns.", normalized)
+        ]
+    : lower.includes("history") || lower.includes("empire") || lower.includes("civilization")
+      ? [
+          fq("In {topic}, what is a primary source?", ["Evidence from the time studied", "A modern movie only", "A random guess", "A math formula"], "A", "A primary source comes from the time or event studied.", normalized),
+          fq("What is chronology?", ["Ordering events by time", "Drawing maps only", "Counting votes only", "Naming planets"], "A", "Chronology arranges events in time order.", normalized),
+          fq("Why compare historical sources?", ["Check reliability and perspective", "Change font size", "Remove dates", "Avoid evidence"], "A", "Comparing sources evaluates reliability and context.", normalized),
+          fq("What does BCE mean?", ["Before Common Era", "Basic Calendar Entry", "British Colonial Empire", "Before City Events"], "A", "BCE means Before Common Era.", normalized),
+          fq("Which factor often shapes civilizations?", ["Access to water and trade", "Only keyboard layout", "Only screen color", "Only avatar choice"], "A", "Water, geography, trade, and resources shape civilizations.", normalized),
+          fq("What is an empire?", ["Large unit ruling diverse territories", "A single village only", "A weather system", "A math symbol"], "A", "An empire controls multiple peoples or territories.", normalized),
+          fq("What is archaeology?", ["Study of material remains", "Study of browser errors", "Study of app icons", "Study of live scores"], "A", "Archaeology studies artifacts and remains.", normalized),
+          fq("Why are timelines useful?", ["Show sequence and cause", "Hide all dates", "Randomize events", "Score quizzes"], "A", "Timelines show order, duration, and possible causes.", normalized),
+          fq("What is cultural diffusion?", ["Spread of ideas between societies", "A database backup", "A race timer", "A sound effect"], "A", "Cultural diffusion spreads ideas or practices between groups.", normalized),
+          fq("What does historical context explain?", ["Why events happened as they did", "Which color to use", "How to mute audio", "How to draw QR codes"], "A", "Context explains causes and meanings within their time.", normalized)
+        ]
     : lower.includes("space") || lower.includes("rocket") || lower.includes("astronomy")
       ? [
           fq("Which planet is known as the Red Planet?", ["Mars", "Venus", "Jupiter", "Mercury"], "A", "Mars is commonly called the Red Planet because of its reddish appearance.", "Space"),
@@ -1970,9 +2074,12 @@ function normalizeIntentForModule(raw: string) {
   if (/\b(andaman|andaman islands|andaman and nicobar|andaman nicobar|port blair|cellular jail|havelock|swaraj dweep)\b/i.test(cleaned)) topics.push("Andaman Islands");
   if (/\b(us visa|visa system|immigration|uscis|embassy|consulate|green card|h-?1b|f-?1|b-?1|b-?2)\b/i.test(cleaned)) topics.push("US Visa System");
   if (/\b(ai|artificial intelligence|agent|agents|llm|machine learning|prompt|automation)\b/i.test(cleaned)) topics.push("AI Agents");
+  if (/\b(spacetime\s*db|spacetimedb|space\s*time\s*db)\b/i.test(cleaned)) topics.push("SpacetimeDB");
   if (/\b(space|rocket|nasa|orbit|satellite|mars|moon|spacex|astronomy)\b/i.test(cleaned)) topics.push("Space Technology");
   if (/\b(database|databases|db|sql|spacetimedb|redis|postgres|backend|distributed)\b/i.test(cleaned)) topics.push("Database Systems");
   if (/\b(startup|startups|founder|vc|venture|pitch|product|growth|business)\b/i.test(cleaned)) topics.push("Startup Strategy");
+  if (/\b(f1|formula 1|formula one|grand prix|motorsport|race car|racing)\b/i.test(cleaned)) topics.push("Formula 1");
+  if (/\b(argentina|buenos aires|patagonia|pampas|andes|messi|tango)\b/i.test(cleaned)) topics.push("Argentina");
   if (/\b(fruit|fruits|nutrition|nutrient|biology|botany|food science)\b/i.test(cleaned)) topics.push("Fruit Science");
   if (/\b(math|probability|logic|algebra|calculus|statistics|puzzle)\b/i.test(cleaned)) topics.push("Math Logic");
   if (/\b(history|empire|ancient|civilization|geography)\b/i.test(cleaned)) topics.push("World History");
@@ -2009,9 +2116,12 @@ function removeRepeatedNgrams(text: string): string {
 
 function displayTopic(topic: string): string {
   if (topic === "AI Agents") return "AI";
+  if (topic === "SpacetimeDB") return "SpacetimeDB";
   if (topic === "Space Technology") return "Space";
   if (topic === "Database Systems") return "Databases";
   if (topic === "Startup Strategy") return "Startups";
+  if (topic === "Formula 1") return "Formula 1";
+  if (topic === "Argentina") return "Argentina";
   if (topic === "World History") return "History";
   return topic;
 }
@@ -2042,7 +2152,9 @@ function dedupe(values: string[]): string[] {
 }
 
 function suppressBroadModuleTopics(topics: string[]): string[] {
-  const hasSpecificScience = topics.some((topic) => ["Fruit Science", "Space Technology", "Database Systems", "AI Agents"].includes(topic));
+  if (topics.includes("SpacetimeDB")) return topics.filter((topic) => topic !== "Database Systems" && topic !== "Space Technology");
+  if (topics.includes("Formula 1")) return topics.filter((topic) => topic !== "Sports Strategy");
+  const hasSpecificScience = topics.some((topic) => ["Fruit Science", "Space Technology", "SpacetimeDB", "Database Systems", "AI Agents"].includes(topic));
   return hasSpecificScience ? topics.filter((topic) => topic !== "Science") : topics;
 }
 
