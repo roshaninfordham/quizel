@@ -18,6 +18,7 @@ import {
   ProjectorShell,
   QRHeroCard,
   ReconnectingOverlay,
+  RoomRosterBand,
   TechDrawer,
   TechMetricStrip,
   TopStatusBar,
@@ -100,6 +101,12 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     ? Math.max(0, Math.ceil((firstJoinAt + TOPIC_COLLECTION_SECONDS * 1000 - now) / 1000))
     : TOPIC_COLLECTION_SECONDS;
   const selectedTopic = session?.selectedTopic ?? (topics.slice(0, 3).map((topic) => topic.topic).join(" + ") || DEFAULT_SELECTED_TOPIC);
+  const admittedRacers = participants.filter((participant) => participant.admissionStatus === "admitted").length;
+  const activeChampionRacers = participants.filter((participant) => participant.admissionStatus === "admitted" && participant.championStatus === "active").length;
+  const simulatedRacers = participants.filter((participant) => participant.isSimulated).length;
+  const capacityLabel = simulatedRacers
+    ? `${admittedRacers} reducer racers`
+    : `${session?.admittedCount ?? stats?.admittedRacers ?? admittedRacers}/${session?.maxRacers ?? 12} admitted`;
 
   useEffect(() => {
     initSounds({ mutedByDefault: false });
@@ -203,10 +210,16 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       !autoStartRef.current
     ) {
       autoStartRef.current = true;
-      window.setTimeout(() => void startMatch(sessionId), 450);
+      const hasSimulatedRacers = participants.some((participant) => participant.isSimulated);
+      window.setTimeout(() => {
+        if (hasSimulatedRacers) startVisualRace(sessionId, callReducer);
+        else void startMatch(sessionId);
+      }, 450);
     }
   }, [
+    callReducer,
     participants.length,
+    participants,
     phase,
     questionCountRef,
     requestQuestions,
@@ -227,7 +240,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       if (key === "r") void resetDemo(sessionId);
       if (key === "a") streamSimulatedRoster(sessionId, callReducer);
       if (key === "f") void finishMatch(sessionId);
-      if (key === "s") void startMatch(sessionId);
+      if (key === "s") startVisualRace(sessionId, callReducer);
       if (key === "g") {
         void requestQuestions(sessionId);
         window.setTimeout(() => {
@@ -248,6 +261,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     <ProjectorShell>
       <TopStatusBar
         connectedCount={participants.length}
+        racingCount={admittedRacers}
         phase={phase}
         p95LatencyMs={stats?.p95LatencyMs ?? 48}
         reducerCalls={stats?.reducerCalls ?? 0}
@@ -268,36 +282,42 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       />
 
       {phase === "playing" ? (
-        <div className="grid flex-1 grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)] gap-5">
-          <div className="flex flex-col gap-5">
-            <CleanKnockoutBracket
-              entries={leaderboard}
-              session={session}
-              stats={stats}
-              activeRacers={participants.filter((participant) => participant.admissionStatus === "admitted").length}
-              raceSecondsRemaining={raceSecondsRemaining}
-              nextGateSeconds={secondsRemaining}
-              capacityLabel={`${session?.admittedCount ?? stats?.admittedRacers ?? participants.length}/${session?.maxRacers ?? 12} admitted`}
-            />
-            <TechMetricStrip stats={stats} eventsCount={events.length} />
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)] gap-5">
+            <div className="flex min-h-0 flex-col gap-5">
+              <CleanKnockoutBracket
+                entries={leaderboard}
+                session={session}
+                stats={stats}
+                activeRacers={activeChampionRacers}
+                raceSecondsRemaining={raceSecondsRemaining}
+                nextGateSeconds={secondsRemaining}
+                capacityLabel={capacityLabel}
+              />
+              <TechMetricStrip stats={stats} eventsCount={events.length} />
+            </div>
+            <LeaderboardPanel entries={leaderboard} compact />
           </div>
-          <LeaderboardPanel entries={leaderboard} compact />
+          <RoomRosterBand participants={participants} />
         </div>
       ) : phase === "finished" || phase === "replay" ? (
-        <div className="grid flex-1 grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)] gap-5">
-          <div className="flex flex-col gap-5">
-            <WinnerExplosion winner={winner} totalPlayers={participants.length} />
-            <CleanKnockoutBracket
-              entries={leaderboard}
-              session={session}
-              stats={stats}
-              activeRacers={participants.filter((participant) => participant.admissionStatus === "admitted").length}
-              raceSecondsRemaining={0}
-              nextGateSeconds={0}
-              capacityLabel="final committed"
-            />
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)] gap-5">
+            <div className="flex min-h-0 flex-col gap-5">
+              <WinnerExplosion winner={winner} totalPlayers={participants.length} />
+              <CleanKnockoutBracket
+                entries={leaderboard}
+                session={session}
+                stats={stats}
+                activeRacers={activeChampionRacers}
+                raceSecondsRemaining={0}
+                nextGateSeconds={0}
+                capacityLabel="final committed"
+              />
+            </div>
+            <LeaderboardPanel entries={leaderboard} />
           </div>
-          <LeaderboardPanel entries={leaderboard} />
+          <RoomRosterBand participants={participants} />
         </div>
       ) : (
         <div className="grid flex-1 grid-cols-[1.08fr_0.92fr] gap-5">
@@ -313,6 +333,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           <div className="flex flex-col gap-5">
             <TopicSwarm topicCounts={topics} selectedTopic={session?.selectedTopic} />
             <AgentPipeline events={agentEvents} status={phase} />
+            <DemoLoadControls sessionId={sessionId} callReducer={callReducer} disabled={false} />
             <LiveJoinFeed participants={participants} />
             <TechMetricStrip stats={stats} eventsCount={events.length} />
           </div>
@@ -322,15 +343,73 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   );
 }
 
-function streamSimulatedRoster(
+function DemoLoadControls({
+  sessionId,
+  callReducer,
+  disabled
+}: {
+  sessionId: string;
+  callReducer: <T = unknown>(name: string, args: unknown, identity?: string) => Promise<{ ok: boolean; data?: T; error?: string }>;
+  disabled: boolean;
+}) {
+  return (
+    <section className="rounded-[28px] bg-slate-950 p-5 text-white shadow-xl shadow-slate-200">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase text-blue-200">Realtime visual load</p>
+          <h2 className="text-2xl font-black">Fill the bracket wall</h2>
+          <p className="mt-1 text-sm font-bold text-slate-300">Simulated phones join through SpacetimeDB reducers and stream into the projector.</p>
+        </div>
+        <div className="flex gap-2">
+          {[50, 100, 250].map((count) => (
+            <button
+              key={count}
+              type="button"
+              disabled={disabled}
+              onClick={() => streamSimulatedRoster(sessionId, callReducer, count)}
+              className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-blue-950/30 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              +{count}
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              startVisualRace(sessionId, callReducer);
+            }}
+            className="rounded-2xl bg-amber-400 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-blue-950/30 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Start
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function startVisualRace(
   sessionId: string,
   callReducer: <T = unknown>(name: string, args: unknown, identity?: string) => Promise<{ ok: boolean; data?: T; error?: string }>
 ) {
-  for (let offset = 0; offset < 100; offset += SIMULATED_JOIN_BATCH_SIZE) {
+  void callReducer("start_match", { sessionId }, "operator");
+  for (let tick = 0; tick < 125; tick += 1) {
+    window.setTimeout(() => {
+      void callReducer("simulate_answer_burst", { sessionId, count: 32 }, "simulation-engine");
+    }, 900 + tick * 220);
+  }
+}
+
+function streamSimulatedRoster(
+  sessionId: string,
+  callReducer: <T = unknown>(name: string, args: unknown, identity?: string) => Promise<{ ok: boolean; data?: T; error?: string }>,
+  totalCount = 100
+) {
+  for (let offset = 0; offset < totalCount; offset += SIMULATED_JOIN_BATCH_SIZE) {
     window.setTimeout(() => {
       void callReducer(
         "add_simulated_players",
-        { sessionId, count: SIMULATED_JOIN_BATCH_SIZE },
+        { sessionId, count: Math.min(SIMULATED_JOIN_BATCH_SIZE, totalCount - offset) },
         "simulation-engine"
       );
     }, (offset / SIMULATED_JOIN_BATCH_SIZE) * 90);

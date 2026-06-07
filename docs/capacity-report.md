@@ -7,193 +7,93 @@ Deployment measured:
 ```text
 App URL: https://quizel-eta.vercel.app
 Join URL: https://quizel-eta.vercel.app/join/ARENA-42
+Arena URL: https://quizel-eta.vercel.app/arena/ARENA-42
 SpacetimeDB host: https://maincloud.spacetimedb.com
 SpacetimeDB module: quizrush-live
-Client subscription shape during measurement: subscribeToAllTables for each phone
-Quiz length during measurement: 7 questions
-Current code after authoritative scoring refactor: 10 questions
+Client subscription shape during measurement: subscribeToAllTables
+Quiz length during measurement: 10 questions
 ```
 
 ## Current Answer
 
-The current deployed system should be capped at:
+The deployed system is safe for:
+
+```text
+Tracked connected users: 50 passed
+Tracked connected users: 100 completed, degraded latency
+Tracked connected users: 250 failed during join/intention writes
+Admitted active racers: 12 hard cap
+```
+
+Keep production admission control at:
 
 ```text
 MAX_PLAYERS_SOFT=10
 MAX_PLAYERS_HARD=12
 ```
 
-That is the honest measured capacity for the deployed implementation tested on 2026-06-07 if the requirement is that every player can join, answer every question, receive committed score/rank state, and finish the race. After the authoritative scoring refactor and 10-question switch, the new smoke boundary at 10 users passed. Keep the hard cap at 12 until a fresh 12-user, 10-question run passes.
+That means a hackathon room can scan the QR and be represented as tracked participants, but the live answering race admits only the measured safe number of active racers. Overflow users are waitlisted/spectators until the subscription/reducer fanout is refactored and re-tested.
 
-Do not claim 50, 100, 200, or 1,000 real simultaneous racers for the current deployed system yet. Vercel static delivery is not the bottleneck; the bottleneck is the current SpacetimeDB reducer/subscription shape under answer bursts.
+## Latest Production Runs
 
-## Measurement Method
+| Run | Connected | Joined | Admitted racers | Waitlisted | Answers committed | FinalResult rows | Current ShareCard rows | Answer p95 | Status |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `stress-50-all-connected-admitted-sharecards` | 50 | 50 | 12 | 38 | 120/120 | 50 | 50 | 420ms | Pass |
+| `stress-100-all-connected-admitted-sharecards` | 100 | 100 | 12 | 88 | 120/120 | 100 | 100 | 1285ms | Degraded |
+| `stress-250-all-connected-admitted-sharecards` | 250 | 51 | 12 | 39 | 120/120 | 51 | 51 | 1505ms | Fail |
 
-Added production load harness:
+The 250-user run opened 250 WebSocket connections, but 199 join/intention writes failed with `The instance encountered a fatal error`. Do not claim 250 real participants are safe on the current deployed module.
 
-```bash
-make load-smoke
-make load USERS=12 TOPICS=4
-USERS=100 TOPICS=10 STATIC_REQUESTS=100 CONNECT_CONCURRENCY=50 JOIN_CONCURRENCY=50 ANSWER_CONCURRENCY=200 pnpm load:prod
-```
+## What The Harness Proves
 
-The harness:
+The production harness:
 
 - Fetches the deployed Vercel join route.
 - Opens one SpacetimeDB connection per synthetic phone.
-- Uses broad subscriptions to match the current deployed client behavior.
-- Joins each synthetic player.
-- Submits player intent rows.
+- Uses broad all-table subscriptions to match the current deployed client.
+- Calls `join_session` and `submit_player_intent`.
+- Lets admission control decide who is admitted versus waitlisted.
 - Starts the match.
-- Answers every active round.
-- Waits for committed `Answer` rows, `Score` rows, round transitions, and final session status.
-- Writes results under `docs/capacity-results/`.
+- Submits answers only from admitted racers, matching real product behavior.
+- Waits for committed `Answer`, `Score`, `FinalResult`, and `ShareCard` rows.
+- Writes JSON artifacts under `docs/capacity-results/`.
 
-Latest 10-question smoke result after the phone recovery, scheduled timing tolerance, and production load-harness readiness fix:
-
-```text
-Run: docs/capacity-results/load-after-prestart-readiness-10-users.json
-Users: 10
-Connected: 10 / 10
-Joined: 10 / 10
-Committed answers: 100 / 100
-Rounds resolved: 10 / 10
-Final status: finished
-Answer p50: 30ms
-Answer p95: 47ms
-Join p95: 57ms
-Static Vercel fetch p95: 89ms
-Result: pass
-```
-
-Previous 10-question smoke result after the public/secret question split, scheduled timing, and durable share-card refactor:
-
-```text
-Run: docs/capacity-results/load-2026-06-07T07-33-20-128Z.json
-Users: 10
-Connected: 10 / 10
-Joined: 10 / 10
-Committed answers: 100 / 100
-Rounds resolved: 10 / 10
-Final status: finished
-Answer p50: 35ms
-Answer p95: 52ms
-Static Vercel fetch p95: 192ms
-Result: pass
-```
-
-Share-card verification after the same deployment:
-
-```text
-Run: docs/capacity-results/load-2026-06-07T07-34-19-595Z.json
-Users: 2
-Committed answers: 20 / 20
-Final status: finished
-Created ShareCard slug: L93grEmbfPFa
-Share route: https://quizel-eta.vercel.app/share/L93grEmbfPFa
-Share route HTTP status: 200
-```
-
-Previous 7-question boundary result:
-
-```text
-Run: docs/capacity-results/load-2026-06-07T06-16-50-592Z.json
-Users: 12
-Connected: 12 / 12
-Joined: 12 / 12
-Committed answers: 84 / 84
-Rounds resolved: 7 / 7
-Final status: finished
-Answer p50: 30ms
-Answer p95: 37ms
-Static Vercel fetch p95: 206ms
-Result: pass
-```
-
-## Boundary Results
-
-| Users | Result | Notes |
-| ---: | --- | --- |
-| 10 | Pass | Latest production readiness run: 100/100 committed answers, p95 answer 47ms, p95 join 57ms, finished. |
-| 10 | Pass | Earlier 10-question refactor run: 100/100 committed answers, p95 answer 52ms, finished. |
-| 10 | Pass | Previous 7-question run: 70/70 committed answers, p95 answer 32ms, finished. |
-| 11 | Pass | Previous 7-question run: 77/77 committed answers, p95 answer 41ms, finished. |
-| 12 | Pass | Previous 7-question run: 84/84 committed answers, p95 answer 37ms, finished. |
-| 13 | Fail | Joined, but 0 committed answers in the failed run; SpacetimeDB reported fatal instance errors during round flow. |
-| 14 | Fail | Joined, but 0 committed answers in the failed run; round flow stalled. |
-| 20 | Fail | Joined, but only 60/140 expected answers committed in repeated runs. |
-| 50 | Degraded exploratory | One run committed 350/350 answers, but answer p95 reached 831ms. This is not a safe claim because higher/lower boundary runs showed instability. |
-| 100 | Fail | 100 joined, but only 300/700 answers committed; 400 answer reducer calls failed with fatal instance errors and p95 answer latency reached 9256ms. |
-
-## Why Vercel Is Not The Bottleneck
-
-The measured Vercel static route fetches stayed healthy in these tests. The latest 12-user run fetched the deployed join page with p95 206ms.
-
-This app should not use Vercel Functions as the realtime race server. Vercel documents that Vercel Functions do not support acting as a WebSocket server and recommends third-party realtime solutions for realtime communication. Vercel Hobby is also a personal/small-scale free plan with included usage limits, so the live race capacity must be measured from the realtime backend, not inferred from CDN capacity.
-
-Relevant docs:
-
-- https://vercel.com/docs/limits
-- https://vercel.com/docs/plans/hobby
-
-## Why SpacetimeDB Is Still The Right Core
-
-SpacetimeDB reducers are still the right authority boundary: reducers mutate database state in transactions with isolation, atomicity, and consistency guarantees. Subscriptions replicate rows in real time and update client caches when rows change.
-
-The current problem is not "SpacetimeDB cannot do realtime quizzes." The current problem is our module/client shape:
-
-- Every phone subscribes to all tables.
-- `submit_answer` recomputes ranks by sorting all scores on every answer.
-- Every answer inserts multiple `MatchEvent` rows.
-- Rank changes can add more event rows during answer bursts.
-- Phones receive rows they do not need.
-- Broad phone subscriptions still create unnecessary fanout.
-
-Relevant docs:
-
-- https://spacetimedb.com/docs/functions/
-- https://spacetimedb.com/docs/clients/subscriptions/
-- https://spacetimedb.com/docs/clients/subscriptions/semantics/
-
-## Recommendation For Demo
-
-Use:
-
-```text
-Soft cap: 10 active racers
-Hard cap: 12 active racers
-Spectators: unlimited only as non-answering viewers after a separate spectator view is implemented
-```
-
-Demo wording:
-
-```text
-This current deployment is measured for 12 simultaneous active racers on the live Vercel + SpacetimeDB setup. We cap admitted racers to protect realtime scoring and queue everyone else as spectators or for the next sprint.
-```
-
-Do not say:
-
-```text
-Near 0ms latency.
-100 users currently work.
-1,000 users currently work.
-Vercel free tier is the race capacity.
-```
-
-## Required Fixes Before Raising The Cap
-
-1. Split `QuestionPublic` from `QuestionSecret`.
-2. Make phones subscribe only to their participant, current round, public question, own score, and top leaderboard rows.
-3. Move projector to `LeaderboardTopN`, not all `Score` rows.
-4. Add explicit `BracketSlot` / `AdvancementEvent` rows for a fully persistent fixture history.
-5. Stop inserting public `score_delta` events for zero-point or non-product replay rows.
-6. Keep authoritative scoring in `submit_answer`, but reduce fanout and per-answer work.
-7. Add a load target only after those changes:
+Command examples:
 
 ```bash
-make load USERS=50 TOPICS=10
-make load USERS=100 TOPICS=10
-make load USERS=250 TOPICS=25
+SUBSCRIBE_MODE=all USERS=50 TOPICS=10 RESET_AFTER=false STATIC_REQUESTS=25 CONNECT_CONCURRENCY=25 JOIN_CONCURRENCY=25 ANSWER_CONCURRENCY=25 RUN_ID=stress-50-all-connected-admitted-sharecards pnpm load:prod
+
+SUBSCRIBE_MODE=all USERS=100 TOPICS=10 RESET_AFTER=false STATIC_REQUESTS=50 CONNECT_CONCURRENCY=50 JOIN_CONCURRENCY=50 ANSWER_CONCURRENCY=25 RUN_ID=stress-100-all-connected-admitted-sharecards pnpm load:prod
+
+SUBSCRIBE_MODE=all USERS=250 TOPICS=10 RESET_AFTER=false STATIC_REQUESTS=50 CONNECT_CONCURRENCY=50 JOIN_CONCURRENCY=50 ANSWER_CONCURRENCY=25 RUN_ID=stress-250-all-connected-admitted-sharecards pnpm load:prod
 ```
 
-The next credible target after refactor is 50 active racers, then 100, then 250. Each increase requires a passing capacity artifact in `docs/capacity-results/`.
+## Visual Rehearsal Load
+
+The projector includes `+50`, `+100`, and `+250` visual rehearsal buttons. These are not fake frontend cards. They call SpacetimeDB/local reducer-compatible `add_simulated_players`, create `Participant` and `Score` rows, and stream into the same roster, bracket, leaderboard, and final/share-card paths.
+
+Use them only as marked rehearsal load when the physical room is small. For real audience capacity claims, use the production load-test table above.
+
+## Why The Cap Exists
+
+Vercel static delivery is healthy; static route p95 was 170ms for 50 and about 100ms for 100/250. The bottleneck is the current realtime fanout:
+
+- Every phone still subscribes broadly.
+- `submit_answer` recomputes ranks by sorting session scores.
+- Answer bursts update `Answer`, `Score`, `MatchEvent`, `LiveStats`, and share/final state.
+- Broad subscriptions push too much state to every client.
+
+Admission control is therefore a correctness feature. It prevents the realtime race from collapsing under untested load.
+
+## Next Capacity Target
+
+Before raising `MAX_PLAYERS_HARD`, implement:
+
+1. Scoped phone subscriptions: own participant, own score, current round/question, own answer, final result, own share card.
+2. Projector subscriptions: participants, live stats, top leaderboard, bracket state, recent events only.
+3. `LeaderboardTopN` table so phones do not receive every score row.
+4. Explicit bracket rows/events for movement instead of deriving all layout client-side.
+5. Reduced per-answer `MatchEvent` fanout.
+6. Re-run 50, 100, and 250 with the scoped subscription mode.
+
+Only increase the public active-racer cap after the matching artifact passes.

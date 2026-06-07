@@ -17,6 +17,7 @@ Judges should remember: “The whole room scanned one QR code, shared expertise,
 - agent pipeline
 - 25-second match
 - live leaderboard and bracket
+- room roster showing tracked joined profiles
 - final champion
 - race replay
 - tech overlay
@@ -26,6 +27,8 @@ Judges should remember: “The whole room scanned one QR code, shared expertise,
 - Reducer-owned joins, expertise-derived topic votes, answers, scoring, rank recomputation, duplicate rejection, and reset.
 - Realtime websocket subscriptions for the laptop demo.
 - SpacetimeDB TypeScript module with the same public table/reducer contract.
+- Durable FinalResult and ShareCard rows for every participant in tested sessions.
+- Heartbeat-based stale participant elimination without deleting score history.
 - Effect worker with provider-neutral LLM adapter, NVIDIA routing, validation, safety guard support, and topic-specific fallback questions.
 - MatchEvent ledger used by replay.
 
@@ -34,8 +37,8 @@ Judges should remember: “The whole room scanned one QR code, shared expertise,
 - Production auth.
 - Profiles.
 - Automated public tunnel startup.
-- Direct generated SpacetimeDB web bindings as the default transport.
 - Long-term content management.
+- Always-on hosted Firecrawl/LLM worker unless deployed separately.
 
 ## Backup Plan
 

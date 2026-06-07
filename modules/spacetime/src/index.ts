@@ -6,11 +6,13 @@ const QUESTION_TIME_LIMIT_MS = Math.floor(TOTAL_MATCH_MS / QUESTION_COUNT);
 const ROUND_LEAD_TIME_MS = 1_000;
 const ANSWER_GRACE_MS = 150;
 const EARLY_ANSWER_TOLERANCE_MS = ROUND_LEAD_TIME_MS + 100;
+const PLAYER_STALE_TIMEOUT_MS = 12_000;
 const CORRECTNESS_POINTS = 1000;
 const MAX_SPEED_BONUS = 1000;
 const STREAK_BONUS = 100;
 const MAX_PLAYERS_SOFT = 10;
 const MAX_PLAYERS_HARD = 12;
+const EAGER_SHARECARD_LIMIT = 500;
 const SIMULATED_ANSWER_BURST_SIZE = 8;
 const DEFAULT_TOPIC = "AI + Space + Startups";
 const DEFAULT_CODE = "ARENA-42";
@@ -803,6 +805,12 @@ export const submit_answer = spacetimedb.reducer(
   const now = nowMs();
   if (now + BigInt(EARLY_ANSWER_TOLERANCE_MS) < currentRound.starts_at_ms) throw new Error("Round has not started.");
   if (now > currentRound.ends_at_ms + BigInt(ANSWER_GRACE_MS)) throw new Error("Round has ended.");
+  if (participantRow.champion_status === "eliminated") throw new Error("Participant is no longer on the active champion path.");
+  ctx.db.participant.participant_id.update({
+    ...participantRow,
+    last_seen_ms: now,
+    client_latency_ms: client_sent_at_ms !== undefined ? Math.min(Number(now > client_sent_at_ms ? now - client_sent_at_ms : BigInt(0)), 60_000) : participantRow.client_latency_ms
+  });
   const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms), QUESTION_TIME_LIMIT_MS));
   const observed_response_ms =
     client_question_rendered_at_ms !== undefined && client_clicked_at_ms !== undefined && client_clicked_at_ms >= client_question_rendered_at_ms
@@ -915,42 +923,8 @@ export const create_share_card = spacetimedb.reducer({ session_id: t.string(), p
   if (!result) throw new Error("Final result is not ready.");
   const existing = Array.from(ctx.db.share_card.participant_id.filter(participantRow.participant_id)).find((card) => card.session_id === session_id);
   if (existing) return;
-  const slug = uniqueShareSlug(ctx);
   const now = nowMs();
-  const share_text = `${participantRow.display_name} placed #${result.final_rank} with ${result.total_score.toLocaleString()} points in QuizRush Arena.`;
-  ctx.db.share_card.insert({
-    share_id: id(ctx, "share"),
-    slug,
-    session_id,
-    participant_id: participantRow.participant_id,
-    display_name: participantRow.display_name,
-    avatar: participantRow.avatar,
-    avatar_type: "emoji",
-    avatar_emoji: participantRow.avatar,
-    avatar_color: undefined,
-    avatar_url: undefined,
-    display_topic: requireSession(ctx, session_id).selected_topic ?? "QuizRush Arena",
-    final_rank: result.final_rank,
-    total_participants: result.total_participants,
-    champion_status: result.champion_status,
-    total_score: result.total_score,
-    correct_count: result.correct_count,
-    question_count: result.question_count,
-    answered_count: result.answered_count,
-    total_answer_response_ms: result.total_answer_response_ms,
-    total_correct_response_ms: result.total_correct_response_ms,
-    total_response_ms_official: result.total_answer_response_ms,
-    total_response_ms_observed: undefined,
-    fastest_response_ms: result.fastest_response_ms,
-    fastest_response_ms_official: result.fastest_official_response_ms,
-    fastest_response_ms_observed: undefined,
-    percentile: result.percentile,
-    share_text,
-    created_at_ms: now,
-    expires_at_ms: undefined,
-    view_count: 0
-  });
-  insertMatchEvent(ctx, session_id, participantRow.participant_id, "share_created", undefined, result.total_score, result.final_rank, JSON.stringify({ slug }));
+  ensureShareCard(ctx, requireSession(ctx, session_id), participantRow, result, now);
   bumpStats(ctx, session_id);
   traceOperation(ctx, session_id, "create_share_card", true, 1, undefined);
 });
@@ -972,6 +946,7 @@ export const heartbeat = spacetimedb.reducer({ session_id: t.string(), client_la
 });
 
 export const live_tick = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+  markStaleParticipants(ctx, session_id, nowMs());
   recalcStats(ctx, session_id);
   bumpStats(ctx, session_id);
   traceOperation(ctx, session_id, "live_tick", true, 1, undefined);
@@ -1000,13 +975,15 @@ export const add_simulated_players = spacetimedb.reducer({ session_id: t.string(
   const now = nowMs();
   const avatars = ["🚀", "🧠", "⚡", "✨", "🔥", "🐯"];
   const limit = Math.min(250, count);
+  const existingSimulatedCount = Array.from(ctx.db.participant.session_id.filter(session_id)).filter((participant) => participant.is_simulated).length;
   for (let i = 0; i < limit; i += 1) {
+    const displayIndex = existingSimulatedCount + i + 1;
     const participant_id = id(ctx, "sim");
     ctx.db.participant.insert({
       participant_id,
       session_id,
       identity: `sim-${participant_id}`,
-      display_name: `Rusher ${i + 1}`,
+      display_name: `Rusher ${displayIndex}`,
       avatar: avatars[i % avatars.length] ?? "🚀",
       admission_status: "admitted",
       champion_status: "active",
@@ -1171,6 +1148,7 @@ type QuestionRow = ReturnType<ReducerCtx["db"]["question_public"]["question_id"]
 type QuestionSecretRow = ReturnType<ReducerCtx["db"]["question_secret"]["question_id"]["find"]> extends infer R ? NonNullable<R> : never;
 type ParticipantRow = ReturnType<ReducerCtx["db"]["participant"]["participant_id"]["find"]> extends infer R ? NonNullable<R> : never;
 type ScoreRow = ReturnType<ReducerCtx["db"]["score"]["score_id"]["find"]> extends infer R ? NonNullable<R> : never;
+type FinalResultRow = ReturnType<ReducerCtx["db"]["final_result"]["final_result_id"]["find"]> extends infer R ? NonNullable<R> : never;
 
 function createSessionRow(ctx: ReducerCtx, code: string, question_count: number) {
   const now = nowMs();
@@ -1381,7 +1359,7 @@ function snapshotFinalResults(ctx: ReducerCtx, session_id: string, now: bigint) 
       participant_id: score.participant_id,
       final_rank: index + 1,
       total_participants: total,
-      champion_status: index === 0 ? "champion" : score.champion_status === "spectator" ? "spectator" : "finished",
+      champion_status: score.champion_status === "spectator" ? "spectator" : score.champion_status === "eliminated" ? "eliminated" : "finished",
       total_score: score.total_score,
       correct_count: score.correct_count,
       question_count: current.question_count,
@@ -1409,7 +1387,12 @@ function finishMatchInternal(ctx: ReducerCtx, session_id: string) {
   }
   snapshotFinalResults(ctx, session_id, now);
   ctx.db.session.session_id.update({ ...current, status: "finished", match_finished_at_ms: now, updated_at_ms: now });
-  const winner = Array.from(ctx.db.score.session_id.filter(session_id)).sort(compareScores)[0];
+  const sortedScores = Array.from(ctx.db.score.session_id.filter(session_id)).sort(compareScores);
+  const winner =
+    sortedScores.find((score) => {
+      const participantRow = ctx.db.participant.participant_id.find(score.participant_id);
+      return participantRow?.admission_status === "admitted" && score.champion_status !== "eliminated" && participantRow.champion_status !== "eliminated";
+    }) ?? sortedScores[0];
   if (winner) {
     ctx.db.score.score_id.update({ ...winner, champion_status: "champion", updated_at_ms: now });
     const participantRow = ctx.db.participant.participant_id.find(winner.participant_id);
@@ -1417,7 +1400,93 @@ function finishMatchInternal(ctx: ReducerCtx, session_id: string) {
     const final = ctx.db.final_result.final_result_id.find(`${session_id}:${winner.participant_id}`);
     if (final) ctx.db.final_result.final_result_id.update({ ...final, champion_status: "champion" });
   }
+  ensureShareCardsForFinalResults(ctx, session_id, now);
   insertMatchEvent(ctx, session_id, winner?.participant_id, "match_finished", undefined, winner?.total_score, winner?.current_rank, "{}");
+}
+
+function markStaleParticipants(ctx: ReducerCtx, session_id: string, now: bigint) {
+  const current = requireSession(ctx, session_id);
+  if (current.status !== "playing") return 0;
+  let changed = 0;
+  for (const item of ctx.db.participant.session_id.filter(session_id)) {
+    if (
+      item.admission_status !== "admitted" ||
+      item.is_simulated ||
+      item.champion_status !== "active" ||
+      now <= item.last_seen_ms + BigInt(PLAYER_STALE_TIMEOUT_MS)
+    ) {
+      continue;
+    }
+    ctx.db.participant.participant_id.update({ ...item, champion_status: "eliminated", last_seen_ms: now });
+    const currentScore = Array.from(ctx.db.score.participant_id.filter(item.participant_id)).find((scoreRow) => scoreRow.session_id === session_id);
+    if (currentScore) {
+      ctx.db.score.score_id.update({ ...currentScore, champion_status: "eliminated", updated_at_ms: now });
+    }
+    insertMatchEvent(
+      ctx,
+      session_id,
+      item.participant_id,
+      "participant_inactive",
+      current.current_round,
+      currentScore?.total_score,
+      currentScore?.current_rank,
+      JSON.stringify({ reason: "heartbeat_timeout", staleAfterMs: PLAYER_STALE_TIMEOUT_MS })
+    );
+    changed += 1;
+  }
+  if (changed) recomputeRanks(ctx, session_id);
+  return changed;
+}
+
+function ensureShareCard(ctx: ReducerCtx, sessionRow: SessionRow, participantRow: ParticipantRow, result: FinalResultRow, now: bigint) {
+  const existing = Array.from(ctx.db.share_card.participant_id.filter(participantRow.participant_id)).find((card) => card.session_id === sessionRow.session_id);
+  if (existing) return existing;
+  const slug = uniqueShareSlug(ctx);
+  const share_text = `${participantRow.display_name} placed #${result.final_rank} with ${result.total_score.toLocaleString()} points in QuizRush Arena.`;
+  ctx.db.share_card.insert({
+    share_id: id(ctx, "share"),
+    slug,
+    session_id: sessionRow.session_id,
+    participant_id: participantRow.participant_id,
+    display_name: participantRow.display_name,
+    avatar: participantRow.avatar,
+    avatar_type: "emoji",
+    avatar_emoji: participantRow.avatar,
+    avatar_color: undefined,
+    avatar_url: undefined,
+    display_topic: sessionRow.selected_topic ?? "QuizRush Arena",
+    final_rank: result.final_rank,
+    total_participants: result.total_participants,
+    champion_status: result.champion_status,
+    total_score: result.total_score,
+    correct_count: result.correct_count,
+    question_count: result.question_count,
+    answered_count: result.answered_count,
+    total_answer_response_ms: result.total_answer_response_ms,
+    total_correct_response_ms: result.total_correct_response_ms,
+    total_response_ms_official: result.total_answer_response_ms,
+    total_response_ms_observed: undefined,
+    fastest_response_ms: result.fastest_response_ms,
+    fastest_response_ms_official: result.fastest_official_response_ms,
+    fastest_response_ms_observed: undefined,
+    percentile: result.percentile,
+    share_text,
+    created_at_ms: now,
+    expires_at_ms: undefined,
+    view_count: 0
+  });
+  insertMatchEvent(ctx, sessionRow.session_id, participantRow.participant_id, "share_created", undefined, result.total_score, result.final_rank, JSON.stringify({ slug }));
+  return ctx.db.share_card.slug.find(slug);
+}
+
+function ensureShareCardsForFinalResults(ctx: ReducerCtx, session_id: string, now: bigint) {
+  const sessionRow = requireSession(ctx, session_id);
+  const finalResults = Array.from(ctx.db.final_result.session_id.filter(session_id));
+  if (finalResults.length > EAGER_SHARECARD_LIMIT) return;
+  for (const result of finalResults) {
+    const participantRow = ctx.db.participant.participant_id.find(result.participant_id);
+    if (participantRow) ensureShareCard(ctx, sessionRow, participantRow, result, now);
+  }
 }
 
 function updateCapacity(ctx: ReducerCtx, session_id: string, now: bigint) {

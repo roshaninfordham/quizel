@@ -3,10 +3,12 @@ import {
   DEFAULT_SESSION_CODE,
   DEFAULT_SESSION_ID,
   DEFAULT_TOPICS,
+  EAGER_SHARECARD_LIMIT,
   MAX_PLAYERS_HARD,
   MAX_PLAYERS_SOFT,
   QUESTION_COUNT,
   QUESTION_TIME_LIMIT_MS,
+  PLAYER_STALE_TIMEOUT_MS,
   ROUND_LEAD_TIME_MS,
   ANSWER_GRACE_MS,
   SIMULATED_ANSWER_BURST_SIZE,
@@ -753,6 +755,9 @@ export class QuizRushEngine {
       observedResponseMs !== null &&
       (observedResponseMs < 80 || Math.abs(observedResponseMs - officialResponseMs) > Math.max(600, officialResponseMs * 0.75));
     const isCorrect = args.selectedOption === secret.correctOption;
+    participant.lastSeen = now;
+    participant.clientLatencyMs = participant.clientLatencyMs ?? (typeof args.clientSentAt === "number" ? Math.max(0, now - args.clientSentAt) : null);
+    if (participant.championStatus === "eliminated") throw new Error("Participant is no longer on the active champion path.");
     const score = this.requireScore(round.sessionId, participant.participantId);
     const breakdown = computeAnswerScoreBreakdown({ isCorrect, responseMs: officialResponseMs, previousAnswerWasCorrect: score.lastAnswerCorrect === true });
     const answer: Answer = {
@@ -853,7 +858,12 @@ export class QuizRushEngine {
     session.matchFinishedAt = now;
     session.updatedAt = now;
     this.snapshotFinalResults(session.sessionId, now);
-    const winner = this.state.scores.filter((score) => score.sessionId === session.sessionId).sort(compareScores)[0];
+    const sortedScores = this.state.scores.filter((score) => score.sessionId === session.sessionId).sort(compareScores);
+    const winner =
+      sortedScores.find((score) => {
+        const participant = this.state.participants.find((candidate) => candidate.participantId === score.participantId);
+        return participant?.admissionStatus === "admitted" && score.championStatus !== "eliminated" && participant.championStatus !== "eliminated";
+      }) ?? sortedScores[0];
     if (winner) {
       winner.championStatus = "champion";
       const winnerParticipant = this.state.participants.find((participant) => participant.participantId === winner.participantId);
@@ -861,6 +871,7 @@ export class QuizRushEngine {
       const final = this.state.finalResults.find((result) => result.participantId === winner.participantId && result.sessionId === session.sessionId);
       if (final) final.championStatus = "champion";
     }
+    this.ensureShareCardsForFinalResults(session.sessionId, now);
     this.matchEvent(session.sessionId, winner?.participantId ?? null, "match_finished", null, winner?.totalScore ?? null, winner?.currentRank ?? null, {});
     return session;
   }
@@ -875,6 +886,14 @@ export class QuizRushEngine {
     );
     if (!result) throw new Error("Final result is not ready yet.");
     const now = Date.now();
+    const existing = this.state.shareCards.find(
+      (candidate) => candidate.sessionId === session.sessionId && candidate.participantId === participant.participantId
+    );
+    if (existing) return existing;
+    return this.ensureShareCard(session, participant, result, now);
+  }
+
+  private ensureShareCard(session: Session, participant: Participant, result: FinalResult, now: number): ShareCard {
     const existing = this.state.shareCards.find(
       (candidate) => candidate.sessionId === session.sessionId && candidate.participantId === participant.participantId
     );
@@ -916,6 +935,16 @@ export class QuizRushEngine {
     return share;
   }
 
+  private ensureShareCardsForFinalResults(sessionId: string, now: number): void {
+    const session = this.requireSession(sessionId);
+    const finalResults = this.state.finalResults.filter((result) => result.sessionId === sessionId);
+    if (finalResults.length > EAGER_SHARECARD_LIMIT) return;
+    for (const result of finalResults) {
+      const participant = this.state.participants.find((candidate) => candidate.participantId === result.participantId);
+      if (participant) this.ensureShareCard(session, participant, result, now);
+    }
+  }
+
   private incrementShareView({ args }: ReducerContext<{ slug: string }>): ShareCard {
     const share = this.state.shareCards.find((candidate) => candidate.slug === args.slug);
     if (!share) throw new Error("Share card not found or expired.");
@@ -947,10 +976,40 @@ export class QuizRushEngine {
   }
 
   private liveTick({ args }: ReducerContext<{ sessionId: string }>): LiveStats {
+    this.markStaleParticipants(args.sessionId, Date.now());
     this.recalculateStats(args.sessionId);
     const stats = this.state.liveStats.find((candidate) => candidate.sessionId === args.sessionId);
     if (!stats) throw new Error(`LiveStats not found: ${args.sessionId}`);
     return stats;
+  }
+
+  private markStaleParticipants(sessionId: string, now: number): number {
+    const session = this.requireSession(sessionId);
+    if (session.status !== "playing") return 0;
+    let changed = 0;
+    for (const participant of this.state.participants.filter(
+      (candidate) =>
+        candidate.sessionId === sessionId &&
+        candidate.admissionStatus === "admitted" &&
+        !candidate.isSimulated &&
+        candidate.championStatus === "active" &&
+        now - candidate.lastSeen > PLAYER_STALE_TIMEOUT_MS
+    )) {
+      participant.championStatus = "eliminated";
+      participant.lastSeen = now;
+      const score = this.state.scores.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participant.participantId);
+      if (score) {
+        score.championStatus = "eliminated";
+        score.updatedAt = now;
+      }
+      this.matchEvent(sessionId, participant.participantId, "participant_inactive", session.currentRound, score?.totalScore ?? null, score?.currentRank ?? null, {
+        reason: "heartbeat_timeout",
+        staleAfterMs: PLAYER_STALE_TIMEOUT_MS
+      });
+      changed += 1;
+    }
+    if (changed) this.recomputeRanks(sessionId, now);
+    return changed;
   }
 
   private resetDemo({ args }: ReducerContext<{ sessionId?: string }>): Session {
@@ -970,12 +1029,14 @@ export class QuizRushEngine {
     const now = Date.now();
     const inserted: Participant[] = [];
     const avatars = ["🚀", "🧠", "⚡", "✨", "🔥", "🐯"];
+    const existingSimulatedCount = this.state.participants.filter((participant) => participant.sessionId === session.sessionId && participant.isSimulated).length;
     for (let index = 0; index < Math.max(0, Math.min(args.count, 250)); index += 1) {
+      const displayIndex = existingSimulatedCount + index + 1;
       const participant: Participant = {
         participantId: this.nextId("participant"),
         sessionId: session.sessionId,
-        identity: `sim-${Date.now()}-${index}`,
-        displayName: `Rusher ${this.state.participants.length + 1}`,
+        identity: `sim-${session.sessionId}-${displayIndex}`,
+        displayName: `Rusher ${displayIndex}`,
         avatar: avatars[index % avatars.length] ?? "🚀",
         admissionStatus: "admitted",
         championStatus: "active",
@@ -1209,7 +1270,7 @@ export class QuizRushEngine {
         participantId: score.participantId,
         finalRank: index + 1,
         totalParticipants,
-        championStatus: index === 0 ? "champion" : score.championStatus === "spectator" ? "spectator" : "finished",
+        championStatus: score.championStatus === "spectator" ? "spectator" : score.championStatus === "eliminated" ? "eliminated" : "finished",
         totalScore: score.totalScore,
         correctCount: score.correctCount,
         questionCount: this.requireSession(sessionId).questionCount,

@@ -35,7 +35,7 @@ import {
 type JoinStep = "profile" | "intent" | "confirm";
 
 export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
-  const { state, connectionState, lastSyncAt } = useSpacetime();
+  const { state, connectionState, lastSyncAt, callReducer } = useSpacetime();
   const session = useSessionByCode(code);
   const sessionId = session?.sessionId ?? "session-demo";
   const [participantId, setParticipantId] = useState(() => getJoinedParticipantId(code));
@@ -90,6 +90,16 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     const timer = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!participantId) return;
+    const beat = () => {
+      void callReducer("heartbeat", { sessionId, clientLatencyMs: 48 });
+    };
+    beat();
+    const timer = window.setInterval(beat, 5_000);
+    return () => window.clearInterval(timer);
+  }, [callReducer, participantId, sessionId]);
 
   useEffect(() => {
     shareCardsRef.current = state.shareCards;
@@ -350,9 +360,17 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           <p className="mt-2 text-xl font-black text-slate-600">{(finalResult?.totalScore ?? score?.totalScore ?? 0).toLocaleString()} points</p>
             <div className="mt-6 grid grid-cols-2 gap-3 text-left">
               <ResultStat label="Correct" value={`${finalResult?.correctCount ?? score?.correctCount ?? 0}/${finalResult?.questionCount ?? QUESTION_COUNT}`} />
-              <ResultStat
+            <ResultStat
               label="Total time"
-              value={`${((finalResult?.totalOfficialResponseMs ?? finalResult?.totalResponseMs ?? score?.totalOfficialResponseMs ?? score?.totalResponseMs ?? 0) / 1000).toFixed(2)}s`}
+              value={`${(
+                (finalResult?.totalAnswerResponseMs ??
+                  finalResult?.totalOfficialResponseMs ??
+                  finalResult?.totalResponseMs ??
+                  score?.totalAnswerResponseMs ??
+                  score?.totalOfficialResponseMs ??
+                  score?.totalResponseMs ??
+                  0) / 1000
+              ).toFixed(2)}s`}
             />
             <ResultStat
               label="Fastest"

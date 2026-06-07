@@ -6,6 +6,73 @@ A 25-second AI-personalized quiz tournament from one QR code.
 
 QuizRush Arena uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
 
+## Problem Statement
+
+Room-scale quiz games usually make everyone answer the same static question set. That breaks when every player wants a different topic, and it becomes unsafe at scale if the frontend invents score, answer timing, ranking, or share links.
+
+QuizRush Arena solves this as a realtime state race:
+
+- phones are private quiz controllers,
+- the projector is a public live tournament broadcast,
+- SpacetimeDB is the authoritative race database,
+- the agent worker generates grounded quiz packs and writes them back through reducers,
+- Vercel hosts the web UI and share pages.
+
+## Product Solution
+
+Users scan one QR, create a profile, type or speak any topic in natural language, answer a private quiz sprint, and see the room move through a public live bracket. Every result is stored as database state and every participant gets a durable score-card link.
+
+```mermaid
+flowchart LR
+    Phone[Phone Player] -->|join/profile/topic| DB[(SpacetimeDB)]
+    Phone -->|submit_answer reducer| DB
+    Worker[Effect Agent Worker] -->|facts + quiz pack reducers| DB
+    DB --> Questions[QuestionPublic rows]
+    DB --> Score[Score / FinalResult]
+    DB --> Share[ShareCard slug]
+    Projector[Projector Live Bracket] -->|subscriptions| DB
+    Vercel[Vercel Web App] --> Phone
+    Vercel --> Projector
+    Vercel --> SharePage[/share/:slug]
+```
+
+## Why This Is Different
+
+Existing live quiz tools are usually shared-question polling surfaces. QuizRush Arena is built around personalized topics plus a shared realtime race engine:
+
+- **Personalized input:** every player can ask for a different topic.
+- **Database-authoritative race:** client code does not decide score, rank, official timing, winner, or share URL.
+- **Public/private split:** phones show private questions; the projector shows only the public bracket, leaderboard, roster, and champion.
+- **Durable share cards:** score links are rows in SpacetimeDB, not URL-encoded text.
+- **Admission control:** the app caps active racers to measured capacity and tracks overflow users instead of crashing.
+- **Demo resilience:** if Firecrawl/LLM is slow, deterministic topic-specific fallback questions keep the sprint running.
+
+## Current Production Status
+
+```text
+Stable app: https://quizel-eta.vercel.app
+Projector: https://quizel-eta.vercel.app/arena/ARENA-42
+Phone join: https://quizel-eta.vercel.app/join/ARENA-42
+SpacetimeDB module: quizrush-live on maincloud
+```
+
+Measured on 2026-06-07:
+
+| Scenario | Result |
+| --- | --- |
+| 50 connected tracked users | Pass |
+| 100 connected tracked users | Functional, degraded answer p95 |
+| 250 connected tracked users | Failed during join/intention writes |
+| Active admitted racers | Keep hard cap at 12 |
+
+The projector now separates these surfaces:
+
+- **Champion Path bracket:** admitted active racers only.
+- **Leaderboard:** ranked scoring surface.
+- **Room Roster:** every tracked participant profile, including queued/watching users.
+
+See [docs/capacity-report.md](docs/capacity-report.md) for exact artifacts.
+
 ## What It Does
 
 QuizRush Arena turns a room into a live multiplayer quiz race. The presenter runs `make online-public`, the projector shows a giant QR code, everyone joins from a phone, players type or speak their expertise, deterministic intent parsing converts that into live arena topics, AI agents generate and review ten rapid questions, phones show private quiz prompts, and the projector shows only the public Champion Path fixture, leaderboard, capacity state, and winner.
@@ -31,6 +98,7 @@ Projector keyboard controls:
 S = start match
 G = generate questions
 A = add 100 simulated players
++50/+100/+250 = reducer-backed visual rehearsal load buttons
 T = toggle tech overlay
 F = force finish
 R = reset demo
@@ -124,6 +192,16 @@ pnpm dlx vercel --prod
 
 The direct SpaceTimeDB browser transport uses generated TypeScript bindings from `apps/web/src/lib/spacetime/module_bindings`, subscribes to the live tables, writes only through reducers, and persists the SpaceTimeDB auth token in local storage so a phone keeps the same participant identity after refresh.
 
+### Does The Vercel Link Work If The Laptop Is Off?
+
+Yes for the deployed web app and SpacetimeDB-backed realtime core:
+
+```text
+Vercel frontend + maincloud SpacetimeDB module = available without the laptop
+```
+
+The Firecrawl/LLM refinement worker is a separate long-running service. If that worker is not deployed, the app still runs with deterministic topic-specific fallback packs, but arbitrary long-tail web-grounded generation will not improve in the background.
+
 For LLM refinement, keep the Effect agent worker running as a long-lived process pointed at the same reducer contract. Vercel itself should not be the websocket worker runtime:
 
 ```bash
@@ -140,28 +218,54 @@ pnpm --filter @quizrush/agent-worker start
 ## Architecture
 
 ```mermaid
-flowchart LR
-    Terminal[make online CLI] --> STDB[(SpacetimeDB Module)]
-    Terminal --> Web[Vite Web App]
-    Terminal --> Worker[Effect Agent Worker]
-    Terminal --> Gateway[Local Realtime Gateway]
+flowchart TD
+    Vercel[Vercel SPA Hosting] --> Phone[Phone Join UI]
+    Vercel --> Projector[Projector Arena]
+    Vercel --> ShareRoute[Share Page]
 
-    Phones[Audience Phones] -->|join_session / submit_answer| Gateway
-    Projector[Projector Arena] -->|subscriptions| Gateway
-    Tech[Tech Overlay] -->|subscriptions| Gateway
+    Phone -->|reducers| DB[(SpacetimeDB)]
+    Projector -->|subscriptions| DB
+    ShareRoute -->|ShareCard subscription| DB
 
-    Gateway -->|same reducer contract| STDB
-    Worker -->|subscribe AgentRequest / Session state| Gateway
-    Worker -->|Firecrawl search/scrape| WebFacts[Web Fact Sources]
-    Worker -->|grounded LLM calls| LLM[Swappable LLM Provider]
-    Worker -->|submit_topic_facts / submit_question_pack / record_agent_event| Gateway
+    Worker[Effect Agent Worker] -->|claim jobs / submit packs| DB
+    Worker --> Firecrawl[Firecrawl / Web Facts]
+    Worker --> LLM[LLM Provider Pool]
 
-    Gateway -->|live table snapshots| Phones
-    Gateway -->|live table snapshots| Projector
-    Gateway -->|live table snapshots| Tech
+    DB --> Participant[Participant]
+    DB --> Intent[PlayerIntent]
+    DB --> Questions[QuestionPublic + QuestionSecret]
+    DB --> Answer[Answer]
+    DB --> Score[Score / FinalResult]
+    DB --> Share[ShareCard]
 ```
 
-The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer contract. The laptop demo also includes `apps/realtime-server`, a local websocket reducer gateway that mirrors the same contract for reliable room demos while generated SpacetimeDB bindings are optional.
+The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer contract. The laptop demo also includes `apps/realtime-server`, a local websocket reducer gateway that mirrors the same contract for local rehearsal.
+
+## User Flow
+
+```mermaid
+sequenceDiagram
+    participant U as Phone User
+    participant DB as SpacetimeDB
+    participant W as Agent Worker
+    participant P as Projector
+    participant S as Share Page
+
+    U->>DB: join_session()
+    DB-->>P: Participant appears in Room Roster
+    U->>DB: submit_player_intent(topic)
+    DB-->>W: pending generation state
+    W->>W: normalize topic + retrieve/cache facts
+    W->>DB: submit_question_pack()
+    DB-->>U: QuestionPublic rows
+    U->>DB: submit_answer()
+    DB->>DB: read QuestionSecret, score, rank
+    DB-->>P: leaderboard/bracket updates
+    DB-->>U: own score update
+    DB->>DB: FinalResult + ShareCard
+    U->>S: open /share/:slug
+    S->>DB: load ShareCard row
+```
 
 ## What Works
 
@@ -173,6 +277,7 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Shared transcript cleanup removes repeated interim speech such as `Fruit Fruits Fruits` before reducers see it.
 - First-class `PlayerIntent` rows store raw expertise, cleaned text, canonical topics, topic key, arena name, confidence, and pack-ready status.
 - Realtime joins, expertise-derived topic votes, answers, scores, ranks, Champion Path fixture, winner, and share links.
+- Room Roster surface for every tracked joined profile, separate from the admitted-racer bracket.
 - Tasteful generated howler.js sound effects with phone sound off by default.
 - Live projector metrics refreshed by reducer-owned `live_tick` updates.
 - Simulated 100-player room load streamed in small reducer batches from the `A` key.
@@ -182,6 +287,7 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 - Server-authoritative response time and score calculation.
 - `clientEventId` idempotency for answer retries.
 - Incremental `FinalResult`, `ShareCard`, `SessionCapacity`, and `AdmissionTicket` rows.
+- Heartbeats and stale-phone elimination: stale real racers are marked out without deleting their score history.
 - Duplicate answer rejection and metric tracking.
 - `MatchEvent` replay ledger hidden in the technical drawer by default.
 - Effect-based LLM worker with Firecrawl grounding, provider routing, retries, validation, safety guard support, Instant Quiz Engine cache/template racing, and topic-specific deterministic fallback.
@@ -192,7 +298,7 @@ The SpacetimeDB module in `modules/spacetime` is the authoritative table/reducer
 ## What Is Prototype Scope
 
 - Production auth, payments, stored-value accounts, profiles, chat, and content marketplace are intentionally omitted.
-- The default judged laptop transport is the local realtime gateway for reliability. The SpacetimeDB module builds and exposes the same public reducers/tables for direct integration.
+- Firecrawl/LLM refinement requires the long-running agent worker to be deployed or running. The core Vercel + SpacetimeDB flow has deterministic fallback packs.
 - Cloudflare/ngrok tunnel startup is automated by `make online-public` when the provider CLI is installed. You can still set `PUBLIC_BASE_URL` manually for a trusted domain.
 
 ## AI Agents
@@ -249,6 +355,41 @@ MAX_PLAYERS_HARD=12
 
 Vercel serves the static frontend. SpacetimeDB is the realtime race engine. Do not claim a higher live-racer count until `docs/capacity-results/` contains a passing load-test artifact for that number.
 
+Latest production artifacts:
+
+```text
+50 connected tracked users: pass
+100 connected tracked users: functionally complete, degraded p95
+250 connected tracked users: fail
+12 active admitted racers: current hard cap
+```
+
+## When The System Might Break
+
+- More than the measured active-racer cap attempts to answer in one sprint.
+- Hundreds of clients subscribe broadly before scoped subscription fanout is implemented.
+- Venue Wi-Fi blocks phone-to-laptop traffic during local demos.
+- Firecrawl/LLM provider rate limits trigger; fallback packs should still keep the race running.
+- Agent worker is not deployed; long-tail web-grounded refinement will not run, but deterministic fallback questions remain available.
+
+## Challenges And Resolutions
+
+- **Broken share links:** replaced text-based `/share/player...` URLs with durable `ShareCard.slug` rows.
+- **Misleading response time:** separated total submitted-answer time from fastest answer and kept official timing server-side.
+- **Phone fatal errors:** added route/error recovery and client error logging.
+- **Room size ambiguity:** separated tracked users, admitted racers, waitlisted users, and rehearsal simulation.
+- **SpacetimeDB fanout pressure:** added admission control and documented the next scoped-subscription refactor before raising caps.
+- **Topic quality:** deterministic normalization, topic-specific fallback packs, Firecrawl fact storage, and validation guardrails reduce unrelated questions.
+
+## Future Scope
+
+- Deploy the Effect worker on Fly.io, Railway, Render, or Cloud Run for always-on Firecrawl/LLM refinement.
+- Replace broad table subscriptions with scoped phone/projector subscriptions.
+- Add `LeaderboardTopN`, explicit bracket tables, and sharded arenas for larger active races.
+- Add object storage for uploaded avatars.
+- Add Open Graph score-card images for richer social sharing.
+- Raise active-racer caps only after passing load artifacts.
+
 Architecture docs:
 
 - [Fixture architecture](docs/fixture-architecture.md)
@@ -257,6 +398,7 @@ Architecture docs:
 - [Realtime loop](docs/realtime-loop.md)
 - [Capacity](docs/capacity.md)
 - [Capacity report](docs/capacity-report.md)
+- [Realtime demo runbook](docs/realtime-demo-runbook.md)
 
 ## SpacetimeDB
 

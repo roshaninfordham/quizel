@@ -58,7 +58,7 @@ export function positionBracketNodes(input: {
   const stageCount = input.stages.length;
   if (!stageCount) return [];
   const maxStageSize = input.stages[0]?.size ?? 2;
-  const nodeSize = maxStageSize >= 16 ? 28 : maxStageSize >= 8 ? 44 : 58;
+  const nodeSize = maxStageSize >= 32 ? 18 : maxStageSize >= 16 ? 28 : maxStageSize >= 8 ? 44 : 58;
   const participantLiveStage = new Map<string, number>();
 
   for (const stage of input.stages) {
@@ -89,6 +89,7 @@ export function positionBracketNodes(input: {
       const liveStage = participantLiveStage.get(entry.participant.participantId) ?? stage.stageIndex;
       const isChampion = input.finished && stage.stageIndex === stageCount - 1 && index === 0;
       const isEliminated = liveStage > stage.stageIndex;
+      const isOutByState = entry.participant.championStatus === "eliminated" || entry.score.championStatus === "eliminated";
       return {
         id: `${stage.stageIndex}:${entry.participant.participantId}`,
         stageIndex: stage.stageIndex,
@@ -99,12 +100,14 @@ export function positionBracketNodes(input: {
         entry,
         status: isChampion
           ? "champion"
+          : isOutByState
+            ? "eliminated"
           : stage.stageIndex < liveStage
             ? "advanced"
             : stage.stageIndex < input.progressStage && !isEliminated
               ? "eliminated"
               : "active",
-        isLivePosition: liveStage === stage.stageIndex
+        isLivePosition: liveStage === stage.stageIndex && !isOutByState
       };
     });
   });
@@ -150,7 +153,7 @@ export function progressStageFor(input: { entries: BracketEntry[]; currentRound:
 
 export function visibleBracketSize(count: number): number {
   if (count <= 1) return count;
-  const capped = Math.min(count, 16);
+  const capped = Math.min(count, 32);
   return Math.max(2, nextPowerOfTwo(capped));
 }
 

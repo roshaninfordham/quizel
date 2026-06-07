@@ -123,6 +123,7 @@ export function Button({
 
 export function TopStatusBar({
   connectedCount,
+  racingCount,
   phase,
   p95LatencyMs,
   reducerCalls,
@@ -132,6 +133,7 @@ export function TopStatusBar({
   techOpen = false
 }: {
   connectedCount: number;
+  racingCount?: number;
   phase: string;
   p95LatencyMs: number;
   reducerCalls: number;
@@ -154,7 +156,8 @@ export function TopStatusBar({
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm font-black">
-        <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} racers`} />
+        <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} tracked`} />
+        {typeof racingCount === "number" ? <StatusPill icon={<Zap className="size-5" />} label={`${racingCount} racing`} /> : null}
         <StatusPill icon={<Play className="size-5" />} label={phase.replace("_", " ")} />
         <StatusPill icon={<Gauge className="size-5" />} label={`p95 ${p95LatencyMs}ms`} />
         <StatusPill icon={<Activity className="size-5" />} label={`${reducerCalls} reducers`} />
@@ -352,26 +355,111 @@ export function TopicSwarm({
   );
 }
 
-export function FloatingAvatarCloud({ participants }: { participants: Participant[] }) {
+export function FloatingAvatarCloud({
+  participants,
+  compact = false,
+  maxVisible = 100
+}: {
+  participants: Participant[];
+  compact?: boolean;
+  maxVisible?: number;
+}) {
+  const visible = participants.slice(-maxVisible);
+  const hidden = Math.max(0, participants.length - visible.length);
   return (
-    <Panel className="min-h-[224px] overflow-hidden">
+    <Panel className={cn("overflow-hidden", compact ? "min-h-[220px] p-4" : "min-h-[224px]")}>
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black text-slate-950">Roster Wall</h2>
-        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{participants.length} live</span>
+        <h2 className={cn("font-black text-slate-950", compact ? "text-xl" : "text-2xl")}>Roster Wall</h2>
+        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{participants.length} tracked</span>
       </div>
-      <div className="mt-4 grid grid-cols-10 gap-2.5">
-        {participants.slice(-50).map((participant) => (
+      <div className={cn("mt-4 grid gap-2", compact ? "grid-cols-2" : "grid-cols-5 xl:grid-cols-10")}>
+        {visible.map((participant) => (
           <motion.div
             key={participant.participantId}
             layout
             initial={{ opacity: 0, scale: 0.6 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="grid aspect-square place-items-center rounded-full bg-gradient-to-br from-blue-600 to-violet-600 text-2xl shadow-md shadow-blue-100"
+            className={cn(
+              "flex min-w-0 items-center gap-2 rounded-full px-2 py-1.5 shadow-sm ring-1",
+              participant.championStatus === "eliminated"
+                ? "bg-slate-100 text-slate-500 ring-slate-200"
+                : participant.admissionStatus === "admitted"
+                  ? "bg-gradient-to-r from-blue-50 to-violet-50 text-slate-950 ring-blue-100"
+                  : "bg-amber-50 text-amber-900 ring-amber-100"
+            )}
             title={participant.displayName}
           >
-            {participant.avatar}
+            <span
+              className={cn(
+                "grid shrink-0 place-items-center rounded-full text-lg",
+                compact ? "size-8" : "size-10",
+                participant.championStatus === "eliminated" ? "bg-slate-300 grayscale" : "bg-gradient-to-br from-blue-600 to-violet-600"
+              )}
+            >
+              {participant.avatar}
+            </span>
+            <span className={cn("min-w-0 truncate font-black", compact ? "text-xs" : "text-sm")}>{participant.displayName}</span>
           </motion.div>
         ))}
+        {hidden ? (
+          <div className="flex items-center justify-center rounded-full bg-slate-950 px-3 py-2 text-sm font-black text-white">
+            +{hidden} tracked
+          </div>
+        ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+export function RoomRosterBand({ participants }: { participants: Participant[] }) {
+  const admitted = participants.filter((participant) => participant.admissionStatus === "admitted").length;
+  const waitlisted = participants.filter((participant) => participant.admissionStatus !== "admitted").length;
+  const visible = participants.slice(0, 180);
+  const hidden = Math.max(0, participants.length - visible.length);
+
+  return (
+    <Panel className="shrink-0 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-black text-slate-950">Room Roster</h2>
+          <p className="text-sm font-extrabold text-slate-500">{participants.length} tracked · {admitted} racing · {waitlisted} queued/watching</p>
+        </div>
+        <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">live profiles</span>
+      </div>
+      <div className="mt-3 grid max-h-32 grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2 overflow-y-auto pr-1">
+        {visible.map((participant) => (
+          <motion.div
+            key={participant.participantId}
+            layout
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: participant.championStatus === "eliminated" ? 0.5 : 1, scale: 1 }}
+            className={cn(
+              "flex min-w-0 items-center gap-2 rounded-2xl px-2 py-1.5 ring-1",
+              participant.championStatus === "champion"
+                ? "bg-amber-50 ring-amber-200"
+                : participant.championStatus === "eliminated"
+                  ? "bg-slate-100 ring-slate-200"
+                  : participant.admissionStatus === "admitted"
+                    ? "bg-blue-50 ring-blue-100"
+                    : "bg-white ring-slate-200"
+            )}
+            title={`${participant.displayName} · ${participant.admissionStatus} · ${participant.championStatus}`}
+          >
+            <span
+              className={cn(
+                "grid size-8 shrink-0 place-items-center rounded-full text-base",
+                participant.championStatus === "eliminated" ? "bg-slate-300 grayscale" : "bg-gradient-to-br from-blue-600 to-violet-600"
+              )}
+            >
+              {participant.avatar}
+            </span>
+            <span className="min-w-0 truncate text-xs font-black text-slate-950">{participant.displayName}</span>
+          </motion.div>
+        ))}
+        {hidden ? (
+          <div className="flex items-center justify-center rounded-2xl bg-slate-950 px-3 py-2 text-xs font-black text-white">+{hidden} more</div>
+        ) : null}
+        {!participants.length ? <p className="text-sm font-bold text-slate-500">Waiting for profiles...</p> : null}
       </div>
     </Panel>
   );
@@ -497,13 +585,13 @@ export function TimerRing({ secondsRemaining }: { secondsRemaining: number }) {
 
 export function LeaderboardPanel({ entries, compact = false }: { entries: Array<{ participant: Participant; score: Score }>; compact?: boolean }) {
   return (
-    <Panel className="min-h-full">
+    <Panel className={compact ? "min-h-[360px]" : "min-h-full"}>
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-black text-slate-950">Leaderboard</h2>
         <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">speed + accuracy</span>
       </div>
       <div className="mt-4 space-y-2.5">
-        {entries.slice(0, compact ? 8 : 12).map((entry) => (
+        {entries.slice(0, compact ? 12 : 20).map((entry) => (
           <motion.div
             key={entry.participant.participantId}
             layout
@@ -520,8 +608,8 @@ export function LeaderboardPanel({ entries, compact = false }: { entries: Array<
             </div>
             <div className="text-right">
               <p className="text-xl font-black text-slate-950">{entry.score.totalScore.toLocaleString()}</p>
-              <p className={cn("text-sm font-black", entry.score.previousRank > entry.score.currentRank ? "text-emerald-600" : "text-slate-400")}>
-                {entry.score.previousRank > entry.score.currentRank ? `up ${entry.score.previousRank - entry.score.currentRank}` : "live"}
+              <p className={cn("text-sm font-black", leaderboardStatusClass(entry))}>
+                {leaderboardStatus(entry)}
               </p>
             </div>
           </motion.div>
@@ -530,6 +618,24 @@ export function LeaderboardPanel({ entries, compact = false }: { entries: Array<
       </div>
     </Panel>
   );
+}
+
+function leaderboardStatus(entry: { participant: Participant; score: Score }): string {
+  if (entry.participant.championStatus === "champion" || entry.score.championStatus === "champion") return "champion";
+  if (entry.participant.championStatus === "eliminated" || entry.score.championStatus === "eliminated") return "out";
+  if (entry.participant.admissionStatus === "waitlisted") return "queued";
+  if (entry.participant.admissionStatus === "spectator") return "watching";
+  if (entry.score.previousRank > entry.score.currentRank) return `up ${entry.score.previousRank - entry.score.currentRank}`;
+  return "live";
+}
+
+function leaderboardStatusClass(entry: { participant: Participant; score: Score }): string {
+  const status = leaderboardStatus(entry);
+  if (status === "champion") return "text-amber-600";
+  if (status === "out") return "text-slate-400";
+  if (status === "queued" || status === "watching") return "text-amber-700";
+  if (status.startsWith("up")) return "text-emerald-600";
+  return "text-slate-400";
 }
 
 export function TechMetricStrip({ stats, eventsCount }: { stats?: LiveStats; eventsCount: number }) {

@@ -16,6 +16,7 @@ export type MatchEventType =
   | "score_delta"
   | "rank_change"
   | "round_resolved"
+  | "participant_inactive"
   | "match_finished"
   | "share_created"
   | "client_error";

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT, QUESTION_TIME_LIMIT_MS, TOTAL_MATCH_SECONDS } from "./constants";
+import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, PLAYER_STALE_TIMEOUT_MS, QUESTION_COUNT, QUESTION_TIME_LIMIT_MS, TOTAL_MATCH_SECONDS } from "./constants";
 import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
 import { QuizRushEngine } from "./engine";
 import { computeAnswerScore, percentile } from "./scoring";
@@ -303,6 +303,34 @@ describe("QuizRush reducer invariants", () => {
     expect(after).toBeGreaterThanOrEqual(before);
   });
 
+  it("live_tick eliminates stale real racers without deleting their score history", () => {
+    useStableClock();
+    const engine = prepareReadyMatch();
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    const activeRound = engine.getSnapshot().rounds.find((candidate) => candidate.roundId === round.roundId);
+    if (!activeRound) throw new Error("round missing");
+
+    vi.setSystemTime(activeRound.startsAt + PLAYER_STALE_TIMEOUT_MS + 1);
+    engine.callReducer("heartbeat", { sessionId: DEFAULT_SESSION_ID, clientLatencyMs: 42 }, "device-arjun");
+    const tick = engine.callReducer("live_tick", { sessionId: DEFAULT_SESSION_ID }, "projector");
+    const state = engine.getSnapshot();
+    const maya = state.participants.find((participant) => participant.displayName === "Maya");
+    const arjun = state.participants.find((participant) => participant.displayName === "Arjun");
+    const mayaScore = state.scores.find((score) => score.participantId === maya?.participantId);
+
+    expect(tick.ok).toBe(true);
+    expect(maya?.championStatus).toBe("eliminated");
+    expect(arjun?.championStatus).toBe("active");
+    expect(mayaScore?.championStatus).toBe("eliminated");
+    expect(state.matchEvents.some((event) => event.eventType === "participant_inactive")).toBe(true);
+
+    engine.callReducer("finish_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const finished = engine.getSnapshot();
+    expect(finished.participants.find((participant) => participant.displayName === "Arjun")?.championStatus).toBe("champion");
+    expect(finished.finalResults.find((result) => result.participantId === maya?.participantId)?.championStatus).toBe("eliminated");
+    vi.useRealTimers();
+  });
+
   it("records client recovery errors without crashing the race state", () => {
     const engine = prepareReadyMatch();
     const participantId = engine.getSnapshot().participants[0]?.participantId;
@@ -361,6 +389,9 @@ describe("QuizRush reducer invariants", () => {
     engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
     engine.callReducer("finish_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
 
+    expect(engine.getSnapshot().finalResults).toHaveLength(2);
+    expect(engine.getSnapshot().shareCards).toHaveLength(2);
+
     const first = engine.callReducer<ShareCard>("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
     const second = engine.callReducer<ShareCard>("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
     const share = first.data;
@@ -369,6 +400,7 @@ describe("QuizRush reducer invariants", () => {
     expect(second.ok).toBe(true);
     expect(share?.slug).toMatch(/^qra_[A-Za-z0-9_-]{12}$/);
     expect(second.data?.slug).toBe(share?.slug);
+    expect(engine.getSnapshot().shareCards).toHaveLength(2);
     expect(share?.totalAnswerResponseMs).toBe(1200);
     expect(share?.totalResponseMsOfficial).toBe(1200);
 

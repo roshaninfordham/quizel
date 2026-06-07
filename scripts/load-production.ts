@@ -10,6 +10,8 @@ interface LoadClient {
   connection: DbConnection;
 }
 
+type SubscriptionMode = "all" | "lean" | "none";
+
 interface TimedSample {
   ok: boolean;
   ms: number;
@@ -25,10 +27,12 @@ interface LoadResult {
     host: string;
     module: string;
     appUrl: string;
+    subscriptionMode: SubscriptionMode;
     subscribeAllTables: boolean;
     connectConcurrency: number;
     joinConcurrency: number;
     answerConcurrency: number;
+    answerAllUsers: boolean;
   };
   staticVercel: {
     attempted: number;
@@ -41,6 +45,9 @@ interface LoadResult {
     connected: number;
     joined: number;
     joinFailed: number;
+    admittedRacers: number;
+    waitlistedUsers: number;
+    answerClients: number;
     answerAttempts: number;
     answerSendOk: number;
     answerSendFailed: number;
@@ -51,6 +58,9 @@ interface LoadResult {
     participantsAfterRun: number;
     answersAfterRun: number;
     scoresAfterRun: number;
+    finalResultsAfterRun: number;
+    shareCardsAfterRun: number;
+    currentParticipantShareCardsAfterRun: number;
   };
   timings: {
     connect: Stats;
@@ -104,13 +114,15 @@ const moduleName = process.env.STDB_MODULE ?? process.env.AGENT_SPACETIMEDB_MODU
 const appUrl = process.env.APP_URL ?? "https://quizel-eta.vercel.app";
 const code = process.env.SESSION_CODE ?? "ARENA-42";
 const sessionId = process.env.SESSION_ID ?? "session-demo";
-const subscribeAllTables = process.env.SUBSCRIBE_ALL_TABLES !== "false";
+const subscriptionMode = subscriptionModeEnv();
+const subscribeAllTables = subscriptionMode === "all";
 const connectConcurrency = numberEnv("CONNECT_CONCURRENCY", 50);
 const joinConcurrency = numberEnv("JOIN_CONCURRENCY", 50);
 const answerConcurrency = numberEnv("ANSWER_CONCURRENCY", 200);
 const staticRequests = numberEnv("STATIC_REQUESTS", Math.min(users, 100));
 const staticConcurrency = numberEnv("STATIC_CONCURRENCY", 25);
 const resetAfter = process.env.RESET_AFTER !== "false";
+const answerAllUsers = process.env.ANSWER_ALL_USERS === "true";
 const runId = process.env.RUN_ID ?? `load-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 
 const avatarChoices = ["R", "A", "Q", "S", "T", "Z", "K", "M"];
@@ -125,6 +137,7 @@ async function main() {
   const resolveSamples: TimedSample[] = [];
   const startSamples: TimedSample[] = [];
   const roundTransitionSamples: TimedSample[] = [];
+  let answerClients: LoadClient[] = [];
   let fatalError: string | undefined;
   let answerWindowStart = 0;
   let answerWindowEnd = 0;
@@ -132,7 +145,7 @@ async function main() {
 
   try {
     const staticSamples = await measureStaticVercel();
-    operator = await connectClient(-1, true);
+    operator = await connectClient(-1, subscriptionMode);
     await callReducer(operator.connection.reducers.resetDemo({ sessionId }), "reset_demo");
     await waitFor(() => Array.from(operator!.connection.db.session.iter()).some((row) => row.sessionId === sessionId && row.status === "lobby"));
     await callReducer(
@@ -149,7 +162,7 @@ async function main() {
       Array.from({ length: users }, (_, id) => id),
       connectConcurrency,
       async (id) => {
-        const sample = await timed(async () => connectClient(id, subscribeAllTables));
+        const sample = await timed(async () => connectClient(id, subscriptionMode));
         connectSamples.push(sample);
         if (!sample.ok || !sampleValue<LoadClient>(sample)) return undefined;
         return sampleValue<LoadClient>(sample);
@@ -183,9 +196,11 @@ async function main() {
       return participantsReady && scoresReady && intentsReady;
     }, 15_000);
     await sleep(numberEnv("PRE_START_SETTLE_MS", 300));
+    const admittedIds = admittedClientIdSet(operator.connection);
+    answerClients = answerAllUsers ? clients : clients.filter((client) => admittedIds.has(client.id));
     startSamples.push(await timed(async () => operator!.connection.reducers.startMatch({ sessionId })));
     operator.connection.disconnect();
-    operator = await connectClient(-1, true);
+    operator = await connectClient(-1, subscriptionMode);
     await sleep(numberEnv("FIRST_ROUND_SETTLE_MS", 350));
     await waitFor(() => activeRoundFor(operator!.connection, 1) !== undefined, 10_000);
 
@@ -202,7 +217,7 @@ async function main() {
       const waitMs = startsAtMs - Date.now() + 25;
       if (waitMs > 0) await sleep(waitMs);
       const beforeRoundAnswers = roundAnswerCount(operator.connection, round.roundId);
-      await mapLimit(clients, answerConcurrency, async (client) => {
+      await mapLimit(answerClients, answerConcurrency, async (client) => {
         const selectedOption = (["A", "B", "C", "D"] as const)[(client.id + roundIndex) % 4] ?? "A";
         const sample = await timed(async () =>
           {
@@ -221,7 +236,7 @@ async function main() {
       roundCommitSamples.push(
         await timed(async () =>
           waitFor(
-            () => roundAnswerCount(operator!.connection, round.roundId) >= Math.min(clients.length, beforeRoundAnswers + clients.length),
+            () => roundAnswerCount(operator!.connection, round.roundId) >= Math.min(answerClients.length, beforeRoundAnswers + answerClients.length),
             4_000
           )
         )
@@ -258,10 +273,12 @@ async function main() {
         host,
         module: moduleName,
         appUrl,
+        subscriptionMode,
         subscribeAllTables,
         connectConcurrency,
         joinConcurrency,
-        answerConcurrency
+        answerConcurrency,
+        answerAllUsers
       },
       staticVercel: {
         attempted: staticSamples.length,
@@ -274,6 +291,9 @@ async function main() {
         connected: clients.length,
         joined: joinedCount(joinSamples),
         joinFailed: joinSamples.filter((sample) => !sample.ok).length,
+        admittedRacers: admittedCount(operator.connection),
+        waitlistedUsers: waitlistedCount(operator.connection),
+        answerClients: answerClients.length,
         answerAttempts: answerSamples.length,
         answerSendOk,
         answerSendFailed: answerSamples.filter((sample) => !sample.ok).length,
@@ -283,7 +303,10 @@ async function main() {
         finalStatus: currentSession(operator.connection)?.status ?? null,
         participantsAfterRun: snapshot.participants,
         answersAfterRun: snapshot.answers,
-        scoresAfterRun: snapshot.scores
+        scoresAfterRun: snapshot.scores,
+        finalResultsAfterRun: snapshot.finalResults,
+        shareCardsAfterRun: snapshot.shareCards,
+        currentParticipantShareCardsAfterRun: snapshot.currentParticipantShareCards
       },
       timings: {
         connect: statsFor(connectSamples),
@@ -311,7 +334,17 @@ async function main() {
         answer: sampleErrors(answerSamples),
         roundResolve: sampleErrors([...resolveSamples, ...roundCommitSamples, ...roundTransitionSamples])
       },
-      recommendation: recommendation({ joinSamples, answerSamples, clients, users, answerCommitted, fatalError })
+      recommendation: recommendation({
+        joinSamples,
+        answerSamples,
+        clients,
+        users,
+        answerClients,
+        answerCommitted,
+        finalResults: snapshot.finalResults,
+        shareCards: snapshot.currentParticipantShareCards,
+        fatalError
+      })
     };
 
     await writeResult(result);
@@ -325,7 +358,7 @@ async function main() {
   }
 }
 
-async function connectClient(id: number, subscribeAll: boolean): Promise<LoadClient> {
+async function connectClient(id: number, mode: SubscriptionMode): Promise<LoadClient> {
   return await new Promise<LoadClient>((resolvePromise, reject) => {
     let settled = false;
     let subscriptionStarted = false;
@@ -343,17 +376,21 @@ async function connectClient(id: number, subscribeAll: boolean): Promise<LoadCli
       .withDatabaseName(moduleName)
       .withConfirmedReads(false)
       .onConnect((connected) => {
-        if (!subscribeAll) {
+        if (mode === "none") {
           resolveClient(connected);
           return;
         }
         if (subscriptionStarted) return;
         subscriptionStarted = true;
-        connected
+        const builder = connected
           .subscriptionBuilder()
           .onApplied(() => resolveClient(connected))
-          .onError(() => reject(new Error(`subscription ${id} failed`)))
-          .subscribeToAllTables();
+          .onError(() => reject(new Error(`subscription ${id} failed`)));
+        if (mode === "all") {
+          builder.subscribeToAllTables();
+        } else {
+          builder.subscribe(productSubscriptionQueries());
+        }
       })
       .onConnectError((_ctx, error) => reject(error))
       .onDisconnect((_ctx, error) => {
@@ -441,11 +478,37 @@ function currentSession(connection: DbConnection) {
 }
 
 function snapshotCounts(connection: DbConnection) {
+  const participantIds = new Set(
+    Array.from(connection.db.participant.iter())
+      .filter((row) => row.sessionId === sessionId)
+      .map((row) => row.participantId)
+  );
   return {
-    participants: Array.from(connection.db.participant.iter()).filter((row) => row.sessionId === sessionId).length,
+    participants: participantIds.size,
     answers: Array.from(connection.db.answer.iter()).filter((row) => row.sessionId === sessionId).length,
-    scores: Array.from(connection.db.score.iter()).filter((row) => row.sessionId === sessionId).length
+    scores: Array.from(connection.db.score.iter()).filter((row) => row.sessionId === sessionId).length,
+    finalResults: Array.from(connection.db.final_result.iter()).filter((row) => row.sessionId === sessionId).length,
+    shareCards: Array.from(connection.db.share_card.iter()).filter((row) => row.sessionId === sessionId).length,
+    currentParticipantShareCards: Array.from(connection.db.share_card.iter()).filter((row) => row.sessionId === sessionId && participantIds.has(row.participantId)).length
   };
+}
+
+function admittedClientIdSet(connection: DbConnection): Set<number> {
+  const admitted = Array.from(connection.db.participant.iter()).filter((row) => row.sessionId === sessionId && row.admissionStatus === "admitted");
+  return new Set(
+    admitted
+      .map((row) => /^Load\s+(\d+)$/i.exec(row.displayName)?.[1])
+      .map((value) => (value ? Number(value) - 1 : Number.NaN))
+      .filter((value) => Number.isInteger(value) && value >= 0)
+  );
+}
+
+function admittedCount(connection: DbConnection): number {
+  return Array.from(connection.db.participant.iter()).filter((row) => row.sessionId === sessionId && row.admissionStatus === "admitted").length;
+}
+
+function waitlistedCount(connection: DbConnection): number {
+  return Array.from(connection.db.participant.iter()).filter((row) => row.sessionId === sessionId && row.admissionStatus !== "admitted").length;
 }
 
 function roundAnswerCount(connection: DbConnection, roundId: string): number {
@@ -459,6 +522,25 @@ function joinedCount(samples: TimedSample[]): number {
 function topicFor(index: number): string {
   const baseTopics = ["Andaman Islands", "Fruit Science", "US Visa System", "AI agents", "Formula 1 strategy", "Space technology"];
   return baseTopics[index % Math.max(1, Math.min(topics, baseTopics.length))] ?? "General Knowledge";
+}
+
+function productSubscriptionQueries(): string[] {
+  return [
+    "SELECT * FROM session",
+    "SELECT * FROM participant",
+    "SELECT * FROM topic_vote",
+    "SELECT * FROM player_intent",
+    "SELECT * FROM question_pack",
+    "SELECT * FROM question_public",
+    "SELECT * FROM round",
+    "SELECT * FROM answer",
+    "SELECT * FROM score",
+    "SELECT * FROM final_result",
+    "SELECT * FROM share_card",
+    "SELECT * FROM session_capacity",
+    "SELECT * FROM admission_ticket",
+    "SELECT * FROM live_stats"
+  ];
 }
 
 function statsFor(samples: TimedSample[]): Stats {
@@ -484,12 +566,15 @@ function recommendation(input: {
   answerSamples: TimedSample[];
   clients: LoadClient[];
   users: number;
+  answerClients: LoadClient[];
   answerCommitted: number;
+  finalResults: number;
+  shareCards: number;
   fatalError?: string;
 }): LoadResult["recommendation"] {
   const answerStats = statsFor(input.answerSamples);
   const joinStats = statsFor(input.joinSamples);
-  const expectedAnswers = input.clients.length * QUESTION_COUNT;
+  const expectedAnswers = input.answerClients.length * QUESTION_COUNT;
   const notes: string[] = [];
   let status: LoadResult["recommendation"]["status"] = "pass";
   if (input.clients.length < input.users) {
@@ -511,6 +596,14 @@ function recommendation(input: {
   if (input.answerCommitted < expectedAnswers) {
     status = "fail";
     notes.push(`Only ${input.answerCommitted}/${expectedAnswers} expected answers were visible as committed Answer rows.`);
+  }
+  if (input.finalResults < input.clients.length) {
+    status = "fail";
+    notes.push(`Only ${input.finalResults}/${input.clients.length} participants received FinalResult rows.`);
+  }
+  if (input.shareCards < input.clients.length) {
+    status = "fail";
+    notes.push(`Only ${input.shareCards}/${input.clients.length} participants received durable ShareCard rows.`);
   }
   if (answerStats.p95Ms > 750) {
     status = status === "fail" ? "fail" : "degraded";
@@ -534,6 +627,14 @@ async function writeResult(result: LoadResult): Promise<void> {
 function numberEnv(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function subscriptionModeEnv(): SubscriptionMode {
+  const explicit = String(process.env.SUBSCRIBE_MODE ?? "").trim().toLowerCase();
+  if (explicit === "all" || explicit === "lean" || explicit === "none") return explicit;
+  if (process.env.SUBSCRIBE_ALL_TABLES === "true") return "all";
+  if (process.env.SUBSCRIBE_ALL_TABLES === "false") return "none";
+  return "all";
 }
 
 function round(value: number): number {
