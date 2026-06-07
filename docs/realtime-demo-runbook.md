@@ -21,13 +21,12 @@ Vercel hosts the web app. SpacetimeDB owns the live race: profiles, topics, ques
 Current measured admission:
 
 ```text
-20 active racers passed
-25 active racers hard cap
-50 connected tracked users passed with 25 admitted and 25 waitlisted/spectator
-100+ connected tracked users not claimed in this build
+100 active racers passed
+100 active racers hard cap
+250 connected tracked users measured but not claimed; current 250-audience run caused late answers
 ```
 
-Do not claim 100+ active real racers yet.
+Do not claim 250 active real racers yet.
 
 ## Rehearsal Load Controls
 
@@ -97,7 +96,7 @@ flowchart TD
 If the room is too large:
 
 ```text
-Keep active racer cap at 25.
+Keep active racer cap at 100.
 Let overflow users watch/waitlist.
 Use visual rehearsal buttons only when clearly described as reducer-backed simulated load.
 ```

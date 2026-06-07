@@ -29,18 +29,19 @@ Current deployed target:
 ```text
 Vercel: https://quizel-eta.vercel.app
 SpacetimeDB: https://maincloud.spacetimedb.com / quizrush-live
-MAX_PLAYERS_SOFT=20
-MAX_PLAYERS_HARD=25
+MAX_PLAYERS_SOFT=100
+MAX_PLAYERS_HARD=100
 ```
 
 Verified load:
 
 | Scenario | Result |
 | --- | --- |
-| 20 synthetic phones | 20 joined, 20 admitted, 200/200 answers committed, 20 FinalResult rows, 20 ShareCard rows |
-| 50 synthetic phones | 50 joined/tracked, 25 admitted, 25 waitlisted, 250/250 admitted answers committed, 50 FinalResult rows, 50 ShareCard rows |
+| 50 synthetic phones | 50 joined, 50 admitted, 500/500 answers committed, 50 FinalResult rows, 50 ShareCard rows |
+| 100 synthetic phones | 100 joined, 100 admitted, 1000/1000 answers committed, 100 FinalResult rows, 100 ShareCard rows |
+| 250 synthetic phones | 250 joined, 100 admitted, 150 waitlisted, but admitted answer commits were late/failed; not claimed |
 
-Do not claim more than this until a newer capacity artifact passes.
+Do not claim 250 active or 250-audience readiness until a newer capacity artifact passes.
 
 ## Diagnose Command
 
@@ -95,4 +96,3 @@ sequenceDiagram
 - Normal reset preserves `ShareCard` rows.
 - Per-phone quiz state must include `participantId`.
 - Overflow users must be waitlisted/spectators, not failed reducer calls.
-

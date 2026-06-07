@@ -1,4 +1,4 @@
-import type { Answer, MatchEvent, Participant, QuizRushState, Round, Score } from "@quizrush/shared";
+import { compareScores, type Answer, type MatchEvent, type Participant, type QuizRushState, type Round, type Score } from "@quizrush/shared";
 
 export function getParticipant(state: QuizRushState, participantId?: string | null): Participant | undefined {
   if (!participantId) return undefined;
@@ -28,7 +28,7 @@ export function getLeaderboard(state: QuizRushState, sessionId: string): Array<{
       participant: state.participants.find((participant) => participant.participantId === score.participantId)
     }))
     .filter((entry): entry is { participant: Participant; score: Score } => Boolean(entry.participant))
-    .sort((a, b) => a.score.currentRank - b.score.currentRank);
+    .sort((a, b) => compareScores(a.score, b.score));
 }
 
 export function topicCounts(state: QuizRushState, sessionId: string): Array<{ topic: string; count: number; percent: number }> {

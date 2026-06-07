@@ -66,7 +66,9 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const { resetDemo } = useResetDemo();
   const phase = session?.status ?? "lobby";
   const questionCountRef = useRef(0);
-  questionCountRef.current = state.questions.filter((candidate) => candidate.sessionId === sessionId).length;
+  questionCountRef.current = state.questionPacks.some((candidate) => candidate.sessionId === sessionId && candidate.status !== "superseded")
+    ? QUESTION_COUNT
+    : state.questions.filter((candidate) => candidate.sessionId === sessionId).length;
   const tickInFlightRef = useRef(false);
   const simulatedAnswerInFlightRef = useRef(false);
   const autoRequestRef = useRef(false);

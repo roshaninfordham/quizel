@@ -10,8 +10,8 @@ const PLAYER_STALE_TIMEOUT_MS = 12_000;
 const CORRECTNESS_POINTS = 1000;
 const MAX_SPEED_BONUS = 1000;
 const STREAK_BONUS = 100;
-const MAX_PLAYERS_SOFT = 20;
-const MAX_PLAYERS_HARD = 25;
+const MAX_PLAYERS_SOFT = 100;
+const MAX_PLAYERS_HARD = 100;
 const EAGER_SHARECARD_LIMIT = 500;
 const SIMULATED_ANSWER_BURST_SIZE = 8;
 const DEFAULT_TOPIC = "AI + Space + Startups";
@@ -897,7 +897,6 @@ export const submit_answer = spacetimedb.reducer(
     last_answer_at_ms: now,
     updated_at_ms: now
   });
-  recomputeRanks(ctx, currentRound.session_id);
   const updatedScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
   insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, officialResponseMs: response_ms, observedResponseMs: observed_response_ms, timingSuspicious: timing_suspicious }));
   insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify(scoreParts));
@@ -910,6 +909,7 @@ export const resolve_round = spacetimedb.reducer({ round_id: t.string() }, (ctx,
   if (currentRound.status === "resolved") return;
   const now = nowMs();
   ctx.db.round.round_id.update({ ...currentRound, status: "resolved", resolved_at_ms: now });
+  recomputeRanks(ctx, currentRound.session_id);
   insertMatchEvent(ctx, currentRound.session_id, undefined, "round_resolved", currentRound.order_index, undefined, undefined, "{}");
   const current = requireSession(ctx, currentRound.session_id);
   if (currentRound.order_index >= current.question_count) {

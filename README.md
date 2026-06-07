@@ -73,10 +73,10 @@ Measured on 2026-06-07:
 
 | Scenario | Result |
 | --- | --- |
-| 20 connected active racers | Pass: 200/200 answers committed, 20 FinalResult rows, 20 ShareCard rows |
-| 50 connected tracked users | Pass: 25 admitted, 25 waitlisted/spectator, 250/250 admitted answers committed |
-| Active admitted racers | Keep hard cap at 25 |
-| 100+ connected tracked users | Not claimed in this build |
+| 50 connected active racers | Pass: 500/500 answers committed, 50 FinalResult rows, 50 ShareCard rows |
+| 100 connected active racers | Pass: 1000/1000 answers committed, 100 FinalResult rows, 100 ShareCard rows |
+| Active admitted racers | Keep hard cap at 100 |
+| 250 connected tracked users | Measured fail under overflow pressure; not claimed |
 
 The projector now separates these surfaces:
 
@@ -362,8 +362,8 @@ make capacity-report
 Current measured production cap:
 
 ```text
-MAX_PLAYERS_SOFT=20
-MAX_PLAYERS_HARD=25
+MAX_PLAYERS_SOFT=100
+MAX_PLAYERS_HARD=100
 ```
 
 Vercel serves the static frontend. SpacetimeDB is the realtime race engine. Do not claim a higher live-racer count until `docs/capacity-results/` contains a passing load-test artifact for that number.
@@ -371,16 +371,16 @@ Vercel serves the static frontend. SpacetimeDB is the realtime race engine. Do n
 Latest production artifacts:
 
 ```text
-20 connected active racers: pass
-50 connected tracked users: pass with 25 admitted and 25 waitlisted/spectator
-25 active admitted racers: current hard cap
-100+ connected tracked users: not claimed in this build
+50 connected active racers: pass
+100 connected active racers: pass with 1000/1000 answers committed
+100 active admitted racers: current hard cap
+250 connected tracked users: measured fail under overflow pressure; not claimed
 ```
 
 ## When The System Might Break
 
 - More than the measured active-racer cap attempts to answer in one sprint.
-- Hundreds of clients subscribe broadly before scoped subscription fanout is implemented.
+- Hundreds of clients connect and answer before the `LeaderboardTopN`/persisted-bracket scaling pass is implemented.
 - Venue Wi-Fi blocks phone-to-laptop traffic during local demos.
 - Firecrawl/LLM provider rate limits trigger; fallback packs should still keep the race running.
 - Agent worker is not deployed; long-tail web-grounded refinement will not run, but deterministic fallback questions remain available.

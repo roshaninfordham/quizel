@@ -1,0 +1,124 @@
+{
+  "runId": "load-2026-06-07T11-39-53-229Z",
+  "startedAt": "2026-06-07T11:39:53.230Z",
+  "config": {
+    "users": 50,
+    "topics": 5,
+    "host": "https://maincloud.spacetimedb.com",
+    "module": "quizrush-live",
+    "appUrl": "https://quizel-eta.vercel.app",
+    "subscriptionMode": "lean",
+    "subscribeAllTables": false,
+    "connectConcurrency": 25,
+    "joinConcurrency": 25,
+    "answerConcurrency": 100,
+    "answerAllUsers": false
+  },
+  "staticVercel": {
+    "attempted": 10,
+    "ok": 10,
+    "failed": 0,
+    "p50Ms": 76,
+    "p95Ms": 109
+  },
+  "realtime": {
+    "connected": 50,
+    "joined": 50,
+    "joinFailed": 0,
+    "admittedRacers": 50,
+    "waitlistedUsers": 0,
+    "answerClients": 50,
+    "answerAttempts": 500,
+    "answerSendOk": 500,
+    "answerSendFailed": 0,
+    "answerCommitted": 500,
+    "duplicateRejected": 0,
+    "roundsResolved": 10,
+    "finalStatus": "finished",
+    "participantsAfterRun": 50,
+    "answersAfterRun": 500,
+    "scoresAfterRun": 50,
+    "finalResultsAfterRun": 50,
+    "shareCardsAfterRun": 1020,
+    "currentParticipantShareCardsAfterRun": 50
+  },
+  "timings": {
+    "connect": {
+      "count": 50,
+      "ok": 50,
+      "failed": 0,
+      "minMs": 124,
+      "p50Ms": 242,
+      "p95Ms": 336,
+      "maxMs": 347
+    },
+    "join": {
+      "count": 50,
+      "ok": 50,
+      "failed": 0,
+      "minMs": 152,
+      "p50Ms": 228,
+      "p95Ms": 311,
+      "maxMs": 317
+    },
+    "answer": {
+      "count": 500,
+      "ok": 500,
+      "failed": 0,
+      "minMs": 19,
+      "p50Ms": 144,
+      "p95Ms": 1053,
+      "maxMs": 1157
+    },
+    "roundResolve": {
+      "count": 40,
+      "ok": 40,
+      "failed": 0,
+      "minMs": 0,
+      "p50Ms": 0,
+      "p95Ms": 40,
+      "maxMs": 90
+    },
+    "startMatch": {
+      "count": 1,
+      "ok": 1,
+      "failed": 0,
+      "minMs": 40,
+      "p50Ms": 40,
+      "p95Ms": 40,
+      "maxMs": 40
+    },
+    "staticFetch": {
+      "count": 10,
+      "ok": 10,
+      "failed": 0,
+      "minMs": 73,
+      "p50Ms": 76,
+      "p95Ms": 109,
+      "maxMs": 109
+    }
+  },
+  "throughput": {
+    "answerWindowMs": 12987,
+    "successfulAnswersPerSec": 38.5
+  },
+  "observed": {
+    "reducerCalls": 173,
+    "liveStatsAnswersPerSec": 50,
+    "duplicateAnswersRejected": 0,
+    "p95LatencyMs": 173,
+    "topScore": 5930
+  },
+  "errors": {
+    "connect": [],
+    "join": [],
+    "answer": [],
+    "roundResolve": []
+  },
+  "recommendation": {
+    "status": "degraded",
+    "notes": [
+      "Answer reducer p95 observed at 1053ms, above 750ms target."
+    ]
+  }
+}

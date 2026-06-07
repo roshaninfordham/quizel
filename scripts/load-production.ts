@@ -156,7 +156,7 @@ async function main() {
       }),
       "request_questions"
     );
-    await waitFor(() => Array.from(operator!.connection.db.question_public.iter()).filter((row) => row.sessionId === sessionId).length >= QUESTION_COUNT);
+    await waitFor(() => Array.from(operator!.connection.db.question_pack.iter()).some((row) => row.sessionId === sessionId && !row.participantId));
 
     const connected = await mapLimit(
       Array.from({ length: users }, (_, id) => id),
@@ -400,7 +400,7 @@ async function connectClient(id: number, mode: SubscriptionMode): Promise<LoadCl
         if (mode === "all") {
           builder.subscribeToAllTables();
         } else {
-          builder.subscribe(productSubscriptionQueries());
+          builder.subscribe(id < 0 ? productSubscriptionQueries() : phoneBootstrapSubscriptionQueries());
         }
       })
       .onConnectError((_ctx, error) => reject(error))
@@ -536,21 +536,31 @@ function topicFor(index: number): string {
 }
 
 function productSubscriptionQueries(): string[] {
+  const s = `'${sessionId.replace(/'/g, "''")}'`;
   return [
-    "SELECT * FROM session",
-    "SELECT * FROM participant",
-    "SELECT * FROM topic_vote",
-    "SELECT * FROM player_intent",
-    "SELECT * FROM question_pack",
-    "SELECT * FROM question_public",
-    "SELECT * FROM round",
-    "SELECT * FROM answer",
-    "SELECT * FROM score",
-    "SELECT * FROM final_result",
-    "SELECT * FROM share_card",
-    "SELECT * FROM session_capacity",
-    "SELECT * FROM admission_ticket",
-    "SELECT * FROM live_stats"
+    `SELECT * FROM session WHERE session_id = ${s}`,
+    `SELECT * FROM participant WHERE session_id = ${s}`,
+    `SELECT * FROM topic_vote WHERE session_id = ${s}`,
+    `SELECT * FROM player_intent WHERE session_id = ${s}`,
+    `SELECT * FROM question_pack WHERE session_id = ${s}`,
+    `SELECT * FROM round WHERE session_id = ${s}`,
+    `SELECT * FROM answer WHERE session_id = ${s}`,
+    `SELECT * FROM score WHERE session_id = ${s}`,
+    `SELECT * FROM final_result WHERE session_id = ${s}`,
+    `SELECT * FROM share_card WHERE session_id = ${s}`,
+    `SELECT * FROM session_capacity WHERE session_id = ${s}`,
+    `SELECT * FROM admission_ticket WHERE session_id = ${s}`,
+    `SELECT * FROM live_stats WHERE session_id = ${s}`
+  ];
+}
+
+function phoneBootstrapSubscriptionQueries(): string[] {
+  const s = `'${sessionId.replace(/'/g, "''")}'`;
+  return [
+    `SELECT * FROM session WHERE session_id = ${s}`,
+    `SELECT * FROM session_capacity WHERE session_id = ${s}`,
+    `SELECT * FROM live_stats WHERE session_id = ${s}`,
+    `SELECT * FROM participant WHERE session_id = ${s}`
   ];
 }
 
@@ -645,7 +655,7 @@ function subscriptionModeEnv(): SubscriptionMode {
   if (explicit === "all" || explicit === "lean" || explicit === "none") return explicit;
   if (process.env.SUBSCRIBE_ALL_TABLES === "true") return "all";
   if (process.env.SUBSCRIBE_ALL_TABLES === "false") return "none";
-  return "all";
+  return "lean";
 }
 
 function round(value: number): number {

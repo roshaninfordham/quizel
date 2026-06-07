@@ -3,6 +3,7 @@ import {
   DEFAULT_SESSION_CODE,
   DEFAULT_SESSION_ID,
   QuizRushEngine,
+  compareScores,
   type AgentEvent,
   type Answer,
   type LiveStats,
@@ -16,7 +17,7 @@ import {
   type Session,
   type TopicVote
 } from "@quizrush/shared";
-import type { DbConnection } from "./module_bindings";
+import type { DbConnection, SubscriptionHandle } from "./module_bindings";
 import {
   buildDirectSpacetimeConnection,
   callDirectReducer,
@@ -73,7 +74,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(Date.now());
   const socketRef = useRef<WebSocket | null>(null);
   const directConnectionRef = useRef<DbConnection | null>(null);
+  const directHandlesRef = useRef<SubscriptionHandle[]>([]);
   const directStateVersionRef = useRef(0);
+  const participantSubscriptionIdsRef = useRef(new Set<string>());
+  const ensureParticipantSubscriptionRef = useRef<(participantId: string) => void>(() => undefined);
   const pendingRef = useRef(new Map<string, (receipt: ReducerReceipt) => void>());
 
   useEffect(() => {
@@ -98,6 +102,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
       setConnectionState((current) => (current === "connected" ? "connected" : "connecting"));
 
       if (transport === "spacetimedb") {
+        const profile = subscriptionProfileFromLocation();
         const emitDirectSnapshot = (connection: DbConnection) => {
           if (closedByEffect) return;
           directStateVersionRef.current += 1;
@@ -111,6 +116,29 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
             directSnapshotTimer = undefined;
             emitDirectSnapshot(connection);
           }, 80);
+        };
+        const subscribe = (connection: DbConnection, queries: string[], onApplied?: () => void) => {
+          const handle = connection
+            .subscriptionBuilder()
+            .onApplied(() => {
+              if (closedByEffect) return;
+              onApplied?.();
+              scheduleDirectSnapshot(connection);
+            })
+            .onError(() => setConnectionState((current) => (current === "connected" ? current : "error")))
+            .subscribe(queries);
+          directHandlesRef.current.push(handle);
+          return handle;
+        };
+        const ensureParticipantSubscription = (connection: DbConnection, participantId: string) => {
+          if (!participantId || participantSubscriptionIdsRef.current.has(participantId)) return;
+          participantSubscriptionIdsRef.current.add(participantId);
+          subscribe(connection, participantSubscriptionQueries(profile.sessionId, participantId));
+        };
+        ensureParticipantSubscriptionRef.current = (participantId: string) => {
+          const connection = directConnectionRef.current;
+          if (!connection) return;
+          ensureParticipantSubscription(connection, participantId);
         };
 
         const connection = buildDirectSpacetimeConnection({
@@ -127,9 +155,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
                 removeDirectListeners = registerDirectSnapshotListeners(connectedConnection, () => scheduleDirectSnapshot(connectedConnection));
                 setConnectionState("connected");
                 emitDirectSnapshot(connectedConnection);
+                if (profile.participantId) ensureParticipantSubscription(connectedConnection, profile.participantId);
               })
               .onError(() => setConnectionState("error"))
-              .subscribeToAllTables();
+              .subscribe(profile.queries);
           },
           onConnectError: () => {
             if (closedByEffect) return;
@@ -192,6 +221,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
       if (retryTimer) window.clearTimeout(retryTimer);
       if (directSnapshotTimer) window.clearTimeout(directSnapshotTimer);
       removeDirectListeners?.();
+      for (const handle of directHandlesRef.current) handle.unsubscribe();
+      directHandlesRef.current = [];
+      participantSubscriptionIdsRef.current.clear();
+      ensureParticipantSubscriptionRef.current = () => undefined;
       directConnectionRef.current?.disconnect();
       directConnectionRef.current = null;
       socketRef.current?.close();
@@ -207,6 +240,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
         setState(result.snapshot);
         setStateVersion(result.receipt.stateVersion);
         setLastSyncAt(Date.now());
+        const participantId = participantIdFromReducerResult(name, args, result.receipt.data);
+        if (participantId) ensureParticipantSubscriptionRef.current(participantId);
         return result.receipt;
       }
 
@@ -263,6 +298,138 @@ function isLocalUrl(value: string): boolean {
 
 function isLocalBrowserHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" || hostname === "::1" || hostname === "[::1]";
+}
+
+interface SubscriptionProfile {
+  route: "projector" | "phone" | "share" | "tech";
+  sessionId: string;
+  participantId: string | null;
+  queries: string[];
+}
+
+function subscriptionProfileFromLocation(): SubscriptionProfile {
+  const parts = window.location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+  const route = parts[0] ?? "arena";
+  const sessionCode = route === "join" || route === "arena" || route === "tech" ? parts[1] ?? DEFAULT_SESSION_CODE : DEFAULT_SESSION_CODE;
+  const sessionId = DEFAULT_SESSION_ID;
+  if (route === "share" && parts[1]) {
+    const slug = parts[1];
+    return {
+      route: "share",
+      sessionId,
+      participantId: null,
+      queries: shareSubscriptionQueries(slug)
+    };
+  }
+  if (route === "join") {
+    const participantId = getJoinedParticipantId(sessionCode);
+    return {
+      route: "phone",
+      sessionId,
+      participantId,
+      queries: phoneBootstrapQueries(sessionId)
+    };
+  }
+  if (route === "tech") {
+    return {
+      route: "tech",
+      sessionId,
+      participantId: null,
+      queries: techSubscriptionQueries(sessionId)
+    };
+  }
+  return {
+    route: "projector",
+    sessionId,
+    participantId: null,
+    queries: projectorSubscriptionQueries(sessionId)
+  };
+}
+
+function projectorSubscriptionQueries(sessionId: string): string[] {
+  const s = sqlString(sessionId);
+  return [
+    `SELECT * FROM session WHERE session_id = ${s}`,
+    `SELECT * FROM session_capacity WHERE session_id = ${s}`,
+    `SELECT * FROM live_stats WHERE session_id = ${s}`,
+    `SELECT * FROM participant WHERE session_id = ${s}`,
+    `SELECT * FROM topic_vote WHERE session_id = ${s}`,
+    `SELECT * FROM player_intent WHERE session_id = ${s}`,
+    `SELECT * FROM question_pack WHERE session_id = ${s}`,
+    `SELECT * FROM score WHERE session_id = ${s}`,
+    `SELECT * FROM final_result WHERE session_id = ${s}`,
+    `SELECT * FROM round WHERE session_id = ${s}`,
+    `SELECT * FROM answer WHERE session_id = ${s}`,
+    `SELECT * FROM match_event WHERE session_id = ${s}`,
+    `SELECT * FROM agent_request WHERE session_id = ${s}`,
+    `SELECT * FROM agent_event WHERE session_id = ${s}`,
+    `SELECT * FROM operation_trace WHERE session_id = ${s}`,
+    `SELECT * FROM client_error WHERE session_id = ${s}`
+  ];
+}
+
+function phoneBootstrapQueries(sessionId: string): string[] {
+  const s = sqlString(sessionId);
+  return [
+    `SELECT * FROM session WHERE session_id = ${s}`,
+    `SELECT * FROM session_capacity WHERE session_id = ${s}`,
+    `SELECT * FROM live_stats WHERE session_id = ${s}`,
+    `SELECT * FROM participant WHERE session_id = ${s}`
+  ];
+}
+
+function participantSubscriptionQueries(sessionId: string, participantId: string): string[] {
+  const s = sqlString(sessionId);
+  const p = sqlString(participantId);
+  return [
+    `SELECT * FROM participant WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM admission_ticket WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM topic_vote WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM player_intent WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM question_pack WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM question_public WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM round WHERE session_id = ${s}`,
+    `SELECT * FROM answer WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM score WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM final_result WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM share_card WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM client_error WHERE session_id = ${s} AND participant_id = ${p}`
+  ];
+}
+
+function shareSubscriptionQueries(slug: string): string[] {
+  const slugSql = sqlString(slug);
+  return [
+    `SELECT * FROM share_card WHERE slug = ${slugSql}`,
+    "SELECT * FROM session"
+  ];
+}
+
+function techSubscriptionQueries(sessionId: string): string[] {
+  return [
+    ...projectorSubscriptionQueries(sessionId),
+    `SELECT * FROM question_pack WHERE session_id = ${sqlString(sessionId)}`,
+    `SELECT * FROM question_public WHERE session_id = ${sqlString(sessionId)}`,
+    `SELECT * FROM share_card WHERE session_id = ${sqlString(sessionId)}`,
+    `SELECT * FROM admission_ticket WHERE session_id = ${sqlString(sessionId)}`,
+    `SELECT * FROM audit_event WHERE session_id = ${sqlString(sessionId)}`
+  ];
+}
+
+function sqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function participantIdFromReducerResult(name: string, rawArgs: unknown, data: unknown): string | null {
+  if (name === "join_session") {
+    const participant = (data as { participant?: { participantId?: string } } | undefined)?.participant;
+    return participant?.participantId ?? null;
+  }
+  if (name === "create_share_card") {
+    const args = rawArgs as { participantId?: string } | undefined;
+    return args?.participantId ?? null;
+  }
+  return null;
 }
 
 export function useSpacetime(): RealtimeContextValue {
@@ -323,7 +490,7 @@ export function useAnswers(sessionId = DEFAULT_SESSION_ID): Answer[] {
 }
 
 export function useScores(sessionId = DEFAULT_SESSION_ID): Score[] {
-  return useSpacetime().state.scores.filter((score) => score.sessionId === sessionId).sort((a, b) => a.currentRank - b.currentRank);
+  return useSpacetime().state.scores.filter((score) => score.sessionId === sessionId).sort(compareScores);
 }
 
 export function useMatchEvents(sessionId = DEFAULT_SESSION_ID): MatchEvent[] {

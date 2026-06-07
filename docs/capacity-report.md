@@ -10,7 +10,7 @@ Join URL: https://quizel-eta.vercel.app/join/ARENA-42
 Arena URL: https://quizel-eta.vercel.app/arena/ARENA-42
 SpacetimeDB host: https://maincloud.spacetimedb.com
 SpacetimeDB module: quizrush-live
-Client subscription shape during measurement: subscribeToAllTables
+Client subscription shape during measurement: scoped/lean SQL subscriptions
 Quiz length during measurement: 10 questions
 ```
 
@@ -19,17 +19,17 @@ Quiz length during measurement: 10 questions
 The deployed system is safe for:
 
 ```text
-Tracked connected users: 50 passed
-Tracked connected users above 50: not claimed in this build
-Admitted active racers: 25 hard cap
-Recommended live demo target: 10-20 real phones
+Tracked connected users: 100 passed
+Admitted active racers: 100 hard cap
+Recommended live demo target: 10-100 real phones
+250 connected audience: measured, not claimed for active race pressure
 ```
 
 Keep production admission control at:
 
 ```text
-MAX_PLAYERS_SOFT=20
-MAX_PLAYERS_HARD=25
+MAX_PLAYERS_SOFT=100
+MAX_PLAYERS_HARD=100
 ```
 
 That means a hackathon room can scan the QR and be represented as tracked participants, but the live answering race admits only the measured safe number of active racers. Overflow users are waitlisted/spectators instead of seeing fatal reducer errors.
@@ -38,12 +38,11 @@ That means a hackathon room can scan the QR and be represented as tracked partic
 
 | Run | Connected | Joined | Admitted racers | Waitlisted | Answers committed | FinalResult rows | Current ShareCard rows | Answer p95 | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `load-2026-06-07T10-52-34-263Z` | 20 | 20 | 20 | 0 | 200/200 | 20 | 20 | 122ms | Pass |
-| `load-2026-06-07T10-52-53-445Z` | 50 | 50 | 25 | 25 | 250/250 | 50 | 50 | 516ms | Pass |
-| `stress-100-all-connected-admitted-sharecards` | 100 | 100 | 12 | 88 | 120/120 | 100 | 100 | 1285ms | Old degraded baseline |
-| `stress-250-all-connected-admitted-sharecards` | 250 | 51 | 12 | 39 | 120/120 | 51 | 51 | 1505ms | Old failed baseline |
+| `load-2026-06-07T11-39-53-229Z` | 50 | 50 | 50 | 0 | 500/500 | 50 | 50 | 1053ms | Functional, latency degraded |
+| `load-2026-06-07T11-43-11-645Z` | 100 | 100 | 100 | 0 | 1000/1000 | 100 | 100 | 691ms | Pass |
+| `load-2026-06-07T11-57-29-406Z` | 250 | 250 | 100 | 150 | 400/1000 | 250 | 250 | 8799ms | Fail under overflow pressure |
 
-The old 250-user baseline opened 250 WebSocket connections, but 199 join/intention writes failed with `The instance encountered a fatal error`. This build fixes the real demo target by moving phone packs to participant-scoped rows, disabling real-user auto-start, and making late joins become tracked spectators. Do not claim 100+ active racers until a new post-fix 100/250 run passes.
+The 100-racer run is the production claim. The 250-audience run proves the room can create tracked rows and waitlist overflow users, but it also shows that answer pressure from 250 live connections still causes late/failed answer commits. Do not advertise 250 active or 250-audience reliability until a newer passing artifact replaces it.
 
 ## What The Harness Proves
 
@@ -51,7 +50,7 @@ The production harness:
 
 - Fetches the deployed Vercel join route.
 - Opens one SpacetimeDB connection per synthetic phone.
-- Uses broad all-table subscriptions to match the current deployed client.
+- Uses scoped/lean SpacetimeDB subscriptions instead of all-table replication.
 - Calls `join_session` and `submit_player_intent`.
 - Calls participant-scoped `request_questions`, matching the phone Enter Race flow.
 - Lets admission control decide who is admitted versus waitlisted.
@@ -63,9 +62,9 @@ The production harness:
 Command examples:
 
 ```bash
-USERS=20 TOPICS=5 STATIC_REQUESTS=10 CONNECT_CONCURRENCY=20 JOIN_CONCURRENCY=20 ANSWER_CONCURRENCY=60 pnpm load:prod
+USERS=50 TOPICS=5 STATIC_REQUESTS=10 CONNECT_CONCURRENCY=25 JOIN_CONCURRENCY=25 ANSWER_CONCURRENCY=100 SUBSCRIBE_MODE=lean pnpm load:prod
 
-USERS=50 TOPICS=5 STATIC_REQUESTS=20 CONNECT_CONCURRENCY=25 JOIN_CONCURRENCY=25 ANSWER_CONCURRENCY=80 pnpm load:prod
+USERS=100 TOPICS=10 STATIC_REQUESTS=20 CONNECT_CONCURRENCY=50 JOIN_CONCURRENCY=50 ANSWER_CONCURRENCY=100 SUBSCRIBE_MODE=lean pnpm load:prod
 ```
 
 ## Visual Rehearsal Load
@@ -76,24 +75,22 @@ Use them only as marked rehearsal load when the physical room is small. For real
 
 ## Why The Cap Exists
 
-Vercel static delivery is healthy; static route p95 was 170ms for 50 and about 100ms for 100/250. The bottleneck is the current realtime fanout:
+Vercel static delivery is healthy; the latest 100-racer run fetched deployed routes with static p95 under 100ms. The remaining bottleneck is live realtime pressure:
 
-- The production client still subscribes broadly.
-- `submit_answer` recomputes ranks by sorting session scores.
-- Answer bursts update `Answer`, `Score`, `MatchEvent`, `LiveStats`, and share/final state.
-- Broad subscriptions push too much state to every client.
+- 100 active racers pass with scoped subscriptions and deferred global rank recomputation.
+- 250 connected clients still add enough subscription/reducer pressure to produce late answers in the current module.
+- The projector renders a capped visual bracket and aggregate counts rather than thousands of DOM nodes.
 
 Admission control is therefore a correctness feature. It prevents the realtime race from collapsing under untested load.
 
 ## Next Capacity Target
 
-Before raising `MAX_PLAYERS_HARD`, implement:
+Before raising `MAX_PLAYERS_HARD` above 100, implement:
 
-1. Scoped phone subscriptions: own participant, own score, current round/question, own answer, final result, own share card.
-2. Projector subscriptions: participants, live stats, top leaderboard, bracket state, recent events only.
-3. `LeaderboardTopN` table so phones do not receive every score row.
-4. Explicit bracket rows/events for movement instead of deriving all layout client-side.
-5. Reduced per-answer `MatchEvent` fanout.
-6. Re-run 50, 100, and 250 with the scoped subscription mode.
+1. `LeaderboardTopN` table so phones/projector do not need every `Score` row.
+2. Explicit persisted bracket rows/events for movement instead of deriving all layout client-side.
+3. Reduced per-answer `MatchEvent` fanout.
+4. A race scheduler that does not rely on 40 duplicate resolve calls from the harness.
+5. Re-run 100, 250, and 500 with scoped subscriptions.
 
 Only increase the public active-racer cap after the matching artifact passes.

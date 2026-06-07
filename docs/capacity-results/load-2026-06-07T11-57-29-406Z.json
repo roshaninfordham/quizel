@@ -1,0 +1,129 @@
+{
+  "runId": "load-2026-06-07T11-57-29-406Z",
+  "startedAt": "2026-06-07T11:57:29.407Z",
+  "config": {
+    "users": 250,
+    "topics": 25,
+    "host": "https://maincloud.spacetimedb.com",
+    "module": "quizrush-live",
+    "appUrl": "https://quizel-eta.vercel.app",
+    "subscriptionMode": "lean",
+    "subscribeAllTables": false,
+    "connectConcurrency": 75,
+    "joinConcurrency": 75,
+    "answerConcurrency": 100,
+    "answerAllUsers": false
+  },
+  "staticVercel": {
+    "attempted": 30,
+    "ok": 30,
+    "failed": 0,
+    "p50Ms": 172,
+    "p95Ms": 259
+  },
+  "realtime": {
+    "connected": 250,
+    "joined": 250,
+    "joinFailed": 0,
+    "admittedRacers": 100,
+    "waitlistedUsers": 150,
+    "answerClients": 100,
+    "answerAttempts": 400,
+    "answerSendOk": 400,
+    "answerSendFailed": 0,
+    "answerCommitted": 400,
+    "duplicateRejected": 0,
+    "roundsResolved": 4,
+    "finalStatus": "finished",
+    "participantsAfterRun": 250,
+    "answersAfterRun": 400,
+    "scoresAfterRun": 250,
+    "finalResultsAfterRun": 250,
+    "shareCardsAfterRun": 2070,
+    "currentParticipantShareCardsAfterRun": 250
+  },
+  "timings": {
+    "connect": {
+      "count": 250,
+      "ok": 250,
+      "failed": 0,
+      "minMs": 60,
+      "p50Ms": 209,
+      "p95Ms": 293,
+      "maxMs": 306
+    },
+    "join": {
+      "count": 250,
+      "ok": 250,
+      "failed": 0,
+      "minMs": 69,
+      "p50Ms": 2780,
+      "p95Ms": 9950,
+      "maxMs": 13912
+    },
+    "answer": {
+      "count": 400,
+      "ok": 400,
+      "failed": 0,
+      "minMs": 48,
+      "p50Ms": 1473,
+      "p95Ms": 8799,
+      "maxMs": 12917
+    },
+    "roundResolve": {
+      "count": 17,
+      "ok": 15,
+      "failed": 2,
+      "minMs": 0,
+      "p50Ms": 0,
+      "p95Ms": 10018,
+      "maxMs": 10018
+    },
+    "startMatch": {
+      "count": 1,
+      "ok": 1,
+      "failed": 0,
+      "minMs": 321,
+      "p50Ms": 321,
+      "p95Ms": 321,
+      "maxMs": 321
+    },
+    "staticFetch": {
+      "count": 30,
+      "ok": 30,
+      "failed": 0,
+      "minMs": 16,
+      "p50Ms": 172,
+      "p95Ms": 259,
+      "maxMs": 278
+    }
+  },
+  "throughput": {
+    "answerWindowMs": 36687,
+    "successfulAnswersPerSec": 10.9
+  },
+  "observed": {
+    "reducerCalls": 801,
+    "liveStatsAnswersPerSec": 0,
+    "duplicateAnswersRejected": 0,
+    "p95LatencyMs": 1238,
+    "topScore": 1980
+  },
+  "errors": {
+    "fatal": "Timed out waiting for condition.",
+    "connect": [],
+    "join": [],
+    "answer": [],
+    "roundResolve": [
+      "Timed out waiting for condition."
+    ]
+  },
+  "recommendation": {
+    "status": "fail",
+    "notes": [
+      "Race flow stopped early: Timed out waiting for condition.",
+      "Only 400/1000 expected answers were visible as committed Answer rows.",
+      "Answer reducer p95 observed at 8799ms, above 750ms target."
+    ]
+  }
+}

@@ -685,16 +685,18 @@ export function LeaderboardPanel({ entries, compact = false }: { entries: Array<
         <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">speed + accuracy</span>
       </div>
       <div className="mt-4 space-y-2.5">
-        {entries.slice(0, compact ? 12 : 20).map((entry) => (
+        {entries.slice(0, compact ? 12 : 20).map((entry, index) => {
+          const displayRank = index + 1;
+          return (
           <motion.div
             key={entry.participant.participantId}
             layout
             className={cn(
               "flex items-center gap-3 rounded-[20px] px-3 py-2.5",
-              entry.score.currentRank === 1 ? "bg-gradient-to-r from-amber-100 to-orange-100 ring-2 ring-amber-300" : "bg-slate-50"
+              displayRank === 1 ? "bg-gradient-to-r from-amber-100 to-orange-100 ring-2 ring-amber-300" : "bg-slate-50"
             )}
           >
-            <span className="w-10 text-xl font-black text-slate-500">#{entry.score.currentRank}</span>
+            <span className="w-10 text-xl font-black text-slate-500">#{displayRank}</span>
             <Avatar participant={entry.participant} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-lg font-black text-slate-950">{entry.participant.displayName}</p>
@@ -707,7 +709,8 @@ export function LeaderboardPanel({ entries, compact = false }: { entries: Array<
               </p>
             </div>
           </motion.div>
-        ))}
+          );
+        })}
         {!entries.length ? <p className="text-lg font-bold text-slate-500">Scores appear after the first answer.</p> : null}
       </div>
     </Panel>

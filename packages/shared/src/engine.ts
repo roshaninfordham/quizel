@@ -831,7 +831,6 @@ export class QuizRushEngine {
     score.normalizedScore = normalizedScore(score, this.requireSession(round.sessionId).questionCount);
     score.lastAnswerAt = now;
     score.updatedAt = now;
-    this.recomputeRanks(round.sessionId, now);
     this.matchEvent(round.sessionId, participant.participantId, "answer", round.orderIndex, score.totalScore, score.currentRank, {
       selectedOption: args.selectedOption,
       isCorrect,
@@ -855,6 +854,7 @@ export class QuizRushEngine {
     const now = Date.now();
     round.status = "resolved";
     round.resolvedAt = now;
+    this.recomputeRanks(round.sessionId, now);
     this.matchEvent(round.sessionId, null, "round_resolved", round.orderIndex, null, null, {});
     const session = this.requireSession(round.sessionId);
     if (round.orderIndex >= session.questionCount) {
