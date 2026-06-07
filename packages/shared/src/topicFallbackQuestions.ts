@@ -11,6 +11,8 @@ export function buildTopicFallbackQuestions(topicInput: string, questionCount: n
       ? andamanQuestionPack(topic)
       : lower.includes("visa") || lower.includes("immigration")
       ? visaQuestionPack(topic)
+      : lower.includes("space") || lower.includes("rocket") || lower.includes("nasa") || lower.includes("astronomy")
+        ? spaceQuestionPack(topic)
       : lower.includes("fruit") || lower.includes("nutrition")
         ? fruitQuestionPack(topic)
         : generalKnowledgeQuestionPack();
@@ -72,6 +74,21 @@ function andamanQuestionPack(topic: string): QuestionInput[] {
     q("Which island is also known as Swaraj Dweep?", ["Havelock Island", "Ross Island", "Neil Island", "Barren Island"], "A", "Havelock Island was renamed Swaraj Dweep.", topic, ["andaman-swaraj-dweep"]),
     q("What natural feature is Barren Island known for?", ["Active volcano", "Hot desert", "Salt glacier", "Coral atoll only"], "A", "Barren Island is known for India's only confirmed active volcano.", topic, ["andaman-barren-volcano"]),
     q("The Jarawa people are associated with which region?", ["Andaman Islands", "Sundarbans", "Thar Desert", "Nilgiri Hills"], "A", "The Jarawa are an Indigenous people of the Andaman Islands.", topic, ["andaman-jarawa"])
+  ];
+}
+
+function spaceQuestionPack(topic: string): QuestionInput[] {
+  return [
+    q("Which planet is known as the Red Planet?", ["Mars", "Venus", "Jupiter", "Mercury"], "A", "Mars is commonly called the Red Planet because iron-rich dust gives it a reddish appearance.", topic, ["space-mars-red-planet"]),
+    q("What force keeps planets in orbit around the Sun?", ["Gravity", "Friction", "Magnetism only", "Sound"], "A", "Gravity pulls planets toward the Sun while their motion carries them around it.", topic, ["space-gravity-orbits"]),
+    q("Which agency operated the Apollo Moon missions?", ["NASA", "ESA", "ISRO", "JAXA"], "A", "NASA operated the Apollo program that landed astronauts on the Moon.", topic, ["space-nasa-apollo"]),
+    q("What is a galaxy?", ["A huge star system", "A single planet", "A rocket engine", "A type of comet"], "A", "A galaxy is a massive system of stars, gas, dust, and dark matter bound by gravity.", topic, ["space-galaxy-definition"]),
+    q("Which object orbits Earth and supports communication or observation?", ["Satellite", "Asteroid belt", "Volcano", "Coral reef"], "A", "Artificial satellites orbit Earth for communication, navigation, weather, science, and observation.", topic, ["space-satellites"]),
+    q("What do rockets expel to move forward in spaceflight?", ["Exhaust", "Rain", "Sand", "Clouds"], "A", "Rockets move by expelling exhaust in one direction, creating thrust in the other.", topic, ["space-rocket-thrust"]),
+    q("What is the Sun?", ["A star", "A planet", "A moon", "A spacecraft"], "A", "The Sun is the star at the center of the Solar System.", topic, ["space-sun-star"]),
+    q("Which telescope is famous for deep-space images after launching in 1990?", ["Hubble", "Sputnik", "Voyager", "Artemis"], "A", "The Hubble Space Telescope launched in 1990 and produced many famous deep-space images.", topic, ["space-hubble"]),
+    q("What is an exoplanet?", ["A planet outside our Solar System", "A moon crater", "A rocket stage", "A type of meteor"], "A", "An exoplanet is a planet that orbits a star outside our Solar System.", topic, ["space-exoplanet"]),
+    q("Which craft have traveled into interstellar space?", ["Voyager probes", "Apollo landers", "Space shuttles", "GPS satellites"], "A", "NASA's Voyager probes have crossed into interstellar space after exploring the outer Solar System.", topic, ["space-voyager"])
   ];
 }
 

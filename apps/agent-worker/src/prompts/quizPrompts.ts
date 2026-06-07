@@ -9,6 +9,8 @@ export const sharedGuardrails = [
   "Use the provided output schema exactly.",
   "Keep explanations short and educational.",
   "Do not use gambling language.",
+  "Never ask meta-learning questions like best first step, how to study, valid quiz question, know key terms, skip basics, ignore context, or avoid examples.",
+  "Every question must be about the requested topic itself, not about learning the topic.",
   "Questions must be answerable in a few seconds from provided facts or widely accepted general knowledge."
 ].join("\n");
 
@@ -87,6 +89,8 @@ export function quizAuthorUserPrompt(input: {
         ? "Every question must be directly supported by at least one supplied fact card."
         : "No citations, unless provided by the prompt.",
       facts.length ? "Use only supplied factIds in factIds." : "If no fact cards are supplied, keep questions widely known and conservative.",
+      "Do not generate generic study-skill or meta questions.",
+      `Each question must be specifically about ${input.topic}.`,
       "No political, medical, legal, financial, or gambling content."
     ],
     output_schema: {
