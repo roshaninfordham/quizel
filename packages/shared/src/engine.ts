@@ -242,9 +242,6 @@ export class QuizRushEngine {
     identity
   }: ReducerContext<{ code?: string; joinCode?: string; displayName: string; avatar: string }>): { participant: Participant; score: Score } {
     const session = this.requireSessionByCode(args.code ?? args.joinCode ?? DEFAULT_SESSION_CODE);
-    if (!["lobby", "topic_voting", "generating", "ready"].includes(session.status)) {
-      throw new Error("This tournament is already in progress.");
-    }
 
     const now = Date.now();
     const existing = this.state.participants.find(
@@ -259,7 +256,12 @@ export class QuizRushEngine {
     }
 
     const capacity = this.ensureCapacity(session.sessionId, now);
-    const admissionStatus = capacity.admittedCount < capacity.maxRacersHard ? "admitted" : "waitlisted";
+    const admissionStatus =
+      session.status === "playing" || session.status === "finished" || session.status === "replay"
+        ? "spectator"
+        : capacity.admittedCount < capacity.maxRacersHard
+          ? "admitted"
+          : "waitlisted";
     const championStatus = admissionStatus === "admitted" ? "active" : "spectator";
     const participant: Participant = {
       participantId: this.nextId("participant"),
@@ -383,23 +385,27 @@ export class QuizRushEngine {
     const now = Date.now();
     const topic = normalizeIntent(args.topic?.trim() || selectedTopicFromVotes(this.state.topicVotes.filter((vote) => vote.sessionId === session.sessionId))).displayArenaName;
     const questionCount = args.questionCount ?? QUESTION_COUNT;
+    const participant = this.state.participants.find((candidate) => candidate.sessionId === session.sessionId && candidate.identity === identity);
+    const participantId = participant?.participantId ?? null;
     const pendingSameTopic = this.state.agentRequests.find(
       (request) => request.sessionId === session.sessionId && request.status === "pending" && request.topic === topic
     );
-    if (pendingSameTopic) return pendingSameTopic;
-    for (const request of this.state.agentRequests.filter(
-      (candidate) => candidate.sessionId === session.sessionId && candidate.status === "pending"
-    )) {
-      request.status = "failed";
-      request.updatedAt = now;
-      request.errorMessage = `Superseded by newer quiz request for ${topic}.`;
+    if (!participantId && pendingSameTopic) return pendingSameTopic;
+    if (!participantId) {
+      for (const request of this.state.agentRequests.filter(
+        (candidate) => candidate.sessionId === session.sessionId && candidate.status === "pending"
+      )) {
+        request.status = "failed";
+        request.updatedAt = now;
+        request.errorMessage = `Superseded by newer quiz request for ${topic}.`;
+      }
     }
-    if (!["playing", "finished", "replay"].includes(session.status)) {
+    if (!participantId && !["playing", "finished", "replay"].includes(session.status)) {
       this.state.questions = this.state.questions.filter((question) => question.sessionId !== session.sessionId);
       this.state.rounds = this.state.rounds.filter((round) => round.sessionId !== session.sessionId);
     }
-    session.status = "generating";
-    session.selectedTopic = topic;
+    if (!participantId) session.status = "generating";
+    session.selectedTopic = participantId ? session.selectedTopic ?? topic : topic;
     session.questionCount = questionCount;
     session.updatedAt = now;
     const request: AgentRequest = {
@@ -430,7 +436,8 @@ export class QuizRushEngine {
       args: {
         sessionId: session.sessionId,
         selectedTopic: topic,
-        questions: buildTopicFallbackQuestions(topic, questionCount)
+        questions: buildTopicFallbackQuestions(topic, questionCount),
+        participantId
       },
       identity: "seed-fallback"
     });
@@ -440,7 +447,7 @@ export class QuizRushEngine {
   private submitQuestionPack({
     args,
     identity
-  }: ReducerContext<{ sessionId: string; selectedTopic?: string; requestId?: string; questions?: QuestionInput[]; questionsJson?: string }>): Question[] {
+  }: ReducerContext<{ sessionId: string; selectedTopic?: string; requestId?: string; participantId?: string | null; questions?: QuestionInput[]; questionsJson?: string }>): Question[] {
     const session = this.requireSession(args.sessionId);
     if (args.requestId) {
       const request = this.state.agentRequests.find(
@@ -490,15 +497,22 @@ export class QuizRushEngine {
 
     const now = Date.now();
     const topic = args.selectedTopic ?? session.selectedTopic ?? DEFAULT_SELECTED_TOPIC;
-    this.state.questionPacks = this.state.questionPacks.filter((pack) => pack.sessionId !== session.sessionId);
-    this.state.questions = this.state.questions.filter((question) => question.sessionId !== session.sessionId);
-    this.state.questionSecrets = this.state.questionSecrets.filter((secret) => secret.sessionId !== session.sessionId);
-    this.state.rounds = this.state.rounds.filter((round) => round.sessionId !== session.sessionId);
+    const participantId = args.participantId ?? null;
+    this.state.questionPacks = this.state.questionPacks.filter((pack) =>
+      participantId ? pack.sessionId !== session.sessionId || pack.participantId !== participantId : pack.sessionId !== session.sessionId || pack.participantId !== null
+    );
+    this.state.questions = this.state.questions.filter((question) =>
+      participantId ? question.sessionId !== session.sessionId || question.participantId !== participantId : question.sessionId !== session.sessionId || question.participantId !== null
+    );
+    this.state.questionSecrets = this.state.questionSecrets.filter((secret) =>
+      participantId ? secret.sessionId !== session.sessionId || secret.participantId !== participantId : secret.sessionId !== session.sessionId || secret.participantId !== null
+    );
+    if (!participantId) this.state.rounds = this.state.rounds.filter((round) => round.sessionId !== session.sessionId);
     const normalized = normalizeIntent(topic);
     const pack: QuestionPack = {
       packId: this.nextId("pack"),
       sessionId: session.sessionId,
-      participantId: null,
+      participantId,
       topicKey: `${packTopicKey(normalized.displayArenaName, normalized.topicKey)}::${normalized.difficultyHint}`,
       displayTopic: normalized.displayArenaName,
       sourceType: identity === "agent-worker" ? "grounded_llm" : "seed_fallback",
@@ -513,7 +527,7 @@ export class QuizRushEngine {
         questionId,
         packId: pack.packId,
         sessionId: session.sessionId,
-        participantId: null,
+        participantId,
         topicKey: pack.topicKey,
         orderIndex: index + 1,
         questionText: question.questionText,
@@ -533,7 +547,7 @@ export class QuizRushEngine {
         questionId,
         packId: pack.packId,
         sessionId: session.sessionId,
-        participantId: null,
+        participantId,
         correctOption: question.correctOption,
         explanation: question.explanation,
         factIds: question.factIds ?? [],
@@ -542,10 +556,10 @@ export class QuizRushEngine {
       return publicQuestion;
     });
     this.state.questions.push(...inserted);
-    session.selectedTopic = topic;
+    if (!participantId) session.selectedTopic = topic;
     session.status = inserted.length >= session.questionCount ? "ready" : "generating";
     session.updatedAt = now;
-    for (const intent of this.state.playerIntents.filter((candidate) => candidate.sessionId === session.sessionId)) {
+    for (const intent of this.state.playerIntents.filter((candidate) => candidate.sessionId === session.sessionId && (!participantId || candidate.participantId === participantId))) {
       intent.status = "pack_ready";
       intent.updatedAt = now;
     }
@@ -567,7 +581,7 @@ export class QuizRushEngine {
       },
       identity
     });
-    this.matchEvent(session.sessionId, null, "pack_ready", null, null, null, {
+    this.matchEvent(session.sessionId, participantId, "pack_ready", null, null, null, {
       topic,
       questions: inserted.length,
       source: identity === "agent-worker" ? "llm" : "instant"
@@ -672,7 +686,7 @@ export class QuizRushEngine {
 
   private startRound({ args }: ReducerContext<{ sessionId: string; questionOrder: number }>): Round {
     const session = this.requireSession(args.sessionId);
-    const question = this.requireQuestionByOrder(session.sessionId, args.questionOrder);
+    const question = this.requireQuestionByOrder(session.sessionId, args.questionOrder, null);
     const now = Date.now();
     const matchStartedAt = session.matchStartedAt ?? now;
     const matchDeadline = matchStartedAt + TOTAL_MATCH_SECONDS * 1000;
@@ -740,7 +754,12 @@ export class QuizRushEngine {
       );
       if (duplicateClientEvent) throw new Error("Duplicate answer event rejected.");
     }
-    const secret = this.requireQuestionSecret(round.questionId);
+    const participantQuestion =
+      this.state.questions.find(
+        (candidate) => candidate.sessionId === round.sessionId && candidate.participantId === participant.participantId && candidate.orderIndex === round.orderIndex
+      ) ?? null;
+    const scoredQuestionId = participantQuestion?.questionId ?? round.questionId;
+    const secret = this.requireQuestionSecret(scoredQuestionId);
     const now = Date.now();
     if (now + EARLY_ANSWER_TOLERANCE_MS < round.startsAt) throw new Error("Round has not started.");
     if (now > round.endsAt + ANSWER_GRACE_MS) throw new Error("Round has ended.");
@@ -764,7 +783,7 @@ export class QuizRushEngine {
       answerId: this.nextId("answer"),
       sessionId: round.sessionId,
       roundId: round.roundId,
-      questionId: round.questionId,
+      questionId: scoredQuestionId,
       participantId: participant.participantId,
       selectedOption: args.selectedOption,
       isCorrect,
@@ -1360,8 +1379,10 @@ export class QuizRushEngine {
     return secret;
   }
 
-  private requireQuestionByOrder(sessionId: string, orderIndex: number): Question {
-    const question = this.state.questions.find((candidate) => candidate.sessionId === sessionId && candidate.orderIndex === orderIndex);
+  private requireQuestionByOrder(sessionId: string, orderIndex: number, participantId: string | null = null): Question {
+    const question =
+      this.state.questions.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId && candidate.orderIndex === orderIndex) ??
+      this.state.questions.find((candidate) => candidate.sessionId === sessionId && candidate.orderIndex === orderIndex);
     if (!question) throw new Error(`Question ${orderIndex} not found.`);
     return question;
   }

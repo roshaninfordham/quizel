@@ -184,6 +184,11 @@ async function main() {
           rawText: topicFor(client.id),
           transcriptSource: "typed"
         });
+        await client.connection.reducers.requestQuestions({
+          sessionId,
+          topic: topicFor(client.id),
+          questionCount: QUESTION_COUNT
+        });
       });
       joinSamples.push(sample);
     });
@@ -193,7 +198,13 @@ async function main() {
       const participantsReady = Array.from(operator!.connection.db.participant.iter()).filter((row) => row.sessionId === sessionId).length >= joined;
       const scoresReady = Array.from(operator!.connection.db.score.iter()).filter((row) => row.sessionId === sessionId).length >= joined;
       const intentsReady = Array.from(operator!.connection.db.player_intent.iter()).filter((row) => row.sessionId === sessionId).length >= joined;
-      return participantsReady && scoresReady && intentsReady;
+      const admittedReady = Array.from(operator!.connection.db.participant.iter()).filter(
+        (row) => row.sessionId === sessionId && row.admissionStatus === "admitted"
+      ).length;
+      const participantPacksReady = Array.from(operator!.connection.db.question_pack.iter()).filter(
+        (row) => row.sessionId === sessionId && row.participantId
+      ).length >= admittedReady;
+      return participantsReady && scoresReady && intentsReady && participantPacksReady;
     }, 15_000);
     await sleep(numberEnv("PRE_START_SETTLE_MS", 300));
     const admittedIds = admittedClientIdSet(operator.connection);

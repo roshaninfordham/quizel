@@ -10,8 +10,8 @@ const PLAYER_STALE_TIMEOUT_MS = 12_000;
 const CORRECTNESS_POINTS = 1000;
 const MAX_SPEED_BONUS = 1000;
 const STREAK_BONUS = 100;
-const MAX_PLAYERS_SOFT = 10;
-const MAX_PLAYERS_HARD = 12;
+const MAX_PLAYERS_SOFT = 20;
+const MAX_PLAYERS_HARD = 25;
 const EAGER_SHARECARD_LIMIT = 500;
 const SIMULATED_ANSWER_BURST_SIZE = 8;
 const DEFAULT_TOPIC = "AI + Space + Startups";
@@ -470,9 +470,6 @@ export const create_session = spacetimedb.reducer({ code: t.string(), question_c
 
 export const join_session = spacetimedb.reducer({ code: t.string(), display_name: t.string(), avatar: t.string() }, (ctx, { code, display_name, avatar }) => {
   const current = requireSessionByCode(ctx, code);
-  if (!["lobby", "topic_voting", "generating", "ready"].includes(current.status)) {
-    throw new Error("This tournament is already in progress.");
-  }
   const caller = sender(ctx);
   for (const existing of ctx.db.participant.session_id.filter(current.session_id)) {
     if (existing.identity === caller) {
@@ -484,7 +481,12 @@ export const join_session = spacetimedb.reducer({ code: t.string(), display_name
 
   const now = nowMs();
   const capacity = updateCapacity(ctx, current.session_id, now);
-  const admission_status = capacity.admitted_count < capacity.max_racers_hard ? "admitted" : "waitlisted";
+  const admission_status =
+    current.status === "playing" || current.status === "finished" || current.status === "replay"
+      ? "spectator"
+      : capacity.admitted_count < capacity.max_racers_hard
+        ? "admitted"
+        : "waitlisted";
   const champion_status = admission_status === "admitted" ? "active" : "spectator";
   const participant_id = id(ctx, "participant");
   ctx.db.participant.insert({
@@ -592,26 +594,30 @@ export const submit_parsed_intent = spacetimedb.reducer({ intent_id: t.string(),
 export const request_questions = spacetimedb.reducer({ session_id: t.string(), topic: t.string(), question_count: t.u32() }, (ctx, { session_id, topic, question_count }) => {
   const current = requireSession(ctx, session_id);
   const now = nowMs();
+  const participantRow = participantForSender(ctx, session_id);
+  const participant_id = participantRow?.participant_id;
   const selected_topic = normalizeIntentForModule(topic || topicFromVotes(ctx, session_id)).arena_name;
   const requestedCount = question_count || QUESTION_COUNT;
   const pendingSame = Array.from(ctx.db.agent_request.session_id.filter(session_id)).find(
     (request) => request.status === "pending" && request.topic === selected_topic
   );
-  if (pendingSame) {
+  if (!participant_id && pendingSame) {
     bumpStats(ctx, session_id);
     return;
   }
-  for (const request of ctx.db.agent_request.session_id.filter(session_id)) {
-    if (request.status === "pending") {
-      ctx.db.agent_request.request_id.update({
-        ...request,
-        status: "failed",
-        updated_at_ms: now,
-        error_message: `Superseded by newer quiz request for ${selected_topic}.`
-      });
+  if (!participant_id) {
+    for (const request of ctx.db.agent_request.session_id.filter(session_id)) {
+      if (request.status === "pending") {
+        ctx.db.agent_request.request_id.update({
+          ...request,
+          status: "failed",
+          updated_at_ms: now,
+          error_message: `Superseded by newer quiz request for ${selected_topic}.`
+        });
+      }
     }
   }
-  if (current.status !== "playing" && current.status !== "finished" && current.status !== "replay") {
+  if (!participant_id && current.status !== "playing" && current.status !== "finished" && current.status !== "replay") {
     ctx.db.question_pack.session_id.delete(session_id);
     ctx.db.question_public.session_id.delete(session_id);
     ctx.db.question_secret.session_id.delete(session_id);
@@ -619,8 +625,8 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
   }
   ctx.db.session.session_id.update({
     ...current,
-    status: "generating",
-    selected_topic,
+    status: participant_id ? (current.status === "lobby" ? "topic_voting" : current.status) : "generating",
+    selected_topic: participant_id ? current.selected_topic ?? selected_topic : selected_topic,
     question_count: requestedCount,
     updated_at_ms: now
   });
@@ -636,8 +642,8 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
     error_message: undefined
   });
   insertAgentEvent(ctx, session_id, "Topic Router Agent", "topic_selected", `Selected ${selected_topic} from live topic votes.`, 0.88, "complete");
-  insertMatchEvent(ctx, session_id, undefined, "questions_requested", undefined, undefined, undefined, JSON.stringify({ selected_topic }));
-  submitQuestionPackInternal(ctx, session_id, selected_topic, JSON.stringify({ questions: fallbackQuestionsForTopic(selected_topic, requestedCount) }), undefined);
+  insertMatchEvent(ctx, session_id, participant_id, "questions_requested", undefined, undefined, undefined, JSON.stringify({ selected_topic, participantScoped: Boolean(participant_id) }));
+  submitQuestionPackInternal(ctx, session_id, selected_topic, JSON.stringify({ questions: fallbackQuestionsForTopic(selected_topic, requestedCount) }), undefined, participant_id);
   bumpStats(ctx, session_id);
   traceOperation(ctx, session_id, "request_questions", true, 1, undefined);
 });
@@ -801,7 +807,12 @@ export const submit_answer = spacetimedb.reducer(
       if (existing.client_event_id === client_event_id) throw new Error("Duplicate answer event rejected.");
     }
   }
-  const currentSecret = requireQuestionSecret(ctx, currentRound.question_id);
+  const participantQuestion =
+    Array.from(ctx.db.question_public.session_id.filter(currentRound.session_id)).find(
+      (candidate) => candidate.participant_id === participantRow.participant_id && candidate.order_index === currentRound.order_index
+    ) ?? undefined;
+  const scoredQuestionId = participantQuestion?.question_id ?? currentRound.question_id;
+  const currentSecret = requireQuestionSecret(ctx, scoredQuestionId);
   const now = nowMs();
   if (now + BigInt(EARLY_ANSWER_TOLERANCE_MS) < currentRound.starts_at_ms) throw new Error("Round has not started.");
   if (now > currentRound.ends_at_ms + BigInt(ANSWER_GRACE_MS)) throw new Error("Round has ended.");
@@ -826,7 +837,7 @@ export const submit_answer = spacetimedb.reducer(
     answer_id: id(ctx, "answer"),
     session_id: currentRound.session_id,
     round_id,
-    question_id: currentRound.question_id,
+    question_id: scoredQuestionId,
     participant_id: participantRow.participant_id,
     selected_option,
     is_correct,
@@ -1173,7 +1184,7 @@ function createSessionRow(ctx: ReducerCtx, code: string, question_count: number)
   insertAgentEvent(ctx, "session-demo", "Seed Fallback Provider", "fallback_ready", "Topic-specific deterministic backup questions are ready if the LLM is unavailable.", 1, "complete");
 }
 
-function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selected_topic: string, questions_json: string, request_id?: string) {
+function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selected_topic: string, questions_json: string, request_id?: string, participant_id?: string) {
   const current = requireSession(ctx, session_id);
   if (request_id) {
     const request = ctx.db.agent_request.request_id.find(request_id);
@@ -1209,10 +1220,28 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
   if (!Array.isArray(parsed.questions) || parsed.questions.length < current.question_count) {
     throw new Error("Malformed question pack.");
   }
-  ctx.db.question_pack.session_id.delete(session_id);
-  ctx.db.question_public.session_id.delete(session_id);
-  ctx.db.question_secret.session_id.delete(session_id);
-  ctx.db.round.session_id.delete(session_id);
+  if (participant_id) {
+    for (const pack of ctx.db.question_pack.session_id.filter(session_id)) {
+      if (pack.participant_id === participant_id) ctx.db.question_pack.pack_id.delete(pack.pack_id);
+    }
+    for (const question of ctx.db.question_public.session_id.filter(session_id)) {
+      if (question.participant_id === participant_id) ctx.db.question_public.question_id.delete(question.question_id);
+    }
+    for (const secret of ctx.db.question_secret.session_id.filter(session_id)) {
+      if (secret.participant_id === participant_id) ctx.db.question_secret.question_id.delete(secret.question_id);
+    }
+  } else {
+    for (const pack of ctx.db.question_pack.session_id.filter(session_id)) {
+      if (pack.participant_id === undefined) ctx.db.question_pack.pack_id.delete(pack.pack_id);
+    }
+    for (const question of ctx.db.question_public.session_id.filter(session_id)) {
+      if (question.participant_id === undefined) ctx.db.question_public.question_id.delete(question.question_id);
+    }
+    for (const secret of ctx.db.question_secret.session_id.filter(session_id)) {
+      if (secret.participant_id === undefined) ctx.db.question_secret.question_id.delete(secret.question_id);
+    }
+    ctx.db.round.session_id.delete(session_id);
+  }
   const now = nowMs();
   const isAgentPack = Boolean(request_id) || sender(ctx) === "agent-worker";
   const normalizedTopic = normalizeIntentForModule(selected_topic);
@@ -1221,7 +1250,7 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
   ctx.db.question_pack.insert({
     pack_id,
     session_id,
-    participant_id: undefined,
+    participant_id,
     topic_key,
     display_topic: normalizedTopic.arena_name,
     source_type: isAgentPack ? "grounded_llm" : "seed_fallback",
@@ -1236,7 +1265,7 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
       question_id,
       pack_id,
       session_id,
-      participant_id: undefined,
+      participant_id,
       topic_key,
       order_index: index + 1,
       question_text: item.questionText,
@@ -1256,28 +1285,33 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
       question_id,
       pack_id,
       session_id,
-      participant_id: undefined,
+      participant_id,
       correct_option: item.correctOption,
       explanation: item.explanation,
       fact_ids_json: JSON.stringify(Array.isArray(item.factIds) ? item.factIds : Array.isArray(item.fact_ids) ? item.fact_ids : []),
       created_at_ms: now
     });
   });
-  ctx.db.session.session_id.update({ ...current, status: "ready", selected_topic, updated_at_ms: now });
+  ctx.db.session.session_id.update({ ...current, status: "ready", selected_topic: participant_id ? current.selected_topic ?? selected_topic : selected_topic, updated_at_ms: now });
   for (const intent of ctx.db.player_intent.session_id.filter(session_id)) {
-    ctx.db.player_intent.intent_id.update({ ...intent, status: "pack_ready", updated_at_ms: now });
+    if (!participant_id || intent.participant_id === participant_id) {
+      ctx.db.player_intent.intent_id.update({ ...intent, status: "pack_ready", updated_at_ms: now });
+    }
   }
   if (request_id) {
     const request = ctx.db.agent_request.request_id.find(request_id);
     if (request) ctx.db.agent_request.request_id.update({ ...request, status: "complete", updated_at_ms: now });
   }
   insertAgentEvent(ctx, session_id, "Match Engine", "questions_ready", `${current.question_count} questions are ready for a 25-second race.`, 1, "complete");
+  insertMatchEvent(ctx, session_id, participant_id, "pack_ready", undefined, undefined, undefined, JSON.stringify({ selected_topic, questions: current.question_count, participantScoped: Boolean(participant_id) }));
   bumpStats(ctx, session_id);
 }
 
 function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order: number) {
   const current = requireSession(ctx, session_id);
-  const questionRow = Array.from(ctx.db.question_public.session_id.filter(session_id)).find((candidate) => candidate.order_index === question_order);
+  const questionRow =
+    Array.from(ctx.db.question_public.session_id.filter(session_id)).find((candidate) => candidate.participant_id === undefined && candidate.order_index === question_order) ??
+    Array.from(ctx.db.question_public.session_id.filter(session_id)).find((candidate) => candidate.order_index === question_order);
   if (!questionRow) throw new Error(`Question ${question_order} is not ready.`);
   const now = nowMs();
   const matchStartedAt = current.match_started_at_ms ?? now;

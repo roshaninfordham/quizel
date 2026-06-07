@@ -181,6 +181,65 @@ describe("QuizRush reducer invariants", () => {
     expect(state.matchEvents.some((event) => event.eventType === "intent_parsed")).toBe(true);
   });
 
+  it("multi_phone_join_enter_arena_20_users keeps every player scoped and visible", () => {
+    useStableClock();
+    const engine = new QuizRushEngine();
+    const topics = ["Databases", "Argentina", "Space", "Andaman Islands", "Formula 1"];
+
+    for (let index = 0; index < 20; index += 1) {
+      const identity = `device-phone-${index + 1}`;
+      const topic = topics[index % topics.length] ?? "General Knowledge";
+      const joined = engine.callReducer("join_session", {
+        code: DEFAULT_SESSION_CODE,
+        displayName: `Phone ${index + 1}`,
+        avatar: "⚡"
+      }, identity);
+      const intent = engine.callReducer("submit_player_intent", {
+        sessionId: DEFAULT_SESSION_ID,
+        rawText: topic,
+        transcriptSource: "typed"
+      }, identity);
+      const vote = engine.callReducer("submit_topic_vote", { sessionId: DEFAULT_SESSION_ID, topics: [topic] }, identity);
+      const pack = engine.callReducer("request_questions", { sessionId: DEFAULT_SESSION_ID, topic }, identity);
+
+      expect(joined.ok).toBe(true);
+      expect(intent.ok).toBe(true);
+      expect(vote.ok).toBe(true);
+      expect(pack.ok).toBe(true);
+    }
+
+    const ready = engine.getSnapshot();
+    expect(ready.participants).toHaveLength(20);
+    expect(ready.participants.filter((participant) => participant.admissionStatus === "admitted")).toHaveLength(20);
+    expect(ready.scores).toHaveLength(20);
+    expect(ready.playerIntents).toHaveLength(20);
+    expect(ready.questionPacks.filter((pack) => pack.participantId)).toHaveLength(20);
+    expect(ready.questions.filter((question) => question.participantId)).toHaveLength(20 * QUESTION_COUNT);
+    expect(ready.liveStats[0]?.admittedRacers).toBe(20);
+
+    const started = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const round = engine.getSnapshot().rounds[0];
+    expect(started.ok).toBe(true);
+    expect(round).toBeDefined();
+    if (!round) throw new Error("round missing");
+    moveClockToRoundStart(engine, round.roundId, 800);
+
+    for (let index = 0; index < 20; index += 1) {
+      const answered = engine.callReducer("submit_answer", {
+        roundId: round.roundId,
+        selectedOption: (["A", "B", "C", "D"] as const)[index % 4],
+        clientEventId: `phone-${index + 1}-round-1`
+      }, `device-phone-${index + 1}`);
+      expect(answered.ok).toBe(true);
+    }
+
+    const answered = engine.getSnapshot();
+    expect(answered.answers.filter((answer) => answer.roundId === round.roundId)).toHaveLength(20);
+    expect(new Set(answered.answers.map((answer) => answer.participantId)).size).toBe(20);
+    expect(answered.scores.filter((score) => score.answeredCount === 1)).toHaveLength(20);
+    vi.useRealTimers();
+  });
+
   it("rounds advance immediately while staying inside the 25-second match budget", () => {
     const engine = prepareReadyMatch();
     const first = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };

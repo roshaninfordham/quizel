@@ -292,10 +292,16 @@ export function useCurrentRound(sessionId = DEFAULT_SESSION_ID): Round | undefin
   );
 }
 
-export function useCurrentQuestion(sessionId = DEFAULT_SESSION_ID): Question | undefined {
+export function useCurrentQuestion(sessionId = DEFAULT_SESSION_ID, participantId?: string | null): Question | undefined {
   const round = useCurrentRound(sessionId);
   const { state } = useSpacetime();
   if (!round) return undefined;
+  if (participantId) {
+    const participantQuestion = state.questions.find(
+      (question) => question.sessionId === sessionId && question.participantId === participantId && question.orderIndex === round.orderIndex
+    );
+    if (participantQuestion) return participantQuestion;
+  }
   return state.questions.find((question) => question.questionId === round.questionId);
 }
 

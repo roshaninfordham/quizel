@@ -119,7 +119,7 @@ export function useRequestQuestions() {
   const requestQuestions = useCallback(
     (sessionId = DEFAULT_SESSION_ID, topic?: string) =>
       runner.run("Agent pipeline started", async () => {
-        const receipt = await callReducer("request_questions", { sessionId, topic }, "operator");
+        const receipt = await callReducer("request_questions", { sessionId, topic }, getDeviceIdentity());
         if (!receipt.ok) throw new Error(receipt.error);
         return receipt.data;
       }),
