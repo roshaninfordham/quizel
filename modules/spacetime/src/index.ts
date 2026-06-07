@@ -3,6 +3,7 @@ import { schema, table, t } from "spacetimedb/server";
 const QUESTION_COUNT = 10;
 const TOTAL_MATCH_MS = 25_000;
 const QUESTION_TIME_LIMIT_MS = Math.floor(TOTAL_MATCH_MS / QUESTION_COUNT);
+const ROUND_LEAD_TIME_MS = 1_000;
 const ANSWER_GRACE_MS = 150;
 const CORRECTNESS_POINTS = 1000;
 const MAX_SPEED_BONUS = 1000;
@@ -81,26 +82,56 @@ const player_intent = table(
   }
 );
 
-const question = table(
-  { name: "question", public: true },
+const question_pack = table(
+  { name: "question_pack", public: true },
+  {
+    pack_id: t.string().primaryKey(),
+    session_id: t.string().index("btree"),
+    participant_id: t.option(t.string()).default(undefined),
+    topic_key: t.string(),
+    display_topic: t.string(),
+    source_type: t.string(),
+    quality_score: t.u32(),
+    status: t.string(),
+    created_at_ms: t.u64()
+  }
+);
+
+const question_public = table(
+  { name: "question_public", public: true },
   {
     question_id: t.string().primaryKey(),
+    pack_id: t.option(t.string()).default(undefined),
     session_id: t.string().index("btree"),
+    participant_id: t.option(t.string()).default(undefined),
+    topic_key: t.string().default("general_knowledge::intermediate"),
     order_index: t.u32(),
     question_text: t.string(),
     option_a: t.string(),
     option_b: t.string(),
     option_c: t.string(),
     option_d: t.string(),
-    correct_option: t.string(),
-    explanation: t.string(),
+    display_topic: t.string().default("General Knowledge"),
     topic: t.string(),
     generated_by: t.string(),
     fairness_status: t.string(),
     created_at_ms: t.u64(),
-    fact_ids_json: t.string().default("[]"),
     source_title: t.string().default(""),
     source_url: t.string().default("")
+  }
+);
+
+const question_secret = table(
+  { name: "question_secret", public: false },
+  {
+    question_id: t.string().primaryKey(),
+    pack_id: t.option(t.string()).default(undefined),
+    session_id: t.string().index("btree"),
+    participant_id: t.option(t.string()).default(undefined),
+    correct_option: t.string(),
+    explanation: t.string(),
+    fact_ids_json: t.string().default("[]"),
+    created_at_ms: t.u64()
   }
 );
 
@@ -130,6 +161,10 @@ const answer = table(
     is_correct: t.bool(),
     response_ms: t.u32(),
     response_ms_server: t.u32().default(0),
+    official_response_ms: t.u32().default(0),
+    observed_response_ms: t.option(t.u32()).default(undefined),
+    client_question_rendered_at_ms: t.option(t.u64()).default(undefined),
+    client_clicked_at_ms: t.option(t.u64()).default(undefined),
     client_sent_at_ms: t.option(t.u64()).default(undefined),
     client_event_id: t.string().default(""),
     correctness_points: t.u32().default(0),
@@ -137,6 +172,9 @@ const answer = table(
     streak_bonus: t.u32().default(0),
     score_delta: t.u32(),
     server_received_at_ms: t.u64(),
+    server_committed_at_ms: t.u64().default(BigInt(0)),
+    participant_latency_ms_snapshot: t.option(t.u32()).default(undefined),
+    timing_suspicious: t.bool().default(false),
     created_at_ms: t.u64().default(BigInt(0))
   }
 );
@@ -152,8 +190,13 @@ const score = table(
     wrong_count: t.u32().default(0),
     answered_count: t.u32().default(0),
     total_response_ms: t.u32(),
+    total_official_response_ms: t.u32().default(0),
+    total_observed_response_ms: t.option(t.u32()).default(undefined),
     fastest_response_ms: t.option(t.u32()),
+    fastest_official_response_ms: t.option(t.u32()).default(undefined),
+    fastest_observed_response_ms: t.option(t.u32()).default(undefined),
     average_response_ms: t.option(t.u32()).default(undefined),
+    average_official_response_ms: t.option(t.u32()).default(undefined),
     normalized_score: t.f32().default(0),
     streak_count: t.u32().default(0),
     last_answer_correct: t.option(t.bool()).default(undefined),
@@ -177,8 +220,13 @@ const final_result = table(
     total_score: t.u32(),
     correct_count: t.u32(),
     question_count: t.u32(),
+    answered_count: t.u32().default(0),
     total_response_ms: t.u32(),
+    total_official_response_ms: t.u32().default(0),
     fastest_response_ms: t.option(t.u32()),
+    fastest_official_response_ms: t.option(t.u32()).default(undefined),
+    average_official_response_ms: t.option(t.u32()).default(undefined),
+    normalized_score: t.f32().default(0),
     percentile: t.u32(),
     created_at_ms: t.u64()
   }
@@ -193,14 +241,26 @@ const share_card = table(
     participant_id: t.string().index("btree"),
     display_name: t.string(),
     avatar: t.string(),
+    avatar_type: t.string().default("emoji"),
+    avatar_emoji: t.option(t.string()).default(undefined),
+    avatar_color: t.option(t.string()).default(undefined),
+    avatar_url: t.option(t.string()).default(undefined),
+    display_topic: t.string().default("QuizRush Arena"),
     final_rank: t.u32(),
     total_participants: t.u32(),
     champion_status: t.string(),
     total_score: t.u32(),
     correct_count: t.u32(),
     question_count: t.u32(),
+    total_response_ms_official: t.u32().default(0),
+    total_response_ms_observed: t.option(t.u32()).default(undefined),
     fastest_response_ms: t.option(t.u32()),
+    fastest_response_ms_official: t.option(t.u32()).default(undefined),
+    fastest_response_ms_observed: t.option(t.u32()).default(undefined),
+    percentile: t.u32().default(100),
+    share_text: t.string().default(""),
     created_at_ms: t.u64(),
+    expires_at_ms: t.option(t.u64()).default(undefined),
     view_count: t.u32()
   }
 );
@@ -346,7 +406,9 @@ const spacetimedb = schema({
   participant,
   topic_vote,
   player_intent,
-  question,
+  question_pack,
+  question_public,
+  question_secret,
   round,
   answer,
   score,
@@ -523,7 +585,9 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
     }
   }
   if (current.status !== "playing" && current.status !== "finished" && current.status !== "replay") {
-    ctx.db.question.session_id.delete(session_id);
+    ctx.db.question_pack.session_id.delete(session_id);
+    ctx.db.question_public.session_id.delete(session_id);
+    ctx.db.question_secret.session_id.delete(session_id);
     ctx.db.round.session_id.delete(session_id);
   }
   ctx.db.session.session_id.update({
@@ -617,14 +681,14 @@ export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx,
   if (Array.from(ctx.db.participant.session_id.filter(session_id)).filter((participant) => participant.admission_status === "admitted").length === 0) {
     throw new Error("At least one participant must join before the match starts.");
   }
-  if (Array.from(ctx.db.question.session_id.filter(session_id)).length < current.question_count) {
+  if (Array.from(ctx.db.question_public.session_id.filter(session_id)).length < current.question_count) {
     throw new Error("Question pack is not ready.");
   }
   ctx.db.round.session_id.delete(session_id);
   ctx.db.answer.session_id.delete(session_id);
   ctx.db.final_result.session_id.delete(session_id);
-  ctx.db.share_card.session_id.delete(session_id);
   const now = nowMs();
+  const raceStartsAt = now + BigInt(ROUND_LEAD_TIME_MS);
   for (const participant of ctx.db.participant.session_id.filter(session_id)) {
     ctx.db.participant.participant_id.update({
       ...participant,
@@ -640,8 +704,13 @@ export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx,
       wrong_count: 0,
       answered_count: 0,
       total_response_ms: 0,
+      total_official_response_ms: 0,
+      total_observed_response_ms: undefined,
       fastest_response_ms: undefined,
+      fastest_official_response_ms: undefined,
+      fastest_observed_response_ms: undefined,
       average_response_ms: undefined,
+      average_official_response_ms: undefined,
       normalized_score: 0,
       streak_count: 0,
       last_answer_correct: undefined,
@@ -656,7 +725,7 @@ export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx,
     ...current,
     status: "playing",
     current_round: 1,
-    match_started_at_ms: now,
+    match_started_at_ms: raceStartsAt,
     match_finished_at_ms: undefined,
     updated_at_ms: now
   });
@@ -673,8 +742,15 @@ export const start_round = spacetimedb.reducer({ session_id: t.string(), questio
 });
 
 export const submit_answer = spacetimedb.reducer(
-  { round_id: t.string(), selected_option: t.string(), client_event_id: t.option(t.string()), client_sent_at_ms: t.option(t.u64()) },
-  (ctx, { round_id, selected_option, client_event_id, client_sent_at_ms }) => {
+  {
+    round_id: t.string(),
+    selected_option: t.string(),
+    client_event_id: t.option(t.string()),
+    client_sent_at_ms: t.option(t.u64()),
+    client_question_rendered_at_ms: t.option(t.u64()),
+    client_clicked_at_ms: t.option(t.u64())
+  },
+  (ctx, { round_id, selected_option, client_event_id, client_sent_at_ms, client_question_rendered_at_ms, client_clicked_at_ms }) => {
   if (!["A", "B", "C", "D"].includes(selected_option)) throw new Error("selected_option must be A/B/C/D.");
   const currentRound = requireRound(ctx, round_id);
   if (currentRound.status !== "active") throw new Error("Round is not active.");
@@ -696,11 +772,19 @@ export const submit_answer = spacetimedb.reducer(
       if (existing.client_event_id === client_event_id) throw new Error("Duplicate answer event rejected.");
     }
   }
-  const currentQuestion = requireQuestion(ctx, currentRound.question_id);
+  const currentSecret = requireQuestionSecret(ctx, currentRound.question_id);
   const now = nowMs();
+  if (now < currentRound.starts_at_ms) throw new Error("Round has not started.");
   if (now > currentRound.ends_at_ms + BigInt(ANSWER_GRACE_MS)) throw new Error("Round has ended.");
   const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms), QUESTION_TIME_LIMIT_MS));
-  const is_correct = selected_option === currentQuestion.correct_option;
+  const observed_response_ms =
+    client_question_rendered_at_ms !== undefined && client_clicked_at_ms !== undefined && client_clicked_at_ms >= client_question_rendered_at_ms
+      ? Math.min(Number(client_clicked_at_ms - client_question_rendered_at_ms), 60_000)
+      : undefined;
+  const timing_suspicious =
+    observed_response_ms !== undefined &&
+    (observed_response_ms < 80 || Math.abs(observed_response_ms - response_ms) > Math.max(600, Math.floor(response_ms * 0.75)));
+  const is_correct = selected_option === currentSecret.correct_option;
   const currentScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
   const scoreParts = computeAnswerScoreParts(is_correct, response_ms, currentScore.last_answer_correct === true);
   ctx.db.answer.insert({
@@ -713,6 +797,10 @@ export const submit_answer = spacetimedb.reducer(
     is_correct,
     response_ms,
     response_ms_server: response_ms,
+    official_response_ms: response_ms,
+    observed_response_ms,
+    client_question_rendered_at_ms,
+    client_clicked_at_ms,
     client_sent_at_ms,
     client_event_id: client_event_id ?? "",
     correctness_points: scoreParts.correctness_points,
@@ -720,11 +808,25 @@ export const submit_answer = spacetimedb.reducer(
     streak_bonus: scoreParts.streak_bonus,
     score_delta: scoreParts.score_delta,
     server_received_at_ms: now,
+    server_committed_at_ms: now,
+    participant_latency_ms_snapshot: participantRow.client_latency_ms,
+    timing_suspicious,
     created_at_ms: now
   });
   const nextCorrect = currentScore.correct_count + (is_correct ? 1 : 0);
   const nextAnswered = currentScore.answered_count + 1;
   const nextResponseTotal = currentScore.total_response_ms + (is_correct ? response_ms : 0);
+  const nextObservedTotal =
+    is_correct && observed_response_ms !== undefined
+      ? (currentScore.total_observed_response_ms ?? 0) + observed_response_ms
+      : currentScore.total_observed_response_ms;
+  const nextFastest = is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms;
+  const nextFastestObserved =
+    is_correct && observed_response_ms !== undefined
+      ? currentScore.fastest_observed_response_ms === undefined
+        ? observed_response_ms
+        : Math.min(currentScore.fastest_observed_response_ms, observed_response_ms)
+      : currentScore.fastest_observed_response_ms;
   const nextStreak = is_correct ? currentScore.streak_count + 1 : 0;
   ctx.db.score.score_id.update({
     ...currentScore,
@@ -733,9 +835,13 @@ export const submit_answer = spacetimedb.reducer(
     wrong_count: currentScore.wrong_count + (is_correct ? 0 : 1),
     answered_count: nextAnswered,
     total_response_ms: nextResponseTotal,
-    fastest_response_ms:
-      is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms,
+    total_official_response_ms: nextResponseTotal,
+    total_observed_response_ms: nextObservedTotal,
+    fastest_response_ms: nextFastest,
+    fastest_official_response_ms: nextFastest,
+    fastest_observed_response_ms: nextFastestObserved,
     average_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
+    average_official_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
     normalized_score: normalizedScore(nextCorrect, nextResponseTotal, nextStreak, requireSession(ctx, currentRound.session_id).question_count),
     streak_count: nextStreak,
     last_answer_correct: is_correct,
@@ -744,7 +850,7 @@ export const submit_answer = spacetimedb.reducer(
   });
   recomputeRanks(ctx, currentRound.session_id);
   const updatedScore = requireScore(ctx, currentRound.session_id, participantRow.participant_id);
-  insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, response_ms }));
+  insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "answer", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify({ selected_option, is_correct, officialResponseMs: response_ms, observedResponseMs: observed_response_ms, timingSuspicious: timing_suspicious }));
   insertMatchEvent(ctx, currentRound.session_id, participantRow.participant_id, "score_delta", currentRound.order_index, updatedScore.total_score, updatedScore.current_rank, JSON.stringify(scoreParts));
   recalcStats(ctx, currentRound.session_id);
   traceOperation(ctx, currentRound.session_id, "submit_answer", true, 1, undefined);
@@ -779,8 +885,9 @@ export const create_share_card = spacetimedb.reducer({ session_id: t.string(), p
   if (!result) throw new Error("Final result is not ready.");
   const existing = Array.from(ctx.db.share_card.participant_id.filter(participantRow.participant_id)).find((card) => card.session_id === session_id);
   if (existing) return;
-  const slug = uniqueShareSlug(ctx, participantRow.display_name);
+  const slug = uniqueShareSlug(ctx);
   const now = nowMs();
+  const share_text = `${participantRow.display_name} placed #${result.final_rank} with ${result.total_score.toLocaleString()} points in QuizRush Arena.`;
   ctx.db.share_card.insert({
     share_id: id(ctx, "share"),
     slug,
@@ -788,19 +895,38 @@ export const create_share_card = spacetimedb.reducer({ session_id: t.string(), p
     participant_id: participantRow.participant_id,
     display_name: participantRow.display_name,
     avatar: participantRow.avatar,
+    avatar_type: "emoji",
+    avatar_emoji: participantRow.avatar,
+    avatar_color: undefined,
+    avatar_url: undefined,
+    display_topic: requireSession(ctx, session_id).selected_topic ?? "QuizRush Arena",
     final_rank: result.final_rank,
     total_participants: result.total_participants,
     champion_status: result.champion_status,
     total_score: result.total_score,
     correct_count: result.correct_count,
     question_count: result.question_count,
+    total_response_ms_official: result.total_official_response_ms,
+    total_response_ms_observed: undefined,
     fastest_response_ms: result.fastest_response_ms,
+    fastest_response_ms_official: result.fastest_official_response_ms,
+    fastest_response_ms_observed: undefined,
+    percentile: result.percentile,
+    share_text,
     created_at_ms: now,
+    expires_at_ms: undefined,
     view_count: 0
   });
   insertMatchEvent(ctx, session_id, participantRow.participant_id, "share_created", undefined, result.total_score, result.final_rank, JSON.stringify({ slug }));
   bumpStats(ctx, session_id);
   traceOperation(ctx, session_id, "create_share_card", true, 1, undefined);
+});
+
+export const increment_share_view = spacetimedb.reducer({ slug: t.string() }, (ctx, { slug }) => {
+  const existing = ctx.db.share_card.slug.find(slug);
+  if (!existing) throw new Error("Share card not found or expired.");
+  ctx.db.share_card.share_id.update({ ...existing, view_count: existing.view_count + 1 });
+  traceOperation(ctx, existing.session_id, "increment_share_view", true, 1, undefined);
 });
 
 export const heartbeat = spacetimedb.reducer({ session_id: t.string(), client_latency_ms: t.option(t.u32()) }, (ctx, { session_id, client_latency_ms }) => {
@@ -825,6 +951,16 @@ export const reset_demo = spacetimedb.reducer({ session_id: t.string() }, (ctx, 
   createSessionRow(ctx, DEFAULT_CODE, QUESTION_COUNT);
   insertAudit(ctx, session_id, sender(ctx), "reset_demo", "QuizRush demo reset to a clean lobby.");
   traceOperation(ctx, session_id, "reset_demo", true, 1, undefined);
+});
+
+export const hard_reset_demo = spacetimedb.reducer({ session_id: t.string() }, (ctx, { session_id }) => {
+  resetSessionTables(ctx, session_id);
+  ctx.db.share_card.session_id.delete(session_id);
+  const current = ctx.db.session.session_id.find(session_id);
+  if (current) ctx.db.session.session_id.delete(session_id);
+  createSessionRow(ctx, DEFAULT_CODE, QUESTION_COUNT);
+  insertAudit(ctx, session_id, sender(ctx), "hard_reset_demo", "QuizRush demo hard reset, including share cards.");
+  traceOperation(ctx, session_id, "hard_reset_demo", true, 1, undefined);
 });
 
 export const add_simulated_players = spacetimedb.reducer({ session_id: t.string(), count: t.u32() }, (ctx, { session_id, count }) => {
@@ -864,18 +1000,18 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
   if (!currentRound) return;
   const now = nowMs();
   if (now < currentRound.starts_at_ms || now > currentRound.ends_at_ms + BigInt(200)) return;
-  const currentQuestion = requireQuestion(ctx, currentRound.question_id);
+  const currentSecret = requireQuestionSecret(ctx, currentRound.question_id);
   const answered = new Set(Array.from(ctx.db.answer.round_id.filter(currentRound.round_id)).map((item) => item.participant_id));
   const candidates = Array.from(ctx.db.participant.session_id.filter(session_id))
     .filter((item) => item.is_simulated && !answered.has(item.participant_id))
     .sort((a, b) => a.participant_id.localeCompare(b.participant_id))
     .slice(0, Math.min(Number(count || SIMULATED_ANSWER_BURST_SIZE), 32));
-  const wrongOptions = ["A", "B", "C", "D"].filter((option) => option !== currentQuestion.correct_option);
+  const wrongOptions = ["A", "B", "C", "D"].filter((option) => option !== currentSecret.correct_option);
 
   candidates.forEach((item, index) => {
     const response_ms = Math.max(0, Math.min(Number(now - currentRound.starts_at_ms) + (index % 5) * 9, QUESTION_TIME_LIMIT_MS));
     const is_correct = (index + currentRound.order_index + numericSuffix(item.participant_id)) % 5 !== 0;
-    const selected_option = is_correct ? currentQuestion.correct_option : wrongOptions[index % wrongOptions.length] ?? "A";
+    const selected_option = is_correct ? currentSecret.correct_option : wrongOptions[index % wrongOptions.length] ?? "A";
     const currentScore = requireScore(ctx, session_id, item.participant_id);
     const scoreParts = computeAnswerScoreParts(is_correct, response_ms, currentScore.last_answer_correct === true);
     ctx.db.answer.insert({
@@ -888,6 +1024,10 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
       is_correct,
       response_ms,
       response_ms_server: response_ms,
+      official_response_ms: response_ms,
+      observed_response_ms: undefined,
+      client_question_rendered_at_ms: undefined,
+      client_clicked_at_ms: undefined,
       client_sent_at_ms: undefined,
       client_event_id: `sim-${item.participant_id}-${currentRound.round_id}`,
       correctness_points: scoreParts.correctness_points,
@@ -895,10 +1035,14 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
       streak_bonus: scoreParts.streak_bonus,
       score_delta: scoreParts.score_delta,
       server_received_at_ms: now + BigInt(index),
+      server_committed_at_ms: now + BigInt(index),
+      participant_latency_ms_snapshot: item.client_latency_ms,
+      timing_suspicious: false,
       created_at_ms: now + BigInt(index)
     });
     const nextCorrect = currentScore.correct_count + (is_correct ? 1 : 0);
     const nextResponseTotal = currentScore.total_response_ms + (is_correct ? response_ms : 0);
+    const nextFastest = is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms;
     const nextStreak = is_correct ? currentScore.streak_count + 1 : 0;
     ctx.db.score.score_id.update({
       ...currentScore,
@@ -907,9 +1051,11 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
       wrong_count: currentScore.wrong_count + (is_correct ? 0 : 1),
       answered_count: currentScore.answered_count + 1,
       total_response_ms: nextResponseTotal,
-      fastest_response_ms:
-        is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms,
+      total_official_response_ms: nextResponseTotal,
+      fastest_response_ms: nextFastest,
+      fastest_official_response_ms: nextFastest,
       average_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
+      average_official_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
       normalized_score: normalizedScore(nextCorrect, nextResponseTotal, nextStreak, requireSession(ctx, session_id).question_count),
       streak_count: nextStreak,
       last_answer_correct: is_correct,
@@ -941,7 +1087,8 @@ export const record_agent_event = spacetimedb.reducer(
 type ReducerCtx = Parameters<Parameters<typeof spacetimedb.reducer>[1]>[0];
 type SessionRow = ReturnType<ReducerCtx["db"]["session"]["session_id"]["find"]> extends infer R ? NonNullable<R> : never;
 type RoundRow = ReturnType<ReducerCtx["db"]["round"]["round_id"]["find"]> extends infer R ? NonNullable<R> : never;
-type QuestionRow = ReturnType<ReducerCtx["db"]["question"]["question_id"]["find"]> extends infer R ? NonNullable<R> : never;
+type QuestionRow = ReturnType<ReducerCtx["db"]["question_public"]["question_id"]["find"]> extends infer R ? NonNullable<R> : never;
+type QuestionSecretRow = ReturnType<ReducerCtx["db"]["question_secret"]["question_id"]["find"]> extends infer R ? NonNullable<R> : never;
 type ParticipantRow = ReturnType<ReducerCtx["db"]["participant"]["participant_id"]["find"]> extends infer R ? NonNullable<R> : never;
 type ScoreRow = ReturnType<ReducerCtx["db"]["score"]["score_id"]["find"]> extends infer R ? NonNullable<R> : never;
 
@@ -978,7 +1125,7 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
       return;
     }
   }
-  if ((current.status === "playing" || current.status === "finished" || current.status === "replay") && Array.from(ctx.db.question.session_id.filter(session_id)).length > 0) {
+  if ((current.status === "playing" || current.status === "finished" || current.status === "replay") && Array.from(ctx.db.question_public.session_id.filter(session_id)).length > 0) {
     if (request_id) {
       const request = ctx.db.agent_request.request_id.find(request_id);
       if (request) ctx.db.agent_request.request_id.update({ ...request, status: "complete", updated_at_ms: nowMs() });
@@ -1004,29 +1151,57 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
   if (!Array.isArray(parsed.questions) || parsed.questions.length < current.question_count) {
     throw new Error("Malformed question pack.");
   }
-  ctx.db.question.session_id.delete(session_id);
+  ctx.db.question_pack.session_id.delete(session_id);
+  ctx.db.question_public.session_id.delete(session_id);
+  ctx.db.question_secret.session_id.delete(session_id);
   ctx.db.round.session_id.delete(session_id);
   const now = nowMs();
   const isAgentPack = Boolean(request_id) || sender(ctx) === "agent-worker";
+  const normalizedTopic = normalizeIntentForModule(selected_topic);
+  const topic_key = `${packTopicKey(normalizedTopic.arena_name, normalizedTopic.topic_key)}::${normalizedTopic.difficulty_hint}`;
+  const pack_id = id(ctx, "pack");
+  ctx.db.question_pack.insert({
+    pack_id,
+    session_id,
+    participant_id: undefined,
+    topic_key,
+    display_topic: normalizedTopic.arena_name,
+    source_type: isAgentPack ? "grounded_llm" : "seed_fallback",
+    quality_score: isAgentPack ? 90 : 82,
+    status: isAgentPack ? "final" : "provisional",
+    created_at_ms: now
+  });
   parsed.questions.slice(0, current.question_count).forEach((item, index) => {
     if (!item.options || !["A", "B", "C", "D"].includes(item.correctOption)) throw new Error("Malformed question option.");
-    ctx.db.question.insert({
-      question_id: id(ctx, "question"),
+    const question_id = id(ctx, "question");
+    ctx.db.question_public.insert({
+      question_id,
+      pack_id,
       session_id,
+      participant_id: undefined,
+      topic_key,
       order_index: index + 1,
       question_text: item.questionText,
       option_a: item.options.A,
       option_b: item.options.B,
       option_c: item.options.C,
       option_d: item.options.D,
-      correct_option: item.correctOption,
-      explanation: item.explanation,
+      display_topic: normalizedTopic.arena_name,
       topic: item.topic || selected_topic,
-      fact_ids_json: JSON.stringify(Array.isArray(item.factIds) ? item.factIds : Array.isArray(item.fact_ids) ? item.fact_ids : []),
       source_title: item.sourceTitle ?? item.source_title ?? "",
       source_url: item.sourceUrl ?? item.source_url ?? "",
       generated_by: isAgentPack ? "Quiz Builder Agent" : "Seed Fallback Provider",
       fairness_status: isAgentPack ? "approved" : "fallback",
+      created_at_ms: now
+    });
+    ctx.db.question_secret.insert({
+      question_id,
+      pack_id,
+      session_id,
+      participant_id: undefined,
+      correct_option: item.correctOption,
+      explanation: item.explanation,
+      fact_ids_json: JSON.stringify(Array.isArray(item.factIds) ? item.factIds : Array.isArray(item.fact_ids) ? item.fact_ids : []),
       created_at_ms: now
     });
   });
@@ -1044,12 +1219,13 @@ function submitQuestionPackInternal(ctx: ReducerCtx, session_id: string, selecte
 
 function startRoundInternal(ctx: ReducerCtx, session_id: string, question_order: number) {
   const current = requireSession(ctx, session_id);
-  const questionRow = Array.from(ctx.db.question.session_id.filter(session_id)).find((candidate) => candidate.order_index === question_order);
+  const questionRow = Array.from(ctx.db.question_public.session_id.filter(session_id)).find((candidate) => candidate.order_index === question_order);
   if (!questionRow) throw new Error(`Question ${question_order} is not ready.`);
   const now = nowMs();
   const matchStartedAt = current.match_started_at_ms ?? now;
   const matchDeadline = matchStartedAt + BigInt(TOTAL_MATCH_MS);
-  const startsAt = now < matchStartedAt ? matchStartedAt : now > matchDeadline ? matchDeadline : now;
+  const scheduledStart = question_order === 1 ? matchStartedAt : now + BigInt(ROUND_LEAD_TIME_MS);
+  const startsAt = scheduledStart < matchStartedAt ? matchStartedAt : scheduledStart > matchDeadline ? matchDeadline : scheduledStart;
   const candidateEndsAt = startsAt + BigInt(QUESTION_TIME_LIMIT_MS);
   const endsAt = candidateEndsAt > matchDeadline ? matchDeadline : candidateEndsAt;
   for (const active of ctx.db.round.session_id.filter(session_id)) {
@@ -1101,9 +1277,9 @@ function recomputeRanks(ctx: ReducerCtx, session_id: string) {
 function compareScores(a: ScoreRow, b: ScoreRow): number {
   if (b.total_score !== a.total_score) return b.total_score - a.total_score;
   if (b.correct_count !== a.correct_count) return b.correct_count - a.correct_count;
-  if (a.total_response_ms !== b.total_response_ms) return a.total_response_ms - b.total_response_ms;
-  const aFast = a.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
-  const bFast = b.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
+  if (a.total_official_response_ms !== b.total_official_response_ms) return a.total_official_response_ms - b.total_official_response_ms;
+  const aFast = a.fastest_official_response_ms ?? a.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
+  const bFast = b.fastest_official_response_ms ?? b.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
   if (aFast !== bFast) return aFast - bFast;
   const aLast = a.last_answer_at_ms ?? BigInt(Number.MAX_SAFE_INTEGER);
   const bLast = b.last_answer_at_ms ?? BigInt(Number.MAX_SAFE_INTEGER);
@@ -1127,8 +1303,13 @@ function snapshotFinalResults(ctx: ReducerCtx, session_id: string, now: bigint) 
       total_score: score.total_score,
       correct_count: score.correct_count,
       question_count: current.question_count,
+      answered_count: score.answered_count,
       total_response_ms: score.total_response_ms,
+      total_official_response_ms: score.total_official_response_ms,
       fastest_response_ms: score.fastest_response_ms,
+      fastest_official_response_ms: score.fastest_official_response_ms,
+      average_official_response_ms: score.average_official_response_ms,
+      normalized_score: score.normalized_score,
       percentile: percentileRank(index + 1, total),
       created_at_ms: now
     });
@@ -1228,13 +1409,16 @@ function percentileRank(rank: number, total: number): number {
   return Math.max(1, Math.min(100, Math.ceil((rank * 100) / total)));
 }
 
-function uniqueShareSlug(ctx: ReducerCtx, display_name: string): string {
-  const base = display_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "player";
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const slug = `${base}-${ctx.random.integerInRange(100000, 999999)}`;
+function uniqueShareSlug(ctx: ReducerCtx): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    let slug = "";
+    for (let index = 0; index < 12; index += 1) {
+      slug += alphabet[Number(ctx.random.integerInRange(0, alphabet.length - 1))] ?? "x";
+    }
     if (!ctx.db.share_card.slug.find(slug)) return slug;
   }
-  return `${base}-${Date.now()}`;
+  return `s_${Number(nowMs() % BigInt(1_000_000_000)).toString(36)}_${ctx.random.integerInRange(100000, 999999)}`;
 }
 
 function computeAnswerScoreParts(is_correct: boolean, response_ms: number, previous_correct: boolean) {
@@ -1261,8 +1445,13 @@ function emptyScore(session_id: string, participant_id: string, now: bigint, cha
     wrong_count: 0,
     answered_count: 0,
     total_response_ms: 0,
+    total_official_response_ms: 0,
+    total_observed_response_ms: undefined,
     fastest_response_ms: undefined,
+    fastest_official_response_ms: undefined,
+    fastest_observed_response_ms: undefined,
     average_response_ms: undefined,
+    average_official_response_ms: undefined,
     normalized_score: 0,
     streak_count: 0,
     last_answer_correct: undefined,
@@ -1278,13 +1467,14 @@ function resetSessionTables(ctx: ReducerCtx, session_id: string) {
   ctx.db.participant.session_id.delete(session_id);
   ctx.db.topic_vote.session_id.delete(session_id);
   ctx.db.player_intent.session_id.delete(session_id);
-  ctx.db.question.session_id.delete(session_id);
+  ctx.db.question_pack.session_id.delete(session_id);
+  ctx.db.question_public.session_id.delete(session_id);
+  ctx.db.question_secret.session_id.delete(session_id);
   ctx.db.topic_fact.session_id.delete(session_id);
   ctx.db.round.session_id.delete(session_id);
   ctx.db.answer.session_id.delete(session_id);
   ctx.db.score.session_id.delete(session_id);
   ctx.db.final_result.session_id.delete(session_id);
-  ctx.db.share_card.session_id.delete(session_id);
   ctx.db.session_capacity.session_id.delete(session_id);
   ctx.db.admission_ticket.session_id.delete(session_id);
   ctx.db.match_event.session_id.delete(session_id);
@@ -1314,8 +1504,14 @@ function requireRound(ctx: ReducerCtx, round_id: string): RoundRow {
 }
 
 function requireQuestion(ctx: ReducerCtx, question_id: string): QuestionRow {
-  const row = ctx.db.question.question_id.find(question_id);
+  const row = ctx.db.question_public.question_id.find(question_id);
   if (!row) throw new Error(`Question not found: ${question_id}`);
+  return row;
+}
+
+function requireQuestionSecret(ctx: ReducerCtx, question_id: string): QuestionSecretRow {
+  const row = ctx.db.question_secret.question_id.find(question_id);
+  if (!row) throw new Error(`Question secret not found: ${question_id}`);
   return row;
 }
 
@@ -1510,6 +1706,19 @@ function fallbackQuestionsForTopic(topic: string, count: number) {
         fq("At a US port of entry, who decides admission?", ["Border officer", "Taxi driver", "Tour guide", "Travel blogger"], "A", "A border officer makes the final admission decision at the port of entry.", normalized),
         fq("Why do forms ask for travel purpose?", ["Match the visa", "Pick an airline", "Choose a meal", "Rate a hotel"], "A", "Travel purpose helps match a person to the correct visa category.", normalized)
       ]
+    : lower.includes("space") || lower.includes("rocket") || lower.includes("astronomy")
+      ? [
+          fq("Which planet is known as the Red Planet?", ["Mars", "Venus", "Jupiter", "Mercury"], "A", "Mars is commonly called the Red Planet because of its reddish appearance.", "Space"),
+          fq("What force keeps planets in orbit around the Sun?", ["Gravity", "Magnetism", "Friction", "Photosynthesis"], "A", "Gravity keeps planets orbiting the Sun.", "Space"),
+          fq("Which agency led the Apollo Moon landing missions?", ["NASA", "ESA", "ISRO", "JAXA"], "A", "NASA led the Apollo missions that landed astronauts on the Moon.", "Space"),
+          fq("What is a galaxy?", ["A huge system of stars", "A single asteroid", "A weather layer", "A rocket fuel"], "A", "A galaxy is a vast system containing stars, gas, dust, and dark matter.", "Space"),
+          fq("What does an artificial satellite usually orbit?", ["A planet or moon", "A cave", "A tree", "A river"], "A", "Artificial satellites are placed in orbit around planets or moons.", "Space"),
+          fq("What do rockets expel to produce thrust?", ["Fast-moving gas", "Liquid water only", "Sand", "Solar panels"], "A", "Rockets generate thrust by expelling gas at high speed.", "Space"),
+          fq("What kind of object is the Sun?", ["A star", "A planet", "A comet", "A moon"], "A", "The Sun is the star at the center of the Solar System.", "Space"),
+          fq("Which telescope became famous for deep-space images after launching in 1990?", ["Hubble Space Telescope", "Voyager 1", "Apollo 11", "Sputnik 1"], "A", "The Hubble Space Telescope has produced famous deep-space images since 1990.", "Space"),
+          fq("What is an exoplanet?", ["A planet outside our Solar System", "A small moon crater", "A rocket engine", "A type of space suit"], "A", "An exoplanet is a planet orbiting a star beyond our Solar System.", "Space"),
+          fq("Which spacecraft family explored the outer planets and beyond?", ["Voyager", "Apollo", "Mercury", "Gemini"], "A", "The Voyager probes explored the outer planets and continued into interstellar space.", "Space")
+        ]
     : lower.includes("fruit") || lower.includes("nutrition")
       ? [
           fq("In {topic}, which part usually protects seeds?", ["Fruit", "Root", "Stem", "Leaf"], "A", "A fruit develops around seeds and often helps protect or spread them.", normalized),
@@ -1624,6 +1833,10 @@ function repeatKey(word: string): string {
 
 function topicKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function packTopicKey(displayTopic: string, fallbackTopicKey: string): string {
+  return displayTopic.toLowerCase() === "space" ? "space" : fallbackTopicKey;
 }
 
 function dedupe(values: string[]): string[] {

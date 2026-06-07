@@ -15,4 +15,6 @@ export default {
   selectedOption: __t.string(),
   clientEventId: __t.option(__t.string()),
   clientSentAtMs: __t.option(__t.u64()),
+  clientQuestionRenderedAtMs: __t.option(__t.u64()),
+  clientClickedAtMs: __t.option(__t.u64()),
 };

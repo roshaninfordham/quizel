@@ -11,10 +11,5 @@ import {
 } from "spacetimedb";
 
 export default {
-  roundId: __t.string(),
-  selectedOption: __t.string(),
-  clientEventId: __t.option(__t.string()),
-  clientSentAtMs: __t.option(__t.u64()),
-  clientQuestionRenderedAtMs: __t.option(__t.u64()),
-  clientClickedAtMs: __t.option(__t.u64()),
+  sessionId: __t.string(),
 };

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SESSION_CODE, DEFAULT_SESSION_ID, QUESTION_COUNT, QUESTION_TIME_LIMIT_MS, TOTAL_MATCH_SECONDS } from "./constants";
 import { SEEDED_DEMO_QUESTIONS } from "./demoQuestions";
 import { QuizRushEngine } from "./engine";
@@ -29,6 +29,17 @@ function prepareReadyMatch() {
   expect(joinB.ok).toBe(true);
   expect(pack.ok).toBe(true);
   return engine;
+}
+
+function useStableClock(): void {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+}
+
+function moveClockToRoundStart(engine: QuizRushEngine, roundId: string, offsetMs = 500): void {
+  const round = engine.getSnapshot().rounds.find((candidate) => candidate.roundId === roundId);
+  if (!round) throw new Error(`Round not found in test: ${roundId}`);
+  vi.setSystemTime(round.startsAt + offsetMs);
 }
 
 describe("QuizRush reducer invariants", () => {
@@ -183,15 +194,21 @@ describe("QuizRush reducer invariants", () => {
   });
 
   it("submit_answer rejects duplicate answers and records the rejection", () => {
+    useStableClock();
     const engine = prepareReadyMatch();
     const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    const early = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
+    moveClockToRoundStart(engine, round.roundId);
     const first = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
     const second = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "A" }, "device-maya");
 
+    expect(early.ok).toBe(false);
+    expect(early.error).toContain("not started");
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(false);
     expect(engine.getSnapshot().answers).toHaveLength(1);
     expect(engine.getSnapshot().liveStats[0]?.duplicateAnswersRejected).toBe(1);
+    vi.useRealTimers();
   });
 
   it("scores correct fast answers and gives wrong answers no speed bonus", () => {
@@ -206,8 +223,10 @@ describe("QuizRush reducer invariants", () => {
   });
 
   it("updates rankings and writes replay events after answers", () => {
+    useStableClock();
     const engine = prepareReadyMatch();
     const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    moveClockToRoundStart(engine, round.roundId);
     engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
     engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "A" }, "device-arjun");
 
@@ -216,12 +235,15 @@ describe("QuizRush reducer invariants", () => {
     expect(ranked[0]?.currentRank).toBe(1);
     expect(state.matchEvents.some((event) => event.eventType === "answer")).toBe(true);
     expect(state.matchEvents.some((event) => event.eventType === "score_delta")).toBe(true);
+    vi.useRealTimers();
   });
 
   it("simulate_answer_burst commits simulated answers, score changes, and live stats", () => {
+    useStableClock();
     const engine = prepareReadyMatch();
     engine.callReducer("add_simulated_players", { sessionId: DEFAULT_SESSION_ID, count: 12 }, "operator");
-    engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    moveClockToRoundStart(engine, round.roundId);
     const burst = engine.callReducer("simulate_answer_burst", { sessionId: DEFAULT_SESSION_ID, count: 8 }, "simulation-engine");
     const state = engine.getSnapshot();
 
@@ -229,6 +251,7 @@ describe("QuizRush reducer invariants", () => {
     expect(state.answers.filter((answer) => answer.roundId === state.rounds[0]?.roundId)).toHaveLength(8);
     expect(state.liveStats[0]?.answersCount).toBe(8);
     expect(state.matchEvents.some((event) => event.eventType === "score_delta")).toBe(true);
+    vi.useRealTimers();
   });
 
   it("live_tick refreshes live stats through a reducer", () => {

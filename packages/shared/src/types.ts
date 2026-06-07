@@ -88,21 +88,45 @@ export interface QuestionInput {
 
 export interface Question {
   questionId: string;
+  packId: string | null;
   sessionId: string;
+  participantId: string | null;
+  topicKey: string;
   orderIndex: number;
   questionText: string;
   optionA: string;
   optionB: string;
   optionC: string;
   optionD: string;
-  correctOption: OptionKey;
-  explanation: string;
+  displayTopic: string;
   topic: string;
-  factIds: string[];
   sourceTitle: string | null;
   sourceUrl: string | null;
   generatedBy: string;
   fairnessStatus: "approved" | "fallback" | "rejected";
+  createdAt: number;
+}
+
+export interface QuestionSecret {
+  questionId: string;
+  packId: string | null;
+  sessionId: string;
+  participantId: string | null;
+  correctOption: OptionKey;
+  explanation: string;
+  factIds: string[];
+  createdAt: number;
+}
+
+export interface QuestionPack {
+  packId: string;
+  sessionId: string;
+  participantId: string | null;
+  topicKey: string;
+  displayTopic: string;
+  sourceType: "cache" | "grounded_llm" | "template_grounded" | "seed_fallback" | "exact_cache" | "semantic_cache" | "fallback";
+  qualityScore: number;
+  status: "provisional" | "final" | "superseded";
   createdAt: number;
 }
 
@@ -111,9 +135,10 @@ export interface TopicFact {
   sessionId: string;
   topicKey: string;
   displayName: string;
+  displayTopic?: string;
   sourceTitle: string;
   sourceUrl: string;
-  sourceType: "firecrawl" | "local" | "llm_fallback";
+  sourceType: "firecrawl" | "local" | "local_seed" | "wikipedia" | "wikidata" | "trusted_cache" | "llm_fallback";
   factText: string;
   confidence: number;
   createdAt: number;
@@ -140,6 +165,10 @@ export interface Answer {
   isCorrect: boolean;
   responseMs: number;
   responseMsServer: number;
+  officialResponseMs: number;
+  observedResponseMs: number | null;
+  clientQuestionRenderedAtMs: number | null;
+  clientClickedAtMs: number | null;
   clientSentAt: number | null;
   clientEventId: string | null;
   correctnessPoints: number;
@@ -147,6 +176,9 @@ export interface Answer {
   streakBonus: number;
   scoreDelta: number;
   serverReceivedAt: number;
+  serverCommittedAt: number;
+  participantLatencyMsSnapshot: number | null;
+  timingSuspicious: boolean;
   createdAt: number;
 }
 
@@ -159,8 +191,13 @@ export interface Score {
   wrongCount: number;
   answeredCount: number;
   totalResponseMs: number;
+  totalOfficialResponseMs: number;
+  totalObservedResponseMs: number | null;
   fastestResponseMs: number | null;
+  fastestOfficialResponseMs: number | null;
+  fastestObservedResponseMs: number | null;
   averageResponseMs: number | null;
+  averageOfficialResponseMs: number | null;
   normalizedScore: number;
   streakCount: number;
   lastAnswerCorrect: boolean | null;
@@ -181,8 +218,13 @@ export interface FinalResult {
   totalScore: number;
   correctCount: number;
   questionCount: number;
+  answeredCount: number;
   totalResponseMs: number;
+  totalOfficialResponseMs: number;
   fastestResponseMs: number | null;
+  fastestOfficialResponseMs: number | null;
+  averageOfficialResponseMs: number | null;
+  normalizedScore: number;
   percentile: number;
   createdAt: number;
 }
@@ -194,14 +236,26 @@ export interface ShareCard {
   participantId: string;
   displayName: string;
   avatar: string;
+  avatarType: "emoji" | "initial" | "image";
+  avatarEmoji: string | null;
+  avatarColor: string | null;
+  avatarUrl: string | null;
+  displayTopic: string;
   finalRank: number;
   totalParticipants: number;
   championStatus: "active" | "eliminated" | "champion" | "finished" | "spectator";
   totalScore: number;
   correctCount: number;
   questionCount: number;
+  totalResponseMsOfficial: number;
+  totalResponseMsObserved: number | null;
   fastestResponseMs: number | null;
+  fastestResponseMsOfficial: number | null;
+  fastestResponseMsObserved: number | null;
+  percentile: number;
+  shareText: string;
   createdAt: number;
+  expiresAt: number | null;
   viewCount: number;
 }
 
@@ -306,7 +360,9 @@ export interface QuizRushState {
   participants: Participant[];
   topicVotes: TopicVote[];
   playerIntents: PlayerIntent[];
+  questionPacks: QuestionPack[];
   questions: Question[];
+  questionSecrets: QuestionSecret[];
   rounds: Round[];
   answers: Answer[];
   scores: Score[];

@@ -7,6 +7,7 @@ import {
   MAX_PLAYERS_SOFT,
   QUESTION_COUNT,
   QUESTION_TIME_LIMIT_MS,
+  ROUND_LEAD_TIME_MS,
   ANSWER_GRACE_MS,
   SIMULATED_ANSWER_BURST_SIZE,
   TOTAL_MATCH_SECONDS
@@ -31,6 +32,8 @@ import type {
   PlayerIntent,
   Question,
   QuestionInput,
+  QuestionPack,
+  QuestionSecret,
   QuizRushState,
   ReducerReceipt,
   Round,
@@ -142,19 +145,32 @@ export class QuizRushEngine {
       case "start_round":
         return this.startRound(context as ReducerContext<{ sessionId: string; questionOrder: number }>);
       case "submit_answer":
-        return this.submitAnswer(context as ReducerContext<{ roundId: string; selectedOption: OptionKey; clientSentAt?: number }>);
+        return this.submitAnswer(
+          context as ReducerContext<{
+            roundId: string;
+            selectedOption: OptionKey;
+            clientSentAt?: number;
+            clientEventId?: string;
+            clientQuestionRenderedAtMs?: number;
+            clientClickedAtMs?: number;
+          }>
+        );
       case "resolve_round":
         return this.resolveRound(context as ReducerContext<{ roundId: string }>);
       case "finish_match":
         return this.finishMatch(context as ReducerContext<{ sessionId: string; force?: boolean }>);
       case "create_share_card":
         return this.createShareCard(context as ReducerContext<{ sessionId: string; participantId?: string }>);
+      case "increment_share_view":
+        return this.incrementShareView(context as ReducerContext<{ slug: string }>);
       case "heartbeat":
         return this.heartbeat(context as ReducerContext<{ sessionId: string; clientLatencyMs?: number }>);
       case "live_tick":
         return this.liveTick(context as ReducerContext<{ sessionId: string }>);
       case "reset_demo":
         return this.resetDemo(context as ReducerContext<{ sessionId?: string }>);
+      case "hard_reset_demo":
+        return this.hardResetDemo(context as ReducerContext<{ sessionId?: string }>);
       case "add_simulated_players":
         return this.addSimulatedPlayers(context as ReducerContext<{ sessionId: string; count: number }>);
       case "simulate_answer_burst":
@@ -456,27 +472,57 @@ export class QuizRushEngine {
 
     const now = Date.now();
     const topic = args.selectedTopic ?? session.selectedTopic ?? DEFAULT_SELECTED_TOPIC;
+    this.state.questionPacks = this.state.questionPacks.filter((pack) => pack.sessionId !== session.sessionId);
     this.state.questions = this.state.questions.filter((question) => question.sessionId !== session.sessionId);
+    this.state.questionSecrets = this.state.questionSecrets.filter((secret) => secret.sessionId !== session.sessionId);
     this.state.rounds = this.state.rounds.filter((round) => round.sessionId !== session.sessionId);
-    const inserted = parsed.data.questions.slice(0, session.questionCount).map<Question>((question, index) => ({
-      questionId: this.nextId("question"),
+    const normalized = normalizeIntent(topic);
+    const pack: QuestionPack = {
+      packId: this.nextId("pack"),
       sessionId: session.sessionId,
-      orderIndex: index + 1,
-      questionText: question.questionText,
-      optionA: question.options.A,
-      optionB: question.options.B,
-      optionC: question.options.C,
-      optionD: question.options.D,
-      correctOption: question.correctOption,
-      explanation: question.explanation,
-      topic: question.topic || topic,
-      factIds: question.factIds ?? [],
-      sourceTitle: question.sourceTitle ?? null,
-      sourceUrl: question.sourceUrl ?? null,
-      generatedBy: identity === "agent-worker" ? "Quiz Builder Agent" : "Seed Fallback Provider",
-      fairnessStatus: identity === "agent-worker" ? "approved" : "fallback",
+      participantId: null,
+      topicKey: `${packTopicKey(normalized.displayArenaName, normalized.topicKey)}::${normalized.difficultyHint}`,
+      displayTopic: normalized.displayArenaName,
+      sourceType: identity === "agent-worker" ? "grounded_llm" : "seed_fallback",
+      qualityScore: identity === "agent-worker" ? 90 : 82,
+      status: identity === "agent-worker" ? "final" : "provisional",
       createdAt: now
-    }));
+    };
+    this.state.questionPacks.push(pack);
+    const inserted = parsed.data.questions.slice(0, session.questionCount).map<Question>((question, index) => {
+      const questionId = this.nextId("question");
+      const publicQuestion: Question = {
+        questionId,
+        packId: pack.packId,
+        sessionId: session.sessionId,
+        participantId: null,
+        topicKey: pack.topicKey,
+        orderIndex: index + 1,
+        questionText: question.questionText,
+        optionA: question.options.A,
+        optionB: question.options.B,
+        optionC: question.options.C,
+        optionD: question.options.D,
+        displayTopic: pack.displayTopic,
+        topic: question.topic || topic,
+        sourceTitle: question.sourceTitle ?? null,
+        sourceUrl: question.sourceUrl ?? null,
+        generatedBy: identity === "agent-worker" ? "Quiz Builder Agent" : "Seed Fallback Provider",
+        fairnessStatus: identity === "agent-worker" ? "approved" : "fallback",
+        createdAt: now
+      };
+      this.state.questionSecrets.push({
+        questionId,
+        packId: pack.packId,
+        sessionId: session.sessionId,
+        participantId: null,
+        correctOption: question.correctOption,
+        explanation: question.explanation,
+        factIds: question.factIds ?? [],
+        createdAt: now
+      });
+      return publicQuestion;
+    });
     this.state.questions.push(...inserted);
     session.selectedTopic = topic;
     session.status = inserted.length >= session.questionCount ? "ready" : "generating";
@@ -569,14 +615,14 @@ export class QuizRushEngine {
       });
     }
     const now = Date.now();
+    const raceStartsAt = now + ROUND_LEAD_TIME_MS;
     session.status = "playing";
     session.currentRound = 1;
-    session.matchStartedAt = now;
+    session.matchStartedAt = raceStartsAt;
     session.matchFinishedAt = null;
     session.updatedAt = now;
     this.state.answers = this.state.answers.filter((answer) => answer.sessionId !== session.sessionId);
     this.state.finalResults = this.state.finalResults.filter((result) => result.sessionId !== session.sessionId);
-    this.state.shareCards = this.state.shareCards.filter((share) => share.sessionId !== session.sessionId);
     for (const participant of this.state.participants.filter((participant) => participant.sessionId === session.sessionId)) {
       participant.championStatus = participant.admissionStatus === "admitted" ? "active" : "spectator";
     }
@@ -586,8 +632,13 @@ export class QuizRushEngine {
       score.wrongCount = 0;
       score.answeredCount = 0;
       score.totalResponseMs = 0;
+      score.totalOfficialResponseMs = 0;
+      score.totalObservedResponseMs = null;
       score.fastestResponseMs = null;
+      score.fastestOfficialResponseMs = null;
+      score.fastestObservedResponseMs = null;
       score.averageResponseMs = null;
+      score.averageOfficialResponseMs = null;
       score.normalizedScore = 0;
       score.streakCount = 0;
       score.lastAnswerCorrect = null;
@@ -607,7 +658,8 @@ export class QuizRushEngine {
     const now = Date.now();
     const matchStartedAt = session.matchStartedAt ?? now;
     const matchDeadline = matchStartedAt + TOTAL_MATCH_SECONDS * 1000;
-    const startsAt = Math.min(Math.max(now, matchStartedAt), matchDeadline);
+    const scheduledStart = args.questionOrder === 1 ? matchStartedAt : now + ROUND_LEAD_TIME_MS;
+    const startsAt = Math.min(Math.max(scheduledStart, matchStartedAt), matchDeadline);
     const endsAt = Math.min(startsAt + QUESTION_TIME_LIMIT_MS, matchDeadline);
     for (const round of this.state.rounds.filter((round) => round.sessionId === session.sessionId && round.status === "active")) {
       round.status = "resolved";
@@ -642,7 +694,14 @@ export class QuizRushEngine {
   private submitAnswer({
     args,
     identity
-  }: ReducerContext<{ roundId: string; selectedOption: OptionKey; clientSentAt?: number; clientEventId?: string }>): Answer {
+  }: ReducerContext<{
+    roundId: string;
+    selectedOption: OptionKey;
+    clientSentAt?: number;
+    clientEventId?: string;
+    clientQuestionRenderedAtMs?: number;
+    clientClickedAtMs?: number;
+  }>): Answer {
     const parsed = selectedOptionSchema.safeParse(args);
     if (!parsed.success) throw new Error("Malformed answer.");
     const round = this.requireRound(args.roundId);
@@ -663,13 +722,23 @@ export class QuizRushEngine {
       );
       if (duplicateClientEvent) throw new Error("Duplicate answer event rejected.");
     }
-    const question = this.requireQuestion(round.questionId);
+    const secret = this.requireQuestionSecret(round.questionId);
     const now = Date.now();
+    if (now < round.startsAt) throw new Error("Round has not started.");
     if (now > round.endsAt + ANSWER_GRACE_MS) throw new Error("Round has ended.");
-    const responseMs = Math.max(0, Math.min(now - round.startsAt, QUESTION_TIME_LIMIT_MS));
-    const isCorrect = args.selectedOption === question.correctOption;
+    const officialResponseMs = Math.max(0, Math.min(now - round.startsAt, QUESTION_TIME_LIMIT_MS));
+    const observedResponseMs =
+      typeof args.clientClickedAtMs === "number" &&
+      typeof args.clientQuestionRenderedAtMs === "number" &&
+      args.clientClickedAtMs >= args.clientQuestionRenderedAtMs
+        ? Math.round(args.clientClickedAtMs - args.clientQuestionRenderedAtMs)
+        : null;
+    const timingSuspicious =
+      observedResponseMs !== null &&
+      (observedResponseMs < 80 || Math.abs(observedResponseMs - officialResponseMs) > Math.max(600, officialResponseMs * 0.75));
+    const isCorrect = args.selectedOption === secret.correctOption;
     const score = this.requireScore(round.sessionId, participant.participantId);
-    const breakdown = computeAnswerScoreBreakdown({ isCorrect, responseMs, previousAnswerWasCorrect: score.lastAnswerCorrect === true });
+    const breakdown = computeAnswerScoreBreakdown({ isCorrect, responseMs: officialResponseMs, previousAnswerWasCorrect: score.lastAnswerCorrect === true });
     const answer: Answer = {
       answerId: this.nextId("answer"),
       sessionId: round.sessionId,
@@ -678,8 +747,12 @@ export class QuizRushEngine {
       participantId: participant.participantId,
       selectedOption: args.selectedOption,
       isCorrect,
-      responseMs,
-      responseMsServer: responseMs,
+      responseMs: officialResponseMs,
+      responseMsServer: officialResponseMs,
+      officialResponseMs,
+      observedResponseMs,
+      clientQuestionRenderedAtMs: args.clientQuestionRenderedAtMs ?? null,
+      clientClickedAtMs: args.clientClickedAtMs ?? null,
       clientSentAt: args.clientSentAt ?? null,
       clientEventId: args.clientEventId ?? null,
       correctnessPoints: breakdown.correctnessPoints,
@@ -687,6 +760,9 @@ export class QuizRushEngine {
       streakBonus: breakdown.streakBonus,
       scoreDelta: breakdown.scoreDelta,
       serverReceivedAt: now,
+      serverCommittedAt: now,
+      participantLatencyMsSnapshot: participant.clientLatencyMs,
+      timingSuspicious,
       createdAt: now
     };
     this.state.answers.push(answer);
@@ -694,11 +770,20 @@ export class QuizRushEngine {
     score.correctCount += isCorrect ? 1 : 0;
     score.wrongCount += isCorrect ? 0 : 1;
     score.answeredCount += 1;
-    score.totalResponseMs += isCorrect ? responseMs : 0;
+    score.totalResponseMs += isCorrect ? officialResponseMs : 0;
+    score.totalOfficialResponseMs = score.totalResponseMs;
+    if (isCorrect && observedResponseMs !== null) {
+      score.totalObservedResponseMs = (score.totalObservedResponseMs ?? 0) + observedResponseMs;
+    }
     if (isCorrect) {
-      score.fastestResponseMs = score.fastestResponseMs === null ? responseMs : Math.min(score.fastestResponseMs, responseMs);
+      score.fastestResponseMs = score.fastestResponseMs === null ? officialResponseMs : Math.min(score.fastestResponseMs, officialResponseMs);
+      score.fastestOfficialResponseMs = score.fastestResponseMs;
+      if (observedResponseMs !== null) {
+        score.fastestObservedResponseMs = score.fastestObservedResponseMs === null ? observedResponseMs : Math.min(score.fastestObservedResponseMs, observedResponseMs);
+      }
     }
     score.averageResponseMs = Math.round(score.totalResponseMs / Math.max(1, score.correctCount));
+    score.averageOfficialResponseMs = score.averageResponseMs;
     score.streakCount = isCorrect ? score.streakCount + 1 : 0;
     score.lastAnswerCorrect = isCorrect;
     score.normalizedScore = normalizedScore(score, this.requireSession(round.sessionId).questionCount);
@@ -708,7 +793,9 @@ export class QuizRushEngine {
     this.matchEvent(round.sessionId, participant.participantId, "answer", round.orderIndex, score.totalScore, score.currentRank, {
       selectedOption: args.selectedOption,
       isCorrect,
-      responseMs
+      officialResponseMs,
+      observedResponseMs,
+      timingSuspicious
     });
     this.matchEvent(round.sessionId, participant.participantId, "score_delta", round.orderIndex, score.totalScore, score.currentRank, {
       scoreDelta: breakdown.scoreDelta,
@@ -776,24 +863,55 @@ export class QuizRushEngine {
     if (existing) return existing;
     const share: ShareCard = {
       shareId: this.nextId("share"),
-      slug: `${participant.displayName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "player"}-${Math.random().toString(36).slice(2, 8)}`,
+      slug: this.uniqueShareSlug(),
       sessionId: session.sessionId,
       participantId: participant.participantId,
       displayName: participant.displayName,
       avatar: participant.avatar,
+      avatarType: "emoji",
+      avatarEmoji: participant.avatar,
+      avatarColor: null,
+      avatarUrl: null,
+      displayTopic: session.selectedTopic ?? "QuizRush Arena",
       finalRank: result.finalRank,
       totalParticipants: result.totalParticipants,
       championStatus: result.championStatus,
       totalScore: result.totalScore,
       correctCount: result.correctCount,
       questionCount: result.questionCount,
+      totalResponseMsOfficial: result.totalOfficialResponseMs,
+      totalResponseMsObserved: null,
       fastestResponseMs: result.fastestResponseMs,
+      fastestResponseMsOfficial: result.fastestOfficialResponseMs,
+      fastestResponseMsObserved: null,
+      percentile: result.percentile,
+      shareText: `${participant.displayName} placed #${result.finalRank} with ${result.totalScore.toLocaleString()} points in QuizRush Arena.`,
       createdAt: now,
+      expiresAt: null,
       viewCount: 0
     };
     this.state.shareCards.push(share);
     this.matchEvent(session.sessionId, participant.participantId, "share_created", null, result.totalScore, result.finalRank, { slug: share.slug });
     return share;
+  }
+
+  private incrementShareView({ args }: ReducerContext<{ slug: string }>): ShareCard {
+    const share = this.state.shareCards.find((candidate) => candidate.slug === args.slug);
+    if (!share) throw new Error("Share card not found or expired.");
+    share.viewCount += 1;
+    return share;
+  }
+
+  private uniqueShareSlug(): string {
+    const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      let slug = "";
+      for (let index = 0; index < 12; index += 1) {
+        slug += alphabet[Math.floor(Math.random() * alphabet.length)] ?? "x";
+      }
+      if (!this.state.shareCards.some((card) => card.slug === slug)) return slug;
+    }
+    return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
   private heartbeat({ args, identity }: ReducerContext<{ sessionId: string; clientLatencyMs?: number }>): Participant | null {
@@ -815,6 +933,13 @@ export class QuizRushEngine {
   }
 
   private resetDemo({ args }: ReducerContext<{ sessionId?: string }>): Session {
+    const durableShareCards = this.state.shareCards;
+    this.state = emptyState();
+    this.state.shareCards = durableShareCards;
+    return this.seedSession(args.sessionId);
+  }
+
+  private hardResetDemo({ args }: ReducerContext<{ sessionId?: string }>): Session {
     this.state = emptyState();
     return this.seedSession(args.sessionId);
   }
@@ -855,7 +980,7 @@ export class QuizRushEngine {
     if (session.status !== "playing") return [];
     const round = this.state.rounds.find((candidate) => candidate.sessionId === session.sessionId && candidate.status === "active");
     if (!round) return [];
-    const question = this.requireQuestion(round.questionId);
+    const secret = this.requireQuestionSecret(round.questionId);
     const now = Date.now();
     if (now < round.startsAt || now > round.endsAt + 200) return [];
     const answered = new Set(this.state.answers.filter((answer) => answer.roundId === round.roundId).map((answer) => answer.participantId));
@@ -864,12 +989,12 @@ export class QuizRushEngine {
       .sort((a, b) => a.participantId.localeCompare(b.participantId))
       .slice(0, Math.max(0, Math.min(args.count ?? SIMULATED_ANSWER_BURST_SIZE, 32)));
     const inserted: Answer[] = [];
-    const wrongOptions: OptionKey[] = ["A", "B", "C", "D"].filter((option) => option !== question.correctOption) as OptionKey[];
+    const wrongOptions: OptionKey[] = ["A", "B", "C", "D"].filter((option) => option !== secret.correctOption) as OptionKey[];
     candidates.forEach((participant, index) => {
       const answerTime = now + index;
       const responseMs = Math.max(0, Math.min(answerTime - round.startsAt + (index % 5) * 9, QUESTION_TIME_LIMIT_MS));
       const isCorrect = (index + round.orderIndex + Number(participant.participantId.split("-").at(-1) ?? 0)) % 5 !== 0;
-      const selectedOption = isCorrect ? question.correctOption : wrongOptions[index % wrongOptions.length] ?? "A";
+      const selectedOption = isCorrect ? secret.correctOption : wrongOptions[index % wrongOptions.length] ?? "A";
       const score = this.requireScore(round.sessionId, participant.participantId);
       const breakdown = computeAnswerScoreBreakdown({ isCorrect, responseMs, previousAnswerWasCorrect: score.lastAnswerCorrect === true });
       const answer: Answer = {
@@ -882,6 +1007,10 @@ export class QuizRushEngine {
         isCorrect,
         responseMs,
         responseMsServer: responseMs,
+        officialResponseMs: responseMs,
+        observedResponseMs: null,
+        clientQuestionRenderedAtMs: null,
+        clientClickedAtMs: null,
         clientSentAt: null,
         clientEventId: `sim-${participant.participantId}-${round.roundId}`,
         correctnessPoints: breakdown.correctnessPoints,
@@ -889,6 +1018,9 @@ export class QuizRushEngine {
         streakBonus: breakdown.streakBonus,
         scoreDelta: breakdown.scoreDelta,
         serverReceivedAt: answerTime,
+        serverCommittedAt: answerTime,
+        participantLatencyMsSnapshot: participant.clientLatencyMs,
+        timingSuspicious: false,
         createdAt: answerTime
       };
       this.state.answers.push(answer);
@@ -897,8 +1029,11 @@ export class QuizRushEngine {
       score.wrongCount += isCorrect ? 0 : 1;
       score.answeredCount += 1;
       score.totalResponseMs += isCorrect ? responseMs : 0;
+      score.totalOfficialResponseMs = score.totalResponseMs;
       if (isCorrect) score.fastestResponseMs = score.fastestResponseMs === null ? responseMs : Math.min(score.fastestResponseMs, responseMs);
+      score.fastestOfficialResponseMs = score.fastestResponseMs;
       score.averageResponseMs = Math.round(score.totalResponseMs / Math.max(1, score.correctCount));
+      score.averageOfficialResponseMs = score.averageResponseMs;
       score.streakCount = isCorrect ? score.streakCount + 1 : 0;
       score.lastAnswerCorrect = isCorrect;
       score.normalizedScore = normalizedScore(score, session.questionCount);
@@ -1017,8 +1152,13 @@ export class QuizRushEngine {
         totalScore: score.totalScore,
         correctCount: score.correctCount,
         questionCount: this.requireSession(sessionId).questionCount,
+        answeredCount: score.answeredCount,
         totalResponseMs: score.totalResponseMs,
+        totalOfficialResponseMs: score.totalOfficialResponseMs,
         fastestResponseMs: score.fastestResponseMs,
+        fastestOfficialResponseMs: score.fastestOfficialResponseMs,
+        averageOfficialResponseMs: score.averageOfficialResponseMs,
+        normalizedScore: score.normalizedScore,
         percentile: percentile(index + 1, totalParticipants),
         createdAt: now
       }))
@@ -1035,8 +1175,13 @@ export class QuizRushEngine {
       wrongCount: 0,
       answeredCount: 0,
       totalResponseMs: 0,
+      totalOfficialResponseMs: 0,
+      totalObservedResponseMs: null,
       fastestResponseMs: null,
+      fastestOfficialResponseMs: null,
+      fastestObservedResponseMs: null,
       averageResponseMs: null,
+      averageOfficialResponseMs: null,
       normalizedScore: 0,
       streakCount: 0,
       lastAnswerCorrect: null,
@@ -1081,6 +1226,12 @@ export class QuizRushEngine {
     const question = this.state.questions.find((candidate) => candidate.questionId === questionId);
     if (!question) throw new Error(`Question not found: ${questionId}`);
     return question;
+  }
+
+  private requireQuestionSecret(questionId: string): QuestionSecret {
+    const secret = this.state.questionSecrets.find((candidate) => candidate.questionId === questionId);
+    if (!secret) throw new Error(`Question secret not found: ${questionId}`);
+    return secret;
   }
 
   private requireQuestionByOrder(sessionId: string, orderIndex: number): Question {
@@ -1263,7 +1414,9 @@ function emptyState(): QuizRushState {
     participants: [],
     topicVotes: [],
     playerIntents: [],
+    questionPacks: [],
     questions: [],
+    questionSecrets: [],
     rounds: [],
     answers: [],
     scores: [],
@@ -1318,7 +1471,7 @@ function emptyCapacity(sessionId: string, now: number): SessionCapacity {
 
 function normalizedScore(score: Score, questionCount: number): number {
   const accuracy = questionCount > 0 ? score.correctCount / questionCount : 0;
-  const averageResponse = score.averageResponseMs ?? QUESTION_TIME_LIMIT_MS;
+  const averageResponse = score.averageOfficialResponseMs ?? score.averageResponseMs ?? QUESTION_TIME_LIMIT_MS;
   const speed = 1 - Math.max(0, Math.min(1, averageResponse / QUESTION_TIME_LIMIT_MS));
   const streak = Math.max(0, Math.min(1, score.streakCount / Math.max(1, questionCount)));
   return Math.round((0.7 * accuracy + 0.25 * speed + 0.05 * streak) * 100_000) / 1000;
@@ -1336,6 +1489,10 @@ function selectedTopicFromVotes(votes: TopicVote[]): string {
   for (const vote of votes) counts.set(vote.topic, (counts.get(vote.topic) ?? 0) + 1);
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || DEFAULT_TOPICS.indexOf(a[0]) - DEFAULT_TOPICS.indexOf(b[0]));
   return top.slice(0, 3).map(([topic]) => topic).join(" + ") || DEFAULT_SELECTED_TOPIC;
+}
+
+function packTopicKey(displayTopic: string, fallbackTopicKey: string): string {
+  return displayTopic.toLowerCase() === "space" ? "space" : fallbackTopicKey;
 }
 
 function cleanName(name: string): string {

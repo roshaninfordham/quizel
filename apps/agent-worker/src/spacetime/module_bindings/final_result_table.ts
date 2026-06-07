@@ -20,8 +20,13 @@ export default __t.row({
   totalScore: __t.u32().name("total_score"),
   correctCount: __t.u32().name("correct_count"),
   questionCount: __t.u32().name("question_count"),
+  answeredCount: __t.u32().name("answered_count"),
   totalResponseMs: __t.u32().name("total_response_ms"),
+  totalOfficialResponseMs: __t.u32().name("total_official_response_ms"),
   fastestResponseMs: __t.option(__t.u32()).name("fastest_response_ms"),
+  fastestOfficialResponseMs: __t.option(__t.u32()).name("fastest_official_response_ms"),
+  averageOfficialResponseMs: __t.option(__t.u32()).name("average_official_response_ms"),
+  normalizedScore: __t.f32().name("normalized_score"),
   percentile: __t.u32(),
   createdAtMs: __t.u64().name("created_at_ms"),
 });

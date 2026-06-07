@@ -14,7 +14,8 @@ import type {
   OperationTrace as StdbOperationTrace,
   Participant as StdbParticipant,
   PlayerIntent as StdbPlayerIntent,
-  Question as StdbQuestion,
+  QuestionPack as StdbQuestionPack,
+  QuestionPublic as StdbQuestionPublic,
   Round as StdbRound,
   Score as StdbScore,
   Session as StdbSession,
@@ -140,7 +141,8 @@ function registerDirectSnapshotListeners(connection: DbConnection, onChange: () 
     connection.db.participant,
     connection.db.topic_vote,
     connection.db.player_intent,
-    connection.db.question,
+    connection.db.question_pack,
+    connection.db.question_public,
     connection.db.topic_fact,
     connection.db.round,
     connection.db.answer,
@@ -190,7 +192,9 @@ function snapshotFromDirectConnection(connection: DbConnection): QuizRushState {
     participants: Array.from(connection.db.participant.iter()).map(mapParticipant),
     topicVotes: Array.from(connection.db.topic_vote.iter()).map(mapTopicVote),
     playerIntents: Array.from(connection.db.player_intent.iter()).map(mapPlayerIntent),
-    questions: Array.from(connection.db.question.iter()).map(mapQuestion),
+    questionPacks: Array.from(connection.db.question_pack.iter()).map(mapQuestionPack),
+    questions: Array.from(connection.db.question_public.iter()).map(mapQuestion),
+    questionSecrets: [],
     topicFacts: Array.from(connection.db.topic_fact.iter()).map(mapTopicFact),
     rounds: Array.from(connection.db.round.iter()).map(mapRound),
     answers: Array.from(connection.db.answer.iter()).map(mapAnswer),
@@ -296,20 +300,35 @@ function mapPlayerIntent(row: StdbPlayerIntent): QuizRushState["playerIntents"][
   };
 }
 
-function mapQuestion(row: StdbQuestion): QuizRushState["questions"][number] {
+function mapQuestionPack(row: StdbQuestionPack): QuizRushState["questionPacks"][number] {
+  return {
+    packId: row.packId,
+    sessionId: row.sessionId,
+    participantId: row.participantId ?? null,
+    topicKey: row.topicKey,
+    displayTopic: row.displayTopic,
+    sourceType: row.sourceType as QuizRushState["questionPacks"][number]["sourceType"],
+    qualityScore: row.qualityScore,
+    status: row.status as QuizRushState["questionPacks"][number]["status"],
+    createdAt: toNumber(row.createdAtMs)
+  };
+}
+
+function mapQuestion(row: StdbQuestionPublic): QuizRushState["questions"][number] {
   return {
     questionId: row.questionId,
+    packId: row.packId ?? null,
     sessionId: row.sessionId,
+    participantId: row.participantId ?? null,
+    topicKey: row.topicKey,
     orderIndex: row.orderIndex,
     questionText: row.questionText,
     optionA: row.optionA,
     optionB: row.optionB,
     optionC: row.optionC,
     optionD: row.optionD,
-    correctOption: row.correctOption as OptionKey,
-    explanation: row.explanation,
+    displayTopic: row.displayTopic,
     topic: row.topic,
-    factIds: parseStringArray(row.factIdsJson),
     sourceTitle: row.sourceTitle || null,
     sourceUrl: row.sourceUrl || null,
     generatedBy: row.generatedBy,
@@ -357,6 +376,10 @@ function mapAnswer(row: StdbAnswer): QuizRushState["answers"][number] {
     isCorrect: row.isCorrect,
     responseMs: row.responseMs,
     responseMsServer: row.responseMsServer,
+    officialResponseMs: row.officialResponseMs,
+    observedResponseMs: row.observedResponseMs ?? null,
+    clientQuestionRenderedAtMs: toNullableNumber(row.clientQuestionRenderedAtMs),
+    clientClickedAtMs: toNullableNumber(row.clientClickedAtMs),
     clientSentAt: toNullableNumber(row.clientSentAtMs),
     clientEventId: row.clientEventId || null,
     correctnessPoints: row.correctnessPoints,
@@ -364,6 +387,9 @@ function mapAnswer(row: StdbAnswer): QuizRushState["answers"][number] {
     streakBonus: row.streakBonus,
     scoreDelta: row.scoreDelta,
     serverReceivedAt: toNumber(row.serverReceivedAtMs),
+    serverCommittedAt: toNumber(row.serverCommittedAtMs),
+    participantLatencyMsSnapshot: row.participantLatencyMsSnapshot ?? null,
+    timingSuspicious: row.timingSuspicious,
     createdAt: toNumber(row.createdAtMs)
   };
 }
@@ -378,8 +404,13 @@ function mapScore(row: StdbScore): QuizRushState["scores"][number] {
     wrongCount: row.wrongCount,
     answeredCount: row.answeredCount,
     totalResponseMs: row.totalResponseMs,
+    totalOfficialResponseMs: row.totalOfficialResponseMs,
+    totalObservedResponseMs: row.totalObservedResponseMs ?? null,
     fastestResponseMs: row.fastestResponseMs ?? null,
+    fastestOfficialResponseMs: row.fastestOfficialResponseMs ?? null,
+    fastestObservedResponseMs: row.fastestObservedResponseMs ?? null,
     averageResponseMs: row.averageResponseMs ?? null,
+    averageOfficialResponseMs: row.averageOfficialResponseMs ?? null,
     normalizedScore: row.normalizedScore,
     streakCount: row.streakCount,
     lastAnswerCorrect: row.lastAnswerCorrect ?? null,
@@ -402,8 +433,13 @@ function mapFinalResult(row: StdbFinalResult): QuizRushState["finalResults"][num
     totalScore: row.totalScore,
     correctCount: row.correctCount,
     questionCount: row.questionCount,
+    answeredCount: row.answeredCount,
     totalResponseMs: row.totalResponseMs,
+    totalOfficialResponseMs: row.totalOfficialResponseMs,
     fastestResponseMs: row.fastestResponseMs ?? null,
+    fastestOfficialResponseMs: row.fastestOfficialResponseMs ?? null,
+    averageOfficialResponseMs: row.averageOfficialResponseMs ?? null,
+    normalizedScore: row.normalizedScore,
     percentile: row.percentile,
     createdAt: toNumber(row.createdAtMs)
   };
@@ -417,14 +453,26 @@ function mapShareCard(row: StdbShareCard): QuizRushState["shareCards"][number] {
     participantId: row.participantId,
     displayName: row.displayName,
     avatar: row.avatar,
+    avatarType: row.avatarType as QuizRushState["shareCards"][number]["avatarType"],
+    avatarEmoji: row.avatarEmoji ?? null,
+    avatarColor: row.avatarColor ?? null,
+    avatarUrl: row.avatarUrl ?? null,
+    displayTopic: row.displayTopic,
     finalRank: row.finalRank,
     totalParticipants: row.totalParticipants,
     championStatus: row.championStatus as QuizRushState["shareCards"][number]["championStatus"],
     totalScore: row.totalScore,
     correctCount: row.correctCount,
     questionCount: row.questionCount,
+    totalResponseMsOfficial: row.totalResponseMsOfficial,
+    totalResponseMsObserved: row.totalResponseMsObserved ?? null,
     fastestResponseMs: row.fastestResponseMs ?? null,
+    fastestResponseMsOfficial: row.fastestResponseMsOfficial ?? null,
+    fastestResponseMsObserved: row.fastestResponseMsObserved ?? null,
+    percentile: row.percentile,
+    shareText: row.shareText,
     createdAt: toNumber(row.createdAtMs),
+    expiresAt: toNullableNumber(row.expiresAtMs),
     viewCount: row.viewCount
   };
 }

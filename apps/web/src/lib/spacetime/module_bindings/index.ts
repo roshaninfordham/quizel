@@ -38,7 +38,9 @@ import AddSimulatedPlayersReducer from "./add_simulated_players_reducer";
 import CreateSessionReducer from "./create_session_reducer";
 import CreateShareCardReducer from "./create_share_card_reducer";
 import FinishMatchReducer from "./finish_match_reducer";
+import HardResetDemoReducer from "./hard_reset_demo_reducer";
 import HeartbeatReducer from "./heartbeat_reducer";
+import IncrementShareViewReducer from "./increment_share_view_reducer";
 import JoinSessionReducer from "./join_session_reducer";
 import LiveTickReducer from "./live_tick_reducer";
 import RecordAgentEventReducer from "./record_agent_event_reducer";
@@ -70,7 +72,8 @@ import MatchEventRow from "./match_event_table";
 import OperationTraceRow from "./operation_trace_table";
 import ParticipantRow from "./participant_table";
 import PlayerIntentRow from "./player_intent_table";
-import QuestionRow from "./question_table";
+import QuestionPackRow from "./question_pack_table";
+import QuestionPublicRow from "./question_public_table";
 import RoundRow from "./round_table";
 import ScoreRow from "./score_table";
 import SessionRow from "./session_table";
@@ -252,20 +255,34 @@ const tablesSchema = __schema({
       { name: 'player_intent_intent_id_key', constraint: 'unique', columns: ['intentId'] },
     ],
   }, PlayerIntentRow),
-  question: __table({
-    name: 'question',
+  question_pack: __table({
+    name: 'question_pack',
     indexes: [
-      { accessor: 'question_id', name: 'question_question_id_idx_btree', algorithm: 'btree', columns: [
-        'questionId',
+      { accessor: 'pack_id', name: 'question_pack_pack_id_idx_btree', algorithm: 'btree', columns: [
+        'packId',
       ] },
-      { accessor: 'session_id', name: 'question_session_id_idx_btree', algorithm: 'btree', columns: [
+      { accessor: 'session_id', name: 'question_pack_session_id_idx_btree', algorithm: 'btree', columns: [
         'sessionId',
       ] },
     ],
     constraints: [
-      { name: 'question_question_id_key', constraint: 'unique', columns: ['questionId'] },
+      { name: 'question_pack_pack_id_key', constraint: 'unique', columns: ['packId'] },
     ],
-  }, QuestionRow),
+  }, QuestionPackRow),
+  question_public: __table({
+    name: 'question_public',
+    indexes: [
+      { accessor: 'question_id', name: 'question_public_question_id_idx_btree', algorithm: 'btree', columns: [
+        'questionId',
+      ] },
+      { accessor: 'session_id', name: 'question_public_session_id_idx_btree', algorithm: 'btree', columns: [
+        'sessionId',
+      ] },
+    ],
+    constraints: [
+      { name: 'question_public_question_id_key', constraint: 'unique', columns: ['questionId'] },
+    ],
+  }, QuestionPublicRow),
   round: __table({
     name: 'round',
     indexes: [
@@ -386,7 +403,9 @@ const reducersSchema = __reducers(
   __reducerSchema("create_session", CreateSessionReducer),
   __reducerSchema("create_share_card", CreateShareCardReducer),
   __reducerSchema("finish_match", FinishMatchReducer),
+  __reducerSchema("hard_reset_demo", HardResetDemoReducer),
   __reducerSchema("heartbeat", HeartbeatReducer),
+  __reducerSchema("increment_share_view", IncrementShareViewReducer),
   __reducerSchema("join_session", JoinSessionReducer),
   __reducerSchema("live_tick", LiveTickReducer),
   __reducerSchema("record_agent_event", RecordAgentEventReducer),

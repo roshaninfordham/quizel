@@ -55,6 +55,10 @@ export const Answer = __t.object("Answer", {
   isCorrect: __t.bool(),
   responseMs: __t.u32(),
   responseMsServer: __t.u32(),
+  officialResponseMs: __t.u32(),
+  observedResponseMs: __t.option(__t.u32()),
+  clientQuestionRenderedAtMs: __t.option(__t.u64()),
+  clientClickedAtMs: __t.option(__t.u64()),
   clientSentAtMs: __t.option(__t.u64()),
   clientEventId: __t.string(),
   correctnessPoints: __t.u32(),
@@ -62,6 +66,9 @@ export const Answer = __t.object("Answer", {
   streakBonus: __t.u32(),
   scoreDelta: __t.u32(),
   serverReceivedAtMs: __t.u64(),
+  serverCommittedAtMs: __t.u64(),
+  participantLatencyMsSnapshot: __t.option(__t.u32()),
+  timingSuspicious: __t.bool(),
   createdAtMs: __t.u64(),
 });
 export type Answer = __Infer<typeof Answer>;
@@ -86,8 +93,13 @@ export const FinalResult = __t.object("FinalResult", {
   totalScore: __t.u32(),
   correctCount: __t.u32(),
   questionCount: __t.u32(),
+  answeredCount: __t.u32(),
   totalResponseMs: __t.u32(),
+  totalOfficialResponseMs: __t.u32(),
   fastestResponseMs: __t.option(__t.u32()),
+  fastestOfficialResponseMs: __t.option(__t.u32()),
+  averageOfficialResponseMs: __t.option(__t.u32()),
+  normalizedScore: __t.f32(),
   percentile: __t.u32(),
   createdAtMs: __t.u64(),
 });
@@ -172,26 +184,52 @@ export const PlayerIntent = __t.object("PlayerIntent", {
 });
 export type PlayerIntent = __Infer<typeof PlayerIntent>;
 
-export const Question = __t.object("Question", {
-  questionId: __t.string(),
+export const QuestionPack = __t.object("QuestionPack", {
+  packId: __t.string(),
   sessionId: __t.string(),
+  participantId: __t.option(__t.string()),
+  topicKey: __t.string(),
+  displayTopic: __t.string(),
+  sourceType: __t.string(),
+  qualityScore: __t.u32(),
+  status: __t.string(),
+  createdAtMs: __t.u64(),
+});
+export type QuestionPack = __Infer<typeof QuestionPack>;
+
+export const QuestionPublic = __t.object("QuestionPublic", {
+  questionId: __t.string(),
+  packId: __t.option(__t.string()),
+  sessionId: __t.string(),
+  participantId: __t.option(__t.string()),
+  topicKey: __t.string(),
   orderIndex: __t.u32(),
   questionText: __t.string(),
   optionA: __t.string(),
   optionB: __t.string(),
   optionC: __t.string(),
   optionD: __t.string(),
-  correctOption: __t.string(),
-  explanation: __t.string(),
+  displayTopic: __t.string(),
   topic: __t.string(),
   generatedBy: __t.string(),
   fairnessStatus: __t.string(),
   createdAtMs: __t.u64(),
-  factIdsJson: __t.string(),
   sourceTitle: __t.string(),
   sourceUrl: __t.string(),
 });
-export type Question = __Infer<typeof Question>;
+export type QuestionPublic = __Infer<typeof QuestionPublic>;
+
+export const QuestionSecret = __t.object("QuestionSecret", {
+  questionId: __t.string(),
+  packId: __t.option(__t.string()),
+  sessionId: __t.string(),
+  participantId: __t.option(__t.string()),
+  correctOption: __t.string(),
+  explanation: __t.string(),
+  factIdsJson: __t.string(),
+  createdAtMs: __t.u64(),
+});
+export type QuestionSecret = __Infer<typeof QuestionSecret>;
 
 export const Round = __t.object("Round", {
   roundId: __t.string(),
@@ -214,8 +252,13 @@ export const Score = __t.object("Score", {
   wrongCount: __t.u32(),
   answeredCount: __t.u32(),
   totalResponseMs: __t.u32(),
+  totalOfficialResponseMs: __t.u32(),
+  totalObservedResponseMs: __t.option(__t.u32()),
   fastestResponseMs: __t.option(__t.u32()),
+  fastestOfficialResponseMs: __t.option(__t.u32()),
+  fastestObservedResponseMs: __t.option(__t.u32()),
   averageResponseMs: __t.option(__t.u32()),
+  averageOfficialResponseMs: __t.option(__t.u32()),
   normalizedScore: __t.f32(),
   streakCount: __t.u32(),
   lastAnswerCorrect: __t.option(__t.bool()),
@@ -265,14 +308,26 @@ export const ShareCard = __t.object("ShareCard", {
   participantId: __t.string(),
   displayName: __t.string(),
   avatar: __t.string(),
+  avatarType: __t.string(),
+  avatarEmoji: __t.option(__t.string()),
+  avatarColor: __t.option(__t.string()),
+  avatarUrl: __t.option(__t.string()),
+  displayTopic: __t.string(),
   finalRank: __t.u32(),
   totalParticipants: __t.u32(),
   championStatus: __t.string(),
   totalScore: __t.u32(),
   correctCount: __t.u32(),
   questionCount: __t.u32(),
+  totalResponseMsOfficial: __t.u32(),
+  totalResponseMsObserved: __t.option(__t.u32()),
   fastestResponseMs: __t.option(__t.u32()),
+  fastestResponseMsOfficial: __t.option(__t.u32()),
+  fastestResponseMsObserved: __t.option(__t.u32()),
+  percentile: __t.u32(),
+  shareText: __t.string(),
   createdAtMs: __t.u64(),
+  expiresAtMs: __t.option(__t.u64()),
   viewCount: __t.u32(),
 });
 export type ShareCard = __Infer<typeof ShareCard>;
