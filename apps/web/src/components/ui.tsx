@@ -4,16 +4,26 @@ import { clsx } from "clsx";
 import { motion } from "framer-motion";
 import {
   Activity,
-  CheckCircle2,
+  ArrowRight,
+  Award,
+  Brain,
   Clock,
+  Crown,
+  Database,
   Gauge,
   HelpCircle,
-  Loader2,
+  Layers3,
   Menu,
+  MousePointerClick,
+  RadioTower,
   Play,
   QrCode,
-  Sparkles,
+  Share2,
+  Smartphone,
+  Table2,
+  TimerReset,
   Trophy,
+  UserPlus,
   Users,
   Volume2,
   VolumeX,
@@ -30,7 +40,6 @@ import {
   DEFAULT_TOPICS,
   DISCLAIMER,
   QUESTION_COUNT,
-  type AgentEvent,
   type ClientError,
   type LiveStats,
   type MatchEvent,
@@ -51,9 +60,9 @@ export function cn(...classes: Array<string | false | null | undefined>): string
 
 export function ProjectorShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="projector-grid min-h-screen overflow-hidden bg-[#fff8ec] px-8 py-6 text-slate-950">
-      <div className="mx-auto flex min-h-[calc(100vh-48px)] w-full max-w-[1700px] flex-col gap-4">{children}</div>
-      <Footer compact />
+    <main className="projector-grid relative h-screen overflow-hidden bg-[#fff8ec] px-7 py-5 pb-7 text-slate-950">
+      <div className="mx-auto flex h-full w-full max-w-[1700px] flex-col gap-3">{children}</div>
+      <p className="pointer-events-none absolute inset-x-4 bottom-1 text-center text-[10px] font-semibold text-slate-500">{DISCLAIMER}</p>
     </main>
   );
 }
@@ -159,8 +168,8 @@ export function TopStatusBar({
         <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} tracked`} />
         {typeof racingCount === "number" ? <StatusPill icon={<Zap className="size-5" />} label={`${racingCount} racing`} /> : null}
         <StatusPill icon={<Play className="size-5" />} label={phase.replace("_", " ")} />
-        <StatusPill icon={<Gauge className="size-5" />} label={`p95 ${p95LatencyMs}ms`} />
-        <StatusPill icon={<Activity className="size-5" />} label={`${reducerCalls} reducers`} />
+        <StatusPill icon={<Gauge className="size-5" />} label={`p95 sync ${p95LatencyMs}ms`} />
+        <StatusPill icon={<Activity className="size-5" />} label={`${reducerCalls} commits`} />
         <ConnectionBadge state={connectionState} lastSyncAt={lastSyncAt} />
         {onToggleTech ? (
           <button
@@ -221,78 +230,11 @@ export function SoundToggle({ className }: { className?: string }) {
   );
 }
 
-export function ReconnectingOverlay({ state }: { state: ConnectionState }) {
+export function ReconnectingOverlay({ state, floating = false }: { state: ConnectionState; floating?: boolean }) {
   if (state === "connected") return null;
   return (
-    <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+    <div className={cn("rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900", floating && "fixed right-8 top-24 z-40 max-w-md shadow-xl shadow-amber-100")}>
       Reconnecting to the laptop realtime server. Local demo state remains available until the connection returns.
-    </div>
-  );
-}
-
-export function QRHeroCard({
-  joinUrl,
-  sessionCode,
-  joinedCount,
-  countdownSeconds
-}: {
-  joinUrl: string;
-  sessionCode: string;
-  joinedCount: number;
-  countdownSeconds: number;
-}) {
-  const scope = joinLinkScope(joinUrl);
-  const status =
-    scope === "public"
-      ? { label: "Public internet QR", className: "bg-emerald-50 text-emerald-700", note: "Works for phones on any network." }
-      : scope === "lan"
-        ? { label: "Same Wi-Fi QR", className: "bg-amber-50 text-amber-800", note: "Friends must be on the same reachable network." }
-        : { label: "Laptop-only QR", className: "bg-rose-50 text-rose-700", note: "Restart with make online-public for room-wide scanning." };
-  return (
-    <Panel className="grid min-h-[500px] grid-cols-[minmax(320px,0.86fr)_1.14fr] gap-7 p-7">
-      <div className="flex flex-col items-center justify-center rounded-[28px] bg-slate-50 p-6 ring-1 ring-slate-200">
-        <div className="rounded-[28px] bg-white p-5 shadow-xl shadow-slate-200/80">
-          <QRCodeSVG value={joinUrl} size={300} level="H" includeMargin />
-        </div>
-        <div className="mt-5 flex items-center gap-3 text-2xl font-black text-slate-950">
-          <QrCode className="size-7 text-blue-600" />
-          <span>Scan to join</span>
-        </div>
-        <p className="mt-1 text-2xl font-black text-blue-700">Session {sessionCode}</p>
-        <p className="mt-4 max-w-[440px] break-all rounded-2xl bg-white px-4 py-3 text-center text-sm font-black text-slate-700 ring-1 ring-slate-200">
-          {joinUrl}
-        </p>
-        <p className={cn("mt-3 max-w-[440px] rounded-2xl px-4 py-3 text-center text-sm font-black", status.className)}>
-          {status.label}. {status.note}
-        </p>
-      </div>
-      <div className="flex flex-col justify-center">
-        <p className="text-2xl font-black uppercase text-slate-500">Players joined</p>
-        <motion.div key={joinedCount} initial={{ scale: 0.94 }} animate={{ scale: 1 }} className="mt-2 text-[116px] font-black leading-none text-slate-950">
-          {joinedCount.toString().padStart(3, "0")}
-        </motion.div>
-        <p className="mt-5 max-w-2xl text-5xl font-black leading-tight text-slate-950">
-          Type or say expertise. AI forms live arenas. Everyone races for 25 seconds.
-        </p>
-        <div className="mt-7 inline-flex w-fit items-center gap-3 rounded-full bg-slate-950 px-5 py-4 text-2xl font-black text-white">
-          <Clock className="size-7" />
-          {joinedCount ? `Expertise window closes in ${countdownSeconds}s` : "Waiting for first scan"}
-        </div>
-        <div className="mt-7 grid max-w-2xl grid-cols-3 gap-3">
-          <LobbyStep number="1" label="Name" />
-          <LobbyStep number="2" label="Expertise" />
-          <LobbyStep number="3" label="Race" />
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function LobbyStep({ number, label }: { number: string; label: string }) {
-  return (
-    <div className="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200">
-      <p className="text-sm font-black uppercase text-slate-500">Step {number}</p>
-      <p className="mt-1 text-xl font-black text-slate-950">{label}</p>
     </div>
   );
 }
@@ -317,95 +259,298 @@ function isPrivateNetworkHost(hostname: string): boolean {
   return first === 10 || first === 127 || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
 }
 
-export function TopicSwarm({
+export function ProjectorLobbyPage({
+  joinUrl,
+  sessionCode,
+  participants,
   topicCounts,
-  selectedTopic
+  selectedTopic,
+  stats,
+  phase,
+  countdownSeconds
 }: {
+  joinUrl: string;
+  sessionCode: string;
+  participants: Participant[];
   topicCounts: Array<{ topic: string; count: number; percent: number }>;
   selectedTopic?: string | null;
+  stats?: LiveStats;
+  phase: string;
+  countdownSeconds: number;
 }) {
-  const rows = topicCounts.length ? topicCounts : DEFAULT_TOPICS.map((topic) => ({ topic, count: 0, percent: 0 }));
   return (
-    <Panel className="p-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-2xl font-black text-slate-950">Expertise Swarm</h2>
-        {selectedTopic ? <span className="rounded-full bg-blue-100 px-3 py-2 text-sm font-black text-blue-700">Selected: {selectedTopic}</span> : null}
+    <div className="grid min-h-0 flex-1 grid-rows-[minmax(260px,1fr)_78px_minmax(142px,0.52fr)] gap-3">
+      <section className="grid min-h-0 grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)] gap-4">
+        <QRJoinHero joinUrl={joinUrl} sessionCode={sessionCode} />
+        <HeroStatement joinedCount={participants.length} countdownSeconds={countdownSeconds} phase={phase} stats={stats} />
+      </section>
+      <VisualRaceFlow phase={phase} joinedCount={participants.length} topicCount={topicCounts.length} />
+      <section className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] gap-4">
+        <RosterPreview participants={participants} maxVisible={24} />
+        <div className="grid min-h-0 grid-rows-[1fr_auto] gap-4">
+          <TopicBubbleSwarm topicCounts={topicCounts} selectedTopic={selectedTopic} />
+          <LiveJoinFeedCompact participants={participants} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function QRJoinHero({ joinUrl, sessionCode }: { joinUrl: string; sessionCode: string }) {
+  const scope = joinLinkScope(joinUrl);
+  const scopeLabel = scope === "public" ? "Works for phones on any network" : scope === "lan" ? "Use the same reachable network" : "Use public mode for room scanning";
+
+  return (
+    <Panel className="relative flex min-h-0 flex-col items-center justify-center overflow-hidden p-4">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(124,58,237,0.12),transparent_34%)]" />
+      <motion.div
+        animate={{ boxShadow: ["0 0 0 0 rgba(124,58,237,0.18)", "0 0 0 16px rgba(124,58,237,0)", "0 0 0 0 rgba(124,58,237,0)"] }}
+        transition={{ duration: 2.2, repeat: Infinity }}
+        className="relative rounded-[28px] bg-white p-4 shadow-2xl shadow-violet-100 ring-1 ring-slate-200"
+      >
+        <QRCodeSVG value={joinUrl} size={220} level="H" includeMargin />
+      </motion.div>
+      <div className="relative mt-3 text-center">
+        <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-base font-black text-white">
+          <QrCode className="size-5" />
+          Scan to join
+        </div>
+        <p className="mt-2 text-xl font-black text-blue-700">Session {sessionCode}</p>
+        <p className="mx-auto mt-1 max-w-[360px] break-all text-xs font-extrabold text-slate-500">{joinUrl}</p>
+        <p className="mt-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">{scopeLabel}</p>
       </div>
-      <div className="mt-4 space-y-3">
-        {rows.slice(0, 6).map((row, index) => (
-          <div key={row.topic}>
-            <div className="mb-1.5 flex items-center justify-between text-lg font-black">
-              <span>{row.topic}</span>
-              <span className="text-slate-500">{row.percent}%</span>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-              <motion.div
-                initial={false}
-                animate={{ width: `${Math.max(row.percent, row.count ? 8 : 3)}%` }}
-                className={cn(
-                  "h-full rounded-full",
-                  index === 0 ? "bg-gradient-to-r from-blue-600 to-violet-600" : "bg-gradient-to-r from-cyan-500 to-emerald-500"
-                )}
-              />
-            </div>
-          </div>
+    </Panel>
+  );
+}
+
+function HeroStatement({
+  joinedCount,
+  countdownSeconds,
+  phase,
+  stats
+}: {
+  joinedCount: number;
+  countdownSeconds: number;
+  phase: string;
+  stats?: LiveStats;
+}) {
+  const statusText = joinedCount ? `Race setup closes in ${countdownSeconds}s` : "Waiting for first racer";
+  return (
+    <Panel className="flex min-h-0 flex-col justify-between overflow-hidden p-6">
+      <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-700">Active learning beats passive watching.</span>
+          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">One QR. Custom quizzes. Live bracket.</span>
+        </div>
+        <h2 className="max-w-5xl text-[clamp(2.35rem,4.3vw,4.8rem)] font-black leading-[0.95] text-slate-950">Race your topic in 25 seconds.</h2>
+        <p className="mt-3 max-w-4xl text-[clamp(1.05rem,1.5vw,1.55rem)] font-extrabold leading-tight text-slate-600">
+          Scan the QR, type what you know, and AI creates your private quiz while SpacetimeDB powers the live bracket.
+        </p>
+        <div className="mt-3 grid max-w-4xl grid-cols-2 gap-3">
+          <ProofPill label="Problem" value="Passive learning loses attention; active learning improves outcomes." />
+          <ProofPill label="Solution" value="QuizRush turns a room into a live quiz race with custom questions, realtime scoring, and shareable scorecards." />
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-black uppercase text-slate-500">Racers joined</p>
+          <motion.p key={joinedCount} initial={{ y: 10, opacity: 0.55 }} animate={{ y: 0, opacity: 1 }} className="text-6xl font-black leading-none text-slate-950">
+            {joinedCount.toString().padStart(3, "0")}
+          </motion.p>
+        </div>
+        <div className="grid gap-2 text-right">
+          <span className="inline-flex items-center justify-end gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-base font-black text-white">
+            <Clock className="size-5" />
+            {statusText}
+          </span>
+          <span className="text-sm font-black text-slate-500">
+            {phase.replace("_", " ")} · p95 sync {stats?.p95LatencyMs ?? 48}ms · {stats?.reducerCalls ?? 0} realtime commits
+          </span>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ProofPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[22px] bg-slate-50 p-4 ring-1 ring-slate-200">
+      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+      <p className="mt-1 text-lg font-black leading-snug text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function VisualRaceFlow({ phase, joinedCount, topicCount }: { phase: string; joinedCount: number; topicCount: number }) {
+  const steps = [
+    { label: "Scan", icon: UserPlus, state: joinedCount ? "complete" : "active" },
+    { label: "Topic", icon: MousePointerClick, state: topicCount || phase !== "lobby" ? "complete" : joinedCount ? "active" : "locked" },
+    { label: "AI Quiz", icon: Brain, state: phase === "generating" ? "active" : ["ready", "playing", "finished", "replay"].includes(phase) ? "complete" : "locked" },
+    { label: "Race", icon: TimerReset, state: phase === "playing" ? "active" : ["finished", "replay"].includes(phase) ? "complete" : phase === "ready" ? "active" : "locked" },
+    { label: "Bracket", icon: Trophy, state: phase === "playing" ? "active" : ["finished", "replay"].includes(phase) ? "complete" : "locked" },
+    { label: "Share", icon: Share2, state: ["finished", "replay"].includes(phase) ? "active" : "locked" }
+  ] satisfies Array<{ label: string; icon: React.ComponentType<{ className?: string }>; state: "active" | "complete" | "locked" }>;
+
+  return (
+    <Panel className="shrink-0 p-4">
+      <div className="grid grid-cols-6 gap-3">
+        {steps.map((step, index) => (
+          <FlowStep key={step.label} step={step} showArrow={index < steps.length - 1} />
         ))}
       </div>
     </Panel>
   );
 }
 
-export function FloatingAvatarCloud({
-  participants,
-  compact = false,
-  maxVisible = 100
+function FlowStep({
+  step,
+  showArrow
 }: {
-  participants: Participant[];
-  compact?: boolean;
-  maxVisible?: number;
+  step: { label: string; icon: React.ComponentType<{ className?: string }>; state: "active" | "complete" | "locked" };
+  showArrow: boolean;
 }) {
+  const Icon = step.icon;
+  const active = step.state === "active";
+  const complete = step.state === "complete";
+  return (
+    <div className="relative">
+      <motion.div
+        animate={active ? { y: [0, -3, 0] } : { y: 0 }}
+        transition={{ duration: 1.8, repeat: active ? Infinity : 0 }}
+        className={cn(
+          "flex min-h-[86px] items-center gap-3 rounded-[24px] px-4 py-3 ring-1",
+          complete
+            ? "bg-emerald-50 text-emerald-800 ring-emerald-100"
+            : active
+              ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-200 ring-transparent"
+              : "bg-slate-50 text-slate-400 ring-slate-200"
+        )}
+      >
+        <span className={cn("grid size-11 shrink-0 place-items-center rounded-2xl", active ? "bg-white/18" : complete ? "bg-white" : "bg-white")}>
+          <Icon className="size-6" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-xl font-black">{step.label}</p>
+          <p className={cn("text-xs font-black uppercase", active ? "text-white/70" : complete ? "text-emerald-600" : "text-slate-400")}>
+            {complete ? "ready" : active ? "live" : "locked"}
+          </p>
+        </div>
+      </motion.div>
+      {showArrow ? <ArrowRight className="absolute -right-5 top-1/2 z-10 size-7 -translate-y-1/2 rounded-full bg-white p-1 text-slate-300 shadow-sm" /> : null}
+    </div>
+  );
+}
+
+function RosterPreview({ participants, maxVisible = 24 }: { participants: Participant[]; maxVisible?: number }) {
   const visible = participants.slice(-maxVisible);
   const hidden = Math.max(0, participants.length - visible.length);
   return (
-    <Panel className={cn("overflow-hidden", compact ? "min-h-[220px] p-4" : "min-h-[224px]")}>
-      <div className="flex items-center justify-between">
-        <h2 className={cn("font-black text-slate-950", compact ? "text-xl" : "text-2xl")}>Roster Wall</h2>
-        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{participants.length} tracked</span>
+    <Panel className="flex min-h-0 flex-col p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-3xl font-black text-slate-950">Racers</h2>
+          <p className="text-base font-extrabold text-slate-500">Profiles stream here as players join.</p>
+        </div>
+        <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">{participants.length} tracked</span>
       </div>
-      <div className={cn("mt-4 grid gap-2", compact ? "grid-cols-2" : "grid-cols-5 xl:grid-cols-10")}>
+      <div className="mt-4 grid min-h-0 flex-1 grid-cols-8 content-start gap-3">
         {visible.map((participant) => (
           <motion.div
             key={participant.participantId}
             layout
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className={cn(
-              "flex min-w-0 items-center gap-2 rounded-full px-2 py-1.5 shadow-sm ring-1",
-              participant.championStatus === "eliminated"
-                ? "bg-slate-100 text-slate-500 ring-slate-200"
-                : participant.admissionStatus === "admitted"
-                  ? "bg-gradient-to-r from-blue-50 to-violet-50 text-slate-950 ring-blue-100"
-                  : "bg-amber-50 text-amber-900 ring-amber-100"
-            )}
-            title={participant.displayName}
+            initial={{ opacity: 0, scale: 0.72 }}
+            animate={{ opacity: participant.championStatus === "eliminated" ? 0.45 : 1, scale: 1 }}
+            className="min-w-0 text-center"
+            title={`${participant.displayName} · ${participant.admissionStatus} · ${participant.championStatus}`}
           >
-            <span
+            <div
               className={cn(
-                "grid shrink-0 place-items-center rounded-full text-lg",
-                compact ? "size-8" : "size-10",
-                participant.championStatus === "eliminated" ? "bg-slate-300 grayscale" : "bg-gradient-to-br from-blue-600 to-violet-600"
+                "mx-auto grid size-14 place-items-center rounded-full text-2xl font-black text-white shadow-lg ring-4",
+                participant.championStatus === "eliminated"
+                  ? "bg-slate-400 ring-slate-200"
+                  : participant.admissionStatus === "admitted"
+                    ? "bg-gradient-to-br from-violet-600 to-blue-600 ring-blue-100"
+                    : "bg-gradient-to-br from-amber-400 to-orange-400 ring-amber-100"
               )}
             >
               {participant.avatar}
-            </span>
-            <span className={cn("min-w-0 truncate font-black", compact ? "text-xs" : "text-sm")}>{participant.displayName}</span>
+            </div>
+            <p className="mt-1 truncate text-xs font-black text-slate-700">{participant.displayName}</p>
           </motion.div>
         ))}
+        {!participants.length
+          ? Array.from({ length: 16 }, (_, index) => (
+              <div key={index} className="text-center opacity-60">
+                <div className="mx-auto size-14 rounded-full border-2 border-dashed border-slate-300 bg-slate-50" />
+                <div className="mx-auto mt-2 h-2 w-10 rounded-full bg-slate-100" />
+              </div>
+            ))
+          : null}
         {hidden ? (
-          <div className="flex items-center justify-center rounded-full bg-slate-950 px-3 py-2 text-sm font-black text-white">
-            +{hidden} tracked
-          </div>
+          <div className="grid size-14 place-items-center self-start rounded-full bg-slate-950 text-sm font-black text-white shadow-lg">+{hidden}</div>
         ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+function TopicBubbleSwarm({
+  topicCounts,
+  selectedTopic
+}: {
+  topicCounts: Array<{ topic: string; count: number; percent: number }>;
+  selectedTopic?: string | null;
+}) {
+  const topics = topicCounts.length ? topicCounts.slice(0, 5) : DEFAULT_TOPICS.slice(0, 5).map((topic) => ({ topic, count: 0, percent: 0 }));
+  return (
+    <Panel className="min-h-0 p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-2xl font-black text-slate-950">Topics forming</h2>
+        {selectedTopic ? <span className="max-w-[160px] truncate rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{selectedTopic}</span> : null}
+      </div>
+      <div className="mt-4 flex min-h-28 flex-wrap items-center gap-3">
+        {topics.map((topic, index) => {
+          const size = topic.count ? Math.max(84, Math.min(142, 72 + topic.percent * 1.1)) : 76 + index * 6;
+          return (
+            <motion.div
+              key={topic.topic}
+              animate={{ y: [0, index % 2 ? 4 : -4, 0] }}
+              transition={{ duration: 4 + index * 0.35, repeat: Infinity }}
+              className={cn(
+                "grid shrink-0 place-items-center rounded-full text-center ring-1",
+                topic.count ? "bg-gradient-to-br from-blue-50 to-violet-50 ring-blue-100" : "bg-slate-50 text-slate-400 ring-slate-200"
+              )}
+              style={{ width: size, height: size }}
+            >
+              <div className="px-2">
+                <p className="truncate text-sm font-black text-slate-950">{topic.topic}</p>
+                <p className="text-xs font-black text-slate-500">{topic.count ? `${topic.percent}%` : "soon"}</p>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+      {!topicCounts.length ? <p className="mt-2 text-sm font-bold text-slate-500">Topics form as players type or speak expertise.</p> : null}
+    </Panel>
+  );
+}
+
+function LiveJoinFeedCompact({ participants }: { participants: Participant[] }) {
+  const visible = participants.slice(-4).reverse();
+  return (
+    <Panel className="p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-black text-slate-950">Live joins</h2>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">streaming</span>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {visible.map((participant) => (
+          <motion.div key={participant.participantId} initial={{ x: 12, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-violet-600 to-blue-600 text-lg">{participant.avatar}</span>
+            <span className="min-w-0 truncate text-sm font-black text-slate-900">{participant.displayName} joined</span>
+          </motion.div>
+        ))}
+        {!visible.length ? <p className="rounded-2xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">Waiting for the first racer...</p> : null}
       </div>
     </Panel>
   );
@@ -460,58 +605,6 @@ export function RoomRosterBand({ participants }: { participants: Participant[] }
           <div className="flex items-center justify-center rounded-2xl bg-slate-950 px-3 py-2 text-xs font-black text-white">+{hidden} more</div>
         ) : null}
         {!participants.length ? <p className="text-sm font-bold text-slate-500">Waiting for profiles...</p> : null}
-      </div>
-    </Panel>
-  );
-}
-
-export function LiveJoinFeed({ participants }: { participants: Participant[] }) {
-  return (
-    <Panel className="p-5">
-      <h2 className="text-2xl font-black text-slate-950">Live Join Feed</h2>
-      <div className="mt-3 grid gap-2">
-        {participants.slice(-6).reverse().map((participant) => (
-          <motion.div key={participant.participantId} initial={{ x: 18, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2.5">
-            <Avatar participant={participant} />
-            <span className="truncate text-base font-black">+ {participant.displayName} entered the arena</span>
-          </motion.div>
-        ))}
-        {!participants.length ? <p className="text-lg font-bold text-slate-500">Waiting for the first scan...</p> : null}
-      </div>
-    </Panel>
-  );
-}
-
-export function AgentPipeline({ events, status }: { events: AgentEvent[]; status: string }) {
-  const steps = [
-    { name: "Intent Parser Agent", detail: "normalized expertise notes" },
-    { name: "Arena Router Agent", detail: "formed fair live arenas" },
-    { name: "Quiz Builder Agent", detail: `generated ${QUESTION_COUNT} sprint questions` },
-    { name: "Fairness Guard", detail: "approved the pack" },
-    { name: "Match Engine", detail: "ready to race" }
-  ];
-  return (
-    <Panel className="p-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black text-slate-950">AI Build Pipeline</h2>
-        <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{status.replace("_", " ")}</span>
-      </div>
-      <div className="mt-4 grid grid-cols-5 gap-3">
-        {steps.map((step) => {
-          const event = events.find((candidate) => candidate.agentName === step.name || (step.name === "Intent Parser Agent" && candidate.agentName === "Topic Router Agent") || (step.name === "Fairness Guard" && candidate.agentName === "Fairness Agent"));
-          const complete = event?.status === "complete" || event?.status === "fallback";
-          const running = status === "generating" && !complete;
-          return (
-            <div key={step.name} className={cn("rounded-[20px] border p-3", complete ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50")}>
-              <div className="flex items-center justify-between">
-                <Sparkles className={cn("size-5", complete ? "text-emerald-600" : "text-blue-600")} />
-                {complete ? <CheckCircle2 className="size-5 text-emerald-600" /> : running ? <Loader2 className="size-5 animate-spin text-blue-600" /> : null}
-              </div>
-              <p className="mt-3 text-sm font-black text-slate-950">{step.name}</p>
-              <p className="mt-1 line-clamp-2 text-xs font-bold text-slate-500">{event?.content || step.detail}</p>
-            </div>
-          );
-        })}
       </div>
     </Panel>
   );
@@ -752,13 +845,23 @@ export function TechDrawer({
   session?: Session;
   clientErrors?: ClientError[];
 }) {
+  const [activeTab, setActiveTab] = React.useState<"overview" | "flow" | "metrics" | "scoring" | "tables" | "ledger">("overview");
   if (!open) return null;
   const recentEvents = events.slice(-18).reverse();
   const recentClientErrors = (clientErrors ?? []).slice(-10).reverse();
+  const activeRacers = participants.filter((participant) => participant.admissionStatus === "admitted" && participant.championStatus === "active").length;
+  const tabs = [
+    { id: "overview", label: "Overview" },
+    { id: "flow", label: "Flow" },
+    { id: "metrics", label: "Metrics" },
+    { id: "scoring", label: "Scoring" },
+    { id: "tables", label: "Tables" },
+    { id: "ledger", label: "Ledger" }
+  ] as const;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/20" onClick={onClose}>
       <aside
-        className="h-full w-full max-w-[540px] overflow-y-auto bg-white p-5 text-slate-950 shadow-2xl shadow-slate-950/30"
+        className="h-full w-full max-w-[520px] overflow-y-auto bg-white p-5 text-slate-950 shadow-2xl shadow-slate-950/25"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3">
@@ -771,90 +874,353 @@ export function TechDrawer({
           </button>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <MetricWithHelp
-            label="p95 answer commit"
-            value={`${stats?.p95AnswerCommitMs || stats?.p95LatencyMs || 0}ms`}
-            help="95th percentile of answer reducer commit latency measured from answer rows and operation traces. It includes network plus reducer processing."
-          />
-          <MetricWithHelp
-            label="subscription render"
-            value={`${stats?.p95SubscriptionRenderMs ?? 0}ms`}
-            help="Client-observed time from committed table update to rendered subscribed state. SpacetimeDB subscriptions preserve committed transaction order."
-          />
-          <MetricWithHelp
-            label="duplicate taps"
-            value={stats?.duplicateAnswersRejected ?? 0}
-            help="Count of rejected submit_answer attempts where the participant already had an Answer row for the round."
-          />
-          <MetricWithHelp
-            label="capacity"
-            value={`${session?.admittedCount ?? stats?.admittedRacers ?? 0}/${session?.maxRacers ?? 12}`}
-            help="Admission is capped by SessionCapacity. Users beyond the measured hard cap become waitlisted/spectators instead of overloading the race."
-          />
+        <div className="mt-5 flex gap-2 overflow-x-auto rounded-2xl bg-slate-100 p-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "shrink-0 rounded-xl px-3 py-2 text-sm font-black transition",
+                activeTab === tab.id ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        <TechSection title="Scoring Formula">
-          <pre className="whitespace-pre-wrap rounded-2xl bg-slate-950 p-4 text-sm font-bold leading-relaxed text-slate-100">
-{`responseMsServer = serverReceivedAtMs - round.startsAtMs
-if correct:
-  scoreDelta = 1000 + floor(1000 * (1 - responseMsServer / 2500)) + streakBonus
-else:
-  scoreDelta = 0
-
-rank = score desc, correct desc, total response time asc, fastest answer asc`}
-          </pre>
-        </TechSection>
-
-        <TechSection title="SpacetimeDB Flow">
-          <div className="space-y-2 text-sm font-bold text-slate-600">
-            <p>Phones call reducers. Reducers read hidden answer state, compute correctness, response time, score, and rank, then commit all rows transactionally.</p>
-            <p>The projector subscribes to public race state only: participants, scores, final results, live stats, and recent ledger rows when this drawer is open.</p>
-            <p>The main screen is product UI. The raw MatchEvent ledger stays here for judges and engineers.</p>
-          </div>
-        </TechSection>
-
-        <TechSection title="Client Error Recovery">
-          <div className="space-y-2">
-            {recentClientErrors.map((error) => (
-              <details key={error.errorId} className="rounded-2xl bg-rose-50 px-3 py-2 ring-1 ring-rose-100">
-                <summary className="cursor-pointer text-sm font-black text-rose-900">
-                  {error.screen} · {error.errorCode} · {error.stackHash ?? "no hash"}
-                </summary>
-                <p className="mt-2 text-sm font-bold text-rose-800">{error.message}</p>
-                <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-bold text-slate-600">
-                  {JSON.stringify(error.metadata, null, 2)}
-                </pre>
-              </details>
-            ))}
-            {!recentClientErrors.length ? <p className="text-sm font-bold text-slate-500">No phone or projector client errors recorded for this session.</p> : null}
-          </div>
-        </TechSection>
-
-        <TechSection title="MatchEvent Ledger">
-          <div className="space-y-2">
-            {recentEvents.map((event) => {
-              const participant = participants.find((candidate) => candidate.participantId === event.participantId);
-              return (
-                <details key={event.eventId} className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
-                  <summary className="cursor-pointer text-sm font-black text-slate-800">
-                    {event.eventType.replace("_", " ")} · {participant?.displayName ?? "system"} · {event.rankAfter ? `#${event.rankAfter}` : "ledger"}
-                  </summary>
-                  <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-bold text-slate-600">
-                    {JSON.stringify(event.payload, null, 2)}
-                  </pre>
-                </details>
-              );
-            })}
-            {!recentEvents.length ? <p className="text-sm font-bold text-slate-500">Ledger rows appear after reducers commit activity.</p> : null}
-          </div>
-        </TechSection>
+        {activeTab === "overview" ? (
+          <TechOverview stats={stats} session={session} activeRacers={activeRacers} participants={participants} />
+        ) : null}
+        {activeTab === "flow" ? <TechFlow /> : null}
+        {activeTab === "metrics" ? <TechMetrics stats={stats} session={session} activeRacers={activeRacers} /> : null}
+        {activeTab === "scoring" ? <TechScoring /> : null}
+        {activeTab === "tables" ? <TechTables /> : null}
+        {activeTab === "ledger" ? (
+          <TechLedger recentEvents={recentEvents} recentClientErrors={recentClientErrors} participants={participants} />
+        ) : null}
       </aside>
     </div>
   );
 }
 
-function MetricWithHelp({ label, value, help }: { label: string; value: React.ReactNode; help: string }) {
+function TechOverview({
+  stats,
+  session,
+  activeRacers,
+  participants
+}: {
+  stats?: LiveStats;
+  session?: Session;
+  activeRacers: number;
+  participants: Participant[];
+}) {
+  return (
+    <div className="mt-5 space-y-5">
+      <div className="grid grid-cols-2 gap-3">
+        <MetricWithHelp
+          label="p95 answer commit"
+          value={`${stats?.p95AnswerCommitMs || stats?.p95LatencyMs || 0}ms`}
+          formula="95th percentile of answer reducer commit latency."
+          explanation="Measures how quickly answer actions become authoritative state."
+          sourceTable="Answer, LiveStats"
+          sourceReducer="submit_answer"
+        />
+        <MetricWithHelp
+          label="p95 sync render"
+          value={`${stats?.p95SubscriptionRenderMs ?? 0}ms`}
+          formula="Client render time minus committed update time."
+          explanation="Shows how quickly subscribed table updates reach the screen."
+          sourceTable="LiveStats"
+          sourceReducer="live_tick"
+        />
+        <MetricWithHelp
+          label="active racers"
+          value={activeRacers}
+          formula="Admitted participants still on the Champion Path."
+          explanation="Waitlisted users stay tracked but do not overload the active sprint."
+          sourceTable="Participant"
+          sourceReducer="join_session"
+        />
+        <MetricWithHelp
+          label="capacity"
+          value={`${session?.admittedCount ?? stats?.admittedRacers ?? 0}/${session?.maxRacers ?? 12}`}
+          formula="Admitted racers divided by tested hard cap."
+          explanation="Admission control protects realtime performance under load."
+          sourceTable="SessionCapacity"
+          sourceReducer="join_session"
+        />
+      </div>
+      <SystemFlowDiagram />
+      <p className="rounded-2xl bg-slate-50 p-4 text-sm font-bold leading-relaxed text-slate-600 ring-1 ring-slate-200">
+        Phones call reducers; SpacetimeDB commits scores and bracket state; screens subscribe to updates. Current room state tracks {participants.length} profiles.
+      </p>
+    </div>
+  );
+}
+
+function SystemFlowDiagram() {
+  const nodes = [
+    { label: "Phones", icon: Smartphone },
+    { label: "Reducers", icon: Layers3 },
+    { label: "SpacetimeDB", icon: Database },
+    { label: "Subscriptions", icon: RadioTower },
+    { label: "Projector", icon: Trophy },
+    { label: "ShareCard", icon: Share2 }
+  ];
+  return (
+    <div className="rounded-[24px] bg-slate-950 p-4 text-white">
+      <div className="grid grid-cols-3 gap-3">
+        {nodes.map((node, index) => {
+          const Icon = node.icon;
+          return (
+            <div key={node.label} className="relative rounded-2xl bg-white/10 p-3">
+              <Icon className="size-6 text-blue-200" />
+              <p className="mt-2 text-sm font-black">{node.label}</p>
+              {index < nodes.length - 1 ? <ArrowRight className="absolute -right-4 top-1/2 size-6 -translate-y-1/2 rounded-full bg-slate-950 p-1 text-blue-200" /> : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TechFlow() {
+  const steps = [
+    { label: "Phone tap", detail: "Player selects an option.", icon: MousePointerClick },
+    { label: "submit_answer", detail: "Reducer checks round, duplicate taps, hidden answer, and server time.", icon: Layers3 },
+    { label: "Score + bracket rows", detail: "Answer, Score, Leaderboard, and MatchEvent commit together.", icon: Database },
+    { label: "Projector subscription", detail: "Bracket and leaderboard render committed state.", icon: RadioTower },
+    { label: "Share score", detail: "ShareCard reducer creates a durable public slug.", icon: Share2 }
+  ];
+  return (
+    <div className="mt-5 space-y-3">
+      {steps.map((step, index) => {
+        const Icon = step.icon;
+        return (
+          <div key={step.label} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <div className="grid size-11 place-items-center rounded-2xl bg-gradient-to-r from-violet-600 to-blue-600 text-white">
+                <Icon className="size-5" />
+              </div>
+              {index < steps.length - 1 ? <div className="h-8 w-px bg-slate-200" /> : null}
+            </div>
+            <div className="flex-1 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+              <p className="text-base font-black text-slate-950">{step.label}</p>
+              <p className="mt-1 text-sm font-bold text-slate-600">{step.detail}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TechMetrics({ stats, session, activeRacers }: { stats?: LiveStats; session?: Session; activeRacers: number }) {
+  return (
+    <div className="mt-5 grid grid-cols-2 gap-3">
+      <MetricWithHelp
+        label="answers/sec"
+        value={stats?.answersPerSec ?? 0}
+        formula="Recent committed answers per second."
+        explanation="Indicates live room answer throughput."
+        sourceTable="Answer, LiveStats"
+        sourceReducer="submit_answer"
+      />
+      <MetricWithHelp
+        label="realtime commits"
+        value={stats?.reducerCalls ?? 0}
+        formula="Reducer calls recorded for the session."
+        explanation="Each important game action goes through a reducer."
+        sourceTable="OperationTrace, LiveStats"
+        sourceReducer="all reducers"
+      />
+      <MetricWithHelp
+        label="double taps blocked"
+        value={stats?.duplicateAnswersRejected ?? 0}
+        formula="Rejected duplicate answers for participant plus round."
+        explanation="Proves retry/double-tap protection is active."
+        sourceTable="Answer, LiveStats"
+        sourceReducer="submit_answer"
+      />
+      <MetricWithHelp
+        label="capacity used"
+        value={`${activeRacers}/${session?.maxRacers ?? 12}`}
+        formula="Active admitted racers over current hard cap."
+        explanation="Overflow users stay visible in the roster without overwhelming the race."
+        sourceTable="Session, Participant"
+        sourceReducer="join_session"
+      />
+      <MetricWithHelp
+        label="quiz pack ready p95"
+        value="cache-first"
+        formula="Cache or fallback pack availability before LLM refinement."
+        explanation="The demo keeps moving even when external AI providers are slow."
+        sourceTable="QuestionPack, AgentEvent"
+        sourceReducer="submit_question_pack"
+      />
+      <MetricWithHelp
+        label="client errors"
+        value={stats?.capacityStatus ?? "open"}
+        formula="Capacity state and error recovery status."
+        explanation="Degraded state locks admissions before realtime performance collapses."
+        sourceTable="ClientError, SessionCapacity"
+        sourceReducer="record_client_error"
+      />
+    </div>
+  );
+}
+
+function TechScoring() {
+  return (
+    <div className="mt-5 space-y-4">
+      <div className="rounded-[24px] bg-emerald-50 p-4 ring-1 ring-emerald-100">
+        <div className="flex items-center gap-3">
+          <Award className="size-7 text-emerald-700" />
+          <h3 className="text-xl font-black text-emerald-950">Correct answer</h3>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+          <ScoreChip label="base" value="+1000" />
+          <ScoreChip label="speed" value="+0..1000" />
+          <ScoreChip label="streak" value="+100" />
+        </div>
+      </div>
+      <div className="rounded-[24px] bg-rose-50 p-4 ring-1 ring-rose-100">
+        <div className="flex items-center gap-3">
+          <X className="size-7 text-rose-700" />
+          <h3 className="text-xl font-black text-rose-950">Wrong answer</h3>
+        </div>
+        <p className="mt-3 text-lg font-black text-rose-900">0 points. Wrong answers never receive speed bonus.</p>
+      </div>
+      <div className="rounded-[24px] bg-slate-50 p-4 ring-1 ring-slate-200">
+        <div className="flex items-center gap-3">
+          <Crown className="size-7 text-amber-600" />
+          <h3 className="text-xl font-black text-slate-950">Rank comparator</h3>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {["score high", "correct count high", "total time low", "fastest answer low", "last answer earlier"].map((item) => (
+            <div key={item} className="rounded-2xl bg-white px-3 py-2 text-sm font-black text-slate-700 ring-1 ring-slate-200">
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoreChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-white p-3 ring-1 ring-emerald-100">
+      <p className="text-xs font-black uppercase text-emerald-700">{label}</p>
+      <p className="mt-1 text-xl font-black text-emerald-950">{value}</p>
+    </div>
+  );
+}
+
+function TechTables() {
+  const groups = [
+    { label: "Game", icon: Trophy, tables: ["Session", "Participant", "Score", "FinalResult"] },
+    { label: "Quiz", icon: Brain, tables: ["PlayerIntent", "QuestionPack", "QuestionPublic", "QuestionSecret"] },
+    { label: "Realtime", icon: RadioTower, tables: ["BracketNode", "LeaderboardTopN", "LiveStats", "MatchEvent"] },
+    { label: "Share", icon: Share2, tables: ["ShareCard"] }
+  ];
+  return (
+    <div className="mt-5 space-y-4">
+      {groups.map((group) => {
+        const Icon = group.icon;
+        return (
+          <section key={group.label} className="rounded-[24px] bg-slate-50 p-4 ring-1 ring-slate-200">
+            <div className="flex items-center gap-2">
+              <Icon className="size-5 text-blue-700" />
+              <h3 className="text-lg font-black text-slate-950">{group.label}</h3>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {group.tables.map((table) => (
+                <span key={table} className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-sm font-black text-slate-700 ring-1 ring-slate-200">
+                  <Table2 className="size-4 text-slate-400" />
+                  {table}
+                </span>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function TechLedger({
+  recentEvents,
+  recentClientErrors,
+  participants
+}: {
+  recentEvents: MatchEvent[];
+  recentClientErrors: ClientError[];
+  participants: Participant[];
+}) {
+  return (
+    <div className="mt-5 space-y-5">
+      <TechSection title="Client Error Recovery">
+        <div className="space-y-2">
+          {recentClientErrors.map((error) => (
+            <details key={error.errorId} className="rounded-2xl bg-rose-50 px-3 py-2 ring-1 ring-rose-100">
+              <summary className="cursor-pointer text-sm font-black text-rose-900">
+                {error.screen} · {error.errorCode} · {error.stackHash ?? "no hash"}
+              </summary>
+              <p className="mt-2 text-sm font-bold text-rose-800">{error.message}</p>
+              <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-bold text-slate-600">
+                {JSON.stringify(error.metadata, null, 2)}
+              </pre>
+            </details>
+          ))}
+          {!recentClientErrors.length ? <p className="text-sm font-bold text-slate-500">No phone or projector client errors recorded for this session.</p> : null}
+        </div>
+      </TechSection>
+      <TechSection title="MatchEvent Ledger">
+        <div className="space-y-2">
+          {recentEvents.map((event) => {
+            const participant = participants.find((candidate) => candidate.participantId === event.participantId);
+            return (
+              <details key={event.eventId} className="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+                <summary className="cursor-pointer text-sm font-black text-slate-800">
+                  {formatEventLabel(event.eventType)} · {participant?.displayName ?? "system"} · {event.rankAfter ? `#${event.rankAfter}` : "ledger"}
+                </summary>
+                <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-xl bg-white p-3 text-xs font-bold text-slate-600">
+                  {JSON.stringify(event.payload, null, 2)}
+                </pre>
+              </details>
+            );
+          })}
+          {!recentEvents.length ? <p className="text-sm font-bold text-slate-500">Ledger rows appear after reducers commit activity.</p> : null}
+        </div>
+      </TechSection>
+    </div>
+  );
+}
+
+function formatEventLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+function MetricWithHelp({
+  label,
+  value,
+  formula,
+  explanation,
+  sourceTable,
+  sourceReducer
+}: {
+  label: string;
+  value: React.ReactNode;
+  formula: string;
+  explanation: string;
+  sourceTable: string;
+  sourceReducer: string;
+}) {
+  const help = `${formula} ${explanation} Source: ${sourceTable}. Reducer: ${sourceReducer}. SpacetimeDB reducers commit related table updates transactionally.`;
   return (
     <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
       <div className="flex items-center justify-between gap-2">
@@ -864,6 +1230,7 @@ function MetricWithHelp({ label, value, help }: { label: string; value: React.Re
         </span>
       </div>
       <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-xs font-bold leading-snug text-slate-500">{sourceTable}</p>
     </div>
   );
 }

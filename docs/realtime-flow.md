@@ -13,7 +13,7 @@ Phone scans QR
 -> projector subscription renders avatar and count
 ```
 
-## Expertise Swarm
+## Topics Forming
 
 ```text
 Phone submits freeform expertise text
@@ -23,7 +23,7 @@ Phone submits freeform expertise text
 -> submit_topic_vote reducer
 -> TopicVote rows replaced for participant
 -> MatchEvent(topic_vote)
--> projector recomputes live bars
+-> projector recomputes topic bubbles
 -> request_questions reducer starts immediately from the phone confirmation
 ```
 

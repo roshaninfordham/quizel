@@ -29,29 +29,28 @@ Current measured admission:
 
 Do not claim 250 active real racers yet.
 
-## Rehearsal Load Buttons
+## Rehearsal Load Controls
 
-On the projector lobby:
+The public lobby is intentionally clean. For rehearsal, use projector keyboard controls:
 
 ```text
-+50
-+100
-+250
-Start
+A = add reducer-backed simulated participants
+S = start the visual race
+R = reset the session
 ```
 
-These buttons create reducer-backed simulated participants for visual rehearsal. They are useful when the room has fewer people than the target demo size.
+These controls create reducer-backed simulated participants for visual rehearsal. They are useful when the room has fewer people than the target demo size.
 
 The visual path is:
 
 ```mermaid
 flowchart LR
-    Button[Projector +N Button] --> Reducer[add_simulated_players reducer]
+    Key[Projector A key] --> Reducer[add_simulated_players reducer]
     Reducer --> Participant[Participant rows]
     Reducer --> Score[Score rows]
     Participant --> Projector[Subscribed roster wall]
     Score --> Bracket[Live bracket + leaderboard]
-    Start[Start / auto-start] --> Answers[simulate_answer_burst reducer]
+    Start[Projector S key / auto-start] --> Answers[simulate_answer_burst reducer]
     Answers --> Final[FinalResult + ShareCard rows]
 ```
 

@@ -70,7 +70,7 @@ SUBSCRIBE_MODE=all USERS=250 TOPICS=10 RESET_AFTER=false STATIC_REQUESTS=50 CONN
 
 ## Visual Rehearsal Load
 
-The projector includes `+50`, `+100`, and `+250` visual rehearsal buttons. These are not fake frontend cards. They call SpacetimeDB/local reducer-compatible `add_simulated_players`, create `Participant` and `Score` rows, and stream into the same roster, bracket, leaderboard, and final/share-card paths.
+The cleaned public lobby keeps rehearsal controls off the main screen. The projector keyboard still supports reducer-backed rehearsal: press `A` to stream simulated participants and `S` to start the visual race. These are not fake frontend cards. They call SpacetimeDB/local reducer-compatible `add_simulated_players`, create `Participant` and `Score` rows, and stream into the same roster, bracket, leaderboard, and final/share-card paths.
 
 Use them only as marked rehearsal load when the physical room is small. For real audience capacity claims, use the production load-test table above.
 

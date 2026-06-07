@@ -8,6 +8,8 @@ QuizRush Arena uses educational game scoring only. There is no purchase, cash pr
 
 ## Problem Statement
 
+Passive learning loses attention; active learning improves outcomes. A PubMed-indexed meta-analysis of active learning in STEM found exam scores improved by about 6 percentage points and students in traditional lecture sections were 1.5x more likely to fail than students in active-learning sections.
+
 Room-scale quiz games usually make everyone answer the same static question set. That breaks when every player wants a different topic, and it becomes unsafe at scale if the frontend invents score, answer timing, ranking, or share links.
 
 QuizRush Arena solves this as a realtime state race:
@@ -47,6 +49,17 @@ Existing live quiz tools are usually shared-question polling surfaces. QuizRush 
 - **Admission control:** the app caps active racers to measured capacity and tracks overflow users instead of crashing.
 - **Demo resilience:** if Firecrawl/LLM is slow, deterministic topic-specific fallback questions keep the sprint running.
 
+## Research And Market Context
+
+- Active learning research supports the product direction: the Freeman et al. meta-analysis reports about 6 percentage-point higher exam performance and substantially lower failure risk for active-learning sections.
+- Global Market Insights estimated the game-based learning market at USD 23.45B in 2023 with projected CAGR above 14% from 2024 to 2032.
+- QuizRush Arena focuses that demand into a room-scale, personalized, realtime game loop: custom topics on phones, shared bracket on the projector, database-backed scorecards after the sprint.
+
+Sources:
+
+- Active learning paper: https://pmc.ncbi.nlm.nih.gov/articles/PMC4060654/
+- Game-based learning market: https://www.gminsights.com/industry-analysis/game-based-learning-market
+
 ## Current Production Status
 
 ```text
@@ -75,7 +88,7 @@ See [docs/capacity-report.md](docs/capacity-report.md) for exact artifacts.
 
 ## What It Does
 
-QuizRush Arena turns a room into a live multiplayer quiz race. The presenter runs `make online-public`, the projector shows a giant QR code, everyone joins from a phone, players type or speak their expertise, deterministic intent parsing converts that into live arena topics, AI agents generate and review ten rapid questions, phones show private quiz prompts, and the projector shows only the public Champion Path fixture, leaderboard, capacity state, and winner.
+QuizRush Arena turns a room into a live multiplayer quiz race. The presenter runs `make online-public`, the projector shows a clean game-broadcast lobby, everyone joins from a phone, players type or speak their expertise, deterministic intent parsing converts that into live arena topics, AI agents generate and review ten rapid questions, phones show private quiz prompts, and the projector shows only the public Champion Path fixture, leaderboard, capacity state, and winner.
 
 ## Demo Flow
 
@@ -98,7 +111,6 @@ Projector keyboard controls:
 S = start match
 G = generate questions
 A = add 100 simulated players
-+50/+100/+250 = reducer-backed visual rehearsal load buttons
 T = toggle tech overlay
 F = force finish
 R = reset demo

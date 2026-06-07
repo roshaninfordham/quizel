@@ -11,18 +11,14 @@ import {
   TOTAL_MATCH_SECONDS
 } from "@quizrush/shared";
 import {
-  AgentPipeline,
-  FloatingAvatarCloud,
   LeaderboardPanel,
-  LiveJoinFeed,
+  ProjectorLobbyPage,
   ProjectorShell,
-  QRHeroCard,
   ReconnectingOverlay,
   RoomRosterBand,
   TechDrawer,
   TechMetricStrip,
   TopStatusBar,
-  TopicSwarm,
   WinnerExplosion
 } from "../components/ui";
 import { CleanKnockoutBracket } from "../components/bracket/CleanKnockoutBracket";
@@ -35,9 +31,7 @@ import {
   useStartMatch
 } from "../hooks/useArenaActions";
 import {
-  useAgentEvents,
   useAnswers,
-  useCurrentQuestion,
   useCurrentRound,
   useLiveStats,
   useMatchEvents,
@@ -56,7 +50,6 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const stats = useLiveStats(sessionId);
   const events = useMatchEvents(sessionId);
   const clientErrors = state.clientErrors.filter((error) => error.sessionId === sessionId);
-  const agentEvents = useAgentEvents(sessionId);
   const round = useCurrentRound(sessionId);
   const answers = useAnswers(sessionId);
   const leaderboard = useMemo(() => getLeaderboard(state, sessionId), [sessionId, state]);
@@ -270,7 +263,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         onToggleTech={() => setShowTech((current) => !current)}
         techOpen={showTech}
       />
-      <ReconnectingOverlay state={connectionState} />
+      <ReconnectingOverlay state={connectionState} floating />
       <TechDrawer
         open={showTech}
         onClose={() => setShowTech(false)}
@@ -320,71 +313,18 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           <RoomRosterBand participants={participants} />
         </div>
       ) : (
-        <div className="grid flex-1 grid-cols-[1.08fr_0.92fr] gap-5">
-          <div className="flex flex-col gap-5">
-            <QRHeroCard
-              joinUrl={joinUrl}
-              sessionCode={session?.code ?? code}
-              joinedCount={participants.length}
-              countdownSeconds={participants.length ? topicWindowSeconds : TOTAL_MATCH_SECONDS}
-            />
-            <FloatingAvatarCloud participants={participants} />
-          </div>
-          <div className="flex flex-col gap-5">
-            <TopicSwarm topicCounts={topics} selectedTopic={session?.selectedTopic} />
-            <AgentPipeline events={agentEvents} status={phase} />
-            <DemoLoadControls sessionId={sessionId} callReducer={callReducer} disabled={false} />
-            <LiveJoinFeed participants={participants} />
-            <TechMetricStrip stats={stats} eventsCount={events.length} />
-          </div>
-        </div>
+        <ProjectorLobbyPage
+          joinUrl={joinUrl}
+          sessionCode={session?.code ?? code}
+          participants={participants}
+          topicCounts={topics}
+          selectedTopic={session?.selectedTopic}
+          stats={stats}
+          phase={phase}
+          countdownSeconds={participants.length ? topicWindowSeconds : TOTAL_MATCH_SECONDS}
+        />
       )}
     </ProjectorShell>
-  );
-}
-
-function DemoLoadControls({
-  sessionId,
-  callReducer,
-  disabled
-}: {
-  sessionId: string;
-  callReducer: <T = unknown>(name: string, args: unknown, identity?: string) => Promise<{ ok: boolean; data?: T; error?: string }>;
-  disabled: boolean;
-}) {
-  return (
-    <section className="rounded-[28px] bg-slate-950 p-5 text-white shadow-xl shadow-slate-200">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-black uppercase text-blue-200">Realtime visual load</p>
-          <h2 className="text-2xl font-black">Fill the bracket wall</h2>
-          <p className="mt-1 text-sm font-bold text-slate-300">Simulated phones join through SpacetimeDB reducers and stream into the projector.</p>
-        </div>
-        <div className="flex gap-2">
-          {[50, 100, 250].map((count) => (
-            <button
-              key={count}
-              type="button"
-              disabled={disabled}
-              onClick={() => streamSimulatedRoster(sessionId, callReducer, count)}
-              className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-blue-950/30 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              +{count}
-            </button>
-          ))}
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              startVisualRace(sessionId, callReducer);
-            }}
-            className="rounded-2xl bg-amber-400 px-4 py-3 text-sm font-black text-slate-950 shadow-lg shadow-blue-950/30 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Start
-          </button>
-        </div>
-      </div>
-    </section>
   );
 }
 
