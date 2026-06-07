@@ -72,7 +72,7 @@ export function cn(...classes: Array<string | false | null | undefined>): string
 export function ProjectorShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="projector-grid relative h-screen overflow-hidden bg-[#fff8ec] px-7 py-5 pb-7 text-slate-950">
-      <div className="mx-auto flex h-full w-full max-w-[1700px] flex-col gap-3">{children}</div>
+      <div className="mx-auto flex h-full w-full max-w-[1200px] flex-col gap-3 2xl:max-w-[1500px]">{children}</div>
       <p className="pointer-events-none absolute inset-x-4 bottom-1 text-center text-[10px] font-semibold text-slate-500">{DISCLAIMER}</p>
     </main>
   );
