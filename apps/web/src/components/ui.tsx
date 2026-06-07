@@ -235,7 +235,7 @@ export function ReconnectingOverlay({ state, floating = false }: { state: Connec
   if (state === "connected") return null;
   return (
     <div className={cn("rounded-[20px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900", floating && "fixed right-8 top-24 z-40 max-w-md shadow-xl shadow-amber-100")}>
-      Reconnecting to the laptop realtime server. Local demo state remains available until the connection returns.
+      Connecting to the live SpacetimeDB race engine. If this takes more than a few seconds, refresh this tab.
     </div>
   );
 }

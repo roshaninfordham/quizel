@@ -90,6 +90,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
   useEffect(() => {
     let closedByEffect = false;
     let retryTimer: number | undefined;
+    let directSnapshotTimer: number | undefined;
     let removeDirectListeners: (() => void) | undefined;
 
     const connect = () => {
@@ -104,6 +105,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
           setStateVersion(directStateVersionRef.current);
           setLastSyncAt(Date.now());
         };
+        const scheduleDirectSnapshot = (connection: DbConnection) => {
+          if (closedByEffect || directSnapshotTimer) return;
+          directSnapshotTimer = window.setTimeout(() => {
+            directSnapshotTimer = undefined;
+            emitDirectSnapshot(connection);
+          }, 80);
+        };
 
         const connection = buildDirectSpacetimeConnection({
           host,
@@ -111,11 +119,15 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
           onConnect: (connectedConnection) => {
             if (closedByEffect) return;
             directConnectionRef.current = connectedConnection;
-            setConnectionState("connected");
-            removeDirectListeners = registerDirectSnapshotListeners(connectedConnection, () => emitDirectSnapshot(connectedConnection));
             connectedConnection
               .subscriptionBuilder()
-              .onApplied(() => emitDirectSnapshot(connectedConnection))
+              .onApplied(() => {
+                if (closedByEffect) return;
+                removeDirectListeners?.();
+                removeDirectListeners = registerDirectSnapshotListeners(connectedConnection, () => scheduleDirectSnapshot(connectedConnection));
+                setConnectionState("connected");
+                emitDirectSnapshot(connectedConnection);
+              })
               .onError(() => setConnectionState("error"))
               .subscribeToAllTables();
           },
@@ -178,6 +190,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }): R
     return () => {
       closedByEffect = true;
       if (retryTimer) window.clearTimeout(retryTimer);
+      if (directSnapshotTimer) window.clearTimeout(directSnapshotTimer);
       removeDirectListeners?.();
       directConnectionRef.current?.disconnect();
       directConnectionRef.current = null;
