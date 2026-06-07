@@ -22,9 +22,9 @@ import {
   TechMetricStrip,
   TopStatusBar,
   TopicSwarm,
-  TournamentBracket,
   WinnerExplosion
 } from "../components/ui";
+import { CleanKnockoutBracket } from "../components/bracket/CleanKnockoutBracket";
 import {
   useFinishMatch,
   useRequestQuestions,
@@ -268,8 +268,10 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       {phase === "playing" ? (
         <div className="grid flex-1 grid-cols-[minmax(0,1.45fr)_minmax(340px,0.55fr)] gap-5">
           <div className="flex flex-col gap-5">
-            <TournamentBracket
+            <CleanKnockoutBracket
               entries={leaderboard}
+              session={session}
+              stats={stats}
               activeRacers={participants.filter((participant) => participant.admissionStatus === "admitted").length}
               raceSecondsRemaining={raceSecondsRemaining}
               nextGateSeconds={secondsRemaining}
@@ -283,8 +285,10 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
         <div className="grid flex-1 grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)] gap-5">
           <div className="flex flex-col gap-5">
             <WinnerExplosion winner={winner} totalPlayers={participants.length} />
-            <TournamentBracket
+            <CleanKnockoutBracket
               entries={leaderboard}
+              session={session}
+              stats={stats}
               activeRacers={participants.filter((participant) => participant.admissionStatus === "admitted").length}
               raceSecondsRemaining={0}
               nextGateSeconds={0}
