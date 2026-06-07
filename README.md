@@ -47,6 +47,64 @@ flowchart LR
     DB --> Share["ShareCard slug"]
 ```
 
+## Product Screens
+
+These screenshots are from the deployed Vercel app connected to the `quizrush-live` SpacetimeDB module. They show the two public surfaces that matter in the demo: the projector broadcast and the phone player flow.
+
+### Projector Broadcast
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/2026-06-07/projector-lobby.png" alt="QuizRush Arena projector lobby with QR code, product positioning, flow strip, racers, and topics" />
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/2026-06-07/projector-solo-result.png" alt="QuizRush Arena projector result screen with champion card, leaderboard, solo sprint mode, and room roster" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>Lobby:</strong> one QR, clear product story, live status, racer roster, topic bubbles, and flow from scan to share.</td>
+    <td><strong>Result:</strong> champion card, leaderboard, bracket state, and room roster rendered from committed realtime rows.</td>
+  </tr>
+</table>
+
+### Phone Player Flow
+
+<table>
+  <tr>
+    <td width="33%">
+      <img src="docs/assets/screenshots/2026-06-07/phone-profile-setup.jpeg" alt="Phone profile setup screen with name and avatar selection" />
+    </td>
+    <td width="33%">
+      <img src="docs/assets/screenshots/2026-06-07/phone-topic-entry.jpeg" alt="Phone topic entry screen with quick starts and optional voice input" />
+    </td>
+    <td width="33%">
+      <img src="docs/assets/screenshots/2026-06-07/phone-topic-quick-start.jpeg" alt="Phone topic entry screen with AI Agents quick-start selected" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>1. Profile:</strong> each player gets a unique participant profile and avatar.</td>
+    <td><strong>2. Topic:</strong> players type or speak a natural-language topic.</td>
+    <td><strong>3. Quick start:</strong> seeded topics make common demos instant while custom topics still work.</td>
+  </tr>
+  <tr>
+    <td width="33%">
+      <img src="docs/assets/screenshots/2026-06-07/phone-agent-pipeline.jpeg" alt="Phone live agent build pipeline showing intent, research, quiz builder, fairness guard, and SpacetimeDB sync" />
+    </td>
+    <td width="33%">
+      <img src="docs/assets/screenshots/2026-06-07/phone-private-quiz-card.jpeg" alt="Phone private quiz card with timer, rank, and four answer options" />
+    </td>
+    <td width="33%">
+      <img src="docs/assets/screenshots/2026-06-07/phone-final-scorecard.jpeg" alt="Phone final scorecard with rank, points, correct count, total time, fastest answer, and share button" />
+    </td>
+  </tr>
+  <tr>
+    <td><strong>4. Build:</strong> agent events show intent parsing, grounded pack creation, validation, and SpacetimeDB sync.</td>
+    <td><strong>5. Race:</strong> phones render private `QuestionPublic` cards and submit answers through reducers.</td>
+    <td><strong>6. Share:</strong> every player gets a final result and a durable share-card link.</td>
+  </tr>
+</table>
+
 ## Why This Is Different
 
 Existing live quiz tools are usually shared-question polling surfaces. QuizRush Arena is built around personalized topics plus a shared realtime race engine:
