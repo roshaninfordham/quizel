@@ -12,7 +12,16 @@ export const QuizGenerationProgram = Effect.gen(function* () {
     {
       timeoutMs: config.llm.timeoutMs,
       maxRetries: config.llm.maxRetries,
-      enableSafetyGuard: config.llm.safetyGuardEnabled
+      enableSafetyGuard: config.llm.safetyGuardEnabled,
+      grounding: {
+        enabled: config.grounding.firecrawlEnabled,
+        apiKey: config.grounding.firecrawlApiKey,
+        apiBaseUrl: config.grounding.firecrawlApiBaseUrl,
+        timeoutMs: config.grounding.firecrawlTimeoutMs,
+        limit: config.grounding.firecrawlLimit,
+        maxFacts: config.grounding.firecrawlMaxFacts,
+        country: config.grounding.firecrawlCountry
+      }
     },
     {
       topic: config.demo.topic,

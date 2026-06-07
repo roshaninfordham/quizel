@@ -35,6 +35,8 @@ const runnable =
           yield* Effect.logInfo("Agent worker started", {
             transport: config.realtime.transport,
             realtimeUrl: config.realtime.url,
+            spacetimeHost: config.realtime.transport === "spacetime" ? config.realtime.spacetimeHost : undefined,
+            spacetimeModule: config.realtime.transport === "spacetime" ? config.realtime.spacetimeModule : undefined,
             providerName: selection.providerName,
             modelId: selection.modelId,
             configured: selection.configured,

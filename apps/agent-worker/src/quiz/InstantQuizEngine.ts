@@ -12,6 +12,7 @@ import { quizAuthorPrompt, quizAuthorUserPrompt } from "../prompts/quizPrompts";
 import { ValidationError, type LlmError } from "../llm/errors";
 import type { LlmProvider } from "../llm/provider";
 import { cachedQuizPacks, type CachedQuizPack } from "./packs";
+import { validateGroundedQuestionPack } from "./validateQuestionPack";
 
 export type InstantPackSource = "exact_cache" | "alias_cache" | "semantic_cache" | "template" | "llm" | "seed";
 
@@ -184,9 +185,13 @@ function packFromCache(
 }
 
 function validatePack(pack: InstantQuizPack): Effect.Effect<InstantQuizPack, ValidationError> {
-  const parsed = questionBatchSchema.safeParse({ questions: pack.questions });
-  if (!parsed.success) return Effect.fail(new ValidationError(parsed.error.message));
-  return Effect.succeed({ ...pack, questions: parsed.data.questions });
+  const validation = validateGroundedQuestionPack({
+    questions: pack.questions,
+    topic: pack.arenaName,
+    requireFactIds: pack.sourceType !== "llm"
+  });
+  if (!validation.ok) return Effect.fail(new ValidationError(validation.reasons.join("; ")));
+  return Effect.succeed({ ...pack, questions: validation.questions });
 }
 
 function takeQuestions(questions: QuestionInput[], questionCount: number): QuestionInput[] {
@@ -233,7 +238,10 @@ function normalizeQuestionInput(input: unknown): unknown {
     options: normalizeOptions(record.options),
     correctOption: record.correctOption ?? record.correct_option ?? record.correct,
     explanation: record.explanation,
-    topic: record.topic ?? parsedTopic(record.topic_tags) ?? "General Knowledge"
+    topic: record.topic ?? parsedTopic(record.topic_tags) ?? "General Knowledge",
+    factIds: record.factIds ?? record.fact_ids,
+    sourceTitle: record.sourceTitle ?? record.source_title,
+    sourceUrl: record.sourceUrl ?? record.source_url
   };
 }
 

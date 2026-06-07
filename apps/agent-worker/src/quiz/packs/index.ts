@@ -10,6 +10,7 @@ export interface CachedQuizPack {
 
 const packTopics = [
   "US Visa System",
+  "Andaman Islands",
   "Fruit Science",
   "AI Agents",
   "Database Systems",
@@ -33,6 +34,8 @@ function aliasesFor(title: string): string[] {
   switch (title) {
     case "US Visa System":
       return ["visa", "immigration", "uscis", "green card", "h1b", "f1 visa"];
+    case "Andaman Islands":
+      return ["andaman", "andaman and nicobar", "port blair", "cellular jail", "havelock", "swaraj dweep"];
     case "Fruit Science":
       return ["fruit", "fruits", "nutrition", "biology", "food science"];
     case "AI Agents":

@@ -13,7 +13,10 @@ export const questionInputSchema = z.object({
   }),
   correctOption: optionKeySchema,
   explanation: z.string().min(6).max(260),
-  topic: z.string().min(1).max(80)
+  topic: z.string().min(1).max(80),
+  factIds: z.array(z.string().min(1).max(80)).max(8).optional(),
+  sourceTitle: z.string().min(1).max(120).optional(),
+  sourceUrl: z.string().url().max(260).optional()
 });
 
 export const questionBatchSchema = z.object({

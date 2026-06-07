@@ -7,11 +7,13 @@ export function buildTopicFallbackQuestions(topicInput: string, questionCount: n
   const topic = normalizeTopic(topicInput);
   const lower = topic.toLowerCase();
   const pack =
-    lower.includes("visa") || lower.includes("immigration")
+    lower.includes("andaman")
+      ? andamanQuestionPack(topic)
+      : lower.includes("visa") || lower.includes("immigration")
       ? visaQuestionPack(topic)
       : lower.includes("fruit") || lower.includes("nutrition")
         ? fruitQuestionPack(topic)
-        : genericQuestionPack(topic);
+        : generalKnowledgeQuestionPack();
   const questions: QuestionInput[] = [];
   for (let index = 0; index < questionCount; index += 1) {
     const source = pack[index % pack.length] ?? pack[0];
@@ -20,7 +22,7 @@ export function buildTopicFallbackQuestions(topicInput: string, questionCount: n
       ...source,
       questionText: source.questionText.replace(/\{topic\}/g, topic),
       explanation: source.explanation.replace(/\{topic\}/g, topic),
-      topic
+      topic: source.topic || topic
     });
   }
   return questions;
@@ -61,15 +63,28 @@ function fruitQuestionPack(topic: string): QuestionInput[] {
   ];
 }
 
-function genericQuestionPack(topic: string): QuestionInput[] {
+function andamanQuestionPack(topic: string): QuestionInput[] {
   return [
-    q("In {topic}, what helps make answers reliable?", ["Clear definitions", "Random guesses", "Hidden rules", "Long delays"], "A", "Clear definitions make a fast quiz on {topic} fair and answerable.", topic),
-    q("What is the best first step when learning {topic}?", ["Know key terms", "Skip basics", "Ignore context", "Avoid examples"], "A", "Key terms give players a shared starting point for {topic}.", topic),
-    q("A good {topic} question should be...", ["Unambiguous", "Tricky only", "Personal", "Unverifiable"], "A", "Unambiguous questions keep a rapid tournament fair.", topic),
-    q("Which signal should shape this arena?", ["Player intent", "Screen size", "Join order", "Button color"], "A", "QuizRush uses submitted expertise intent to shape the arena topic.", topic),
-    q("For a fair {topic} sprint, scoring should reward...", ["Accuracy and speed", "Random taps", "Slow loading", "Duplicate answers"], "A", "The race rewards correct answers and fast server-received response time.", topic),
-    q("What should an AI quiz avoid in {topic}?", ["Unsafe claims", "Clear options", "Short text", "One answer"], "A", "The agent guardrails avoid unsafe claims and ambiguous answer choices.", topic),
-    q("Why keep {topic} questions short?", ["Fast reading", "More scrolling", "Harder tapping", "Less fairness"], "A", "Short questions fit phone screens and keep the 25-second sprint moving.", topic)
+    q("The {topic} are in which body of water?", ["Bay of Bengal", "Arabian Sea", "Red Sea", "Baltic Sea"], "A", "The Andaman Islands lie in the Bay of Bengal.", topic, ["andaman-location"]),
+    q("Which Indian union territory includes the {topic}?", ["Andaman and Nicobar Islands", "Lakshadweep", "Delhi", "Puducherry"], "A", "The Andaman Islands are part of the Andaman and Nicobar Islands union territory.", topic, ["andaman-administration"]),
+    q("What is the capital city of Andaman and Nicobar Islands?", ["Port Blair", "Kavaratti", "Panaji", "Kohima"], "A", "Port Blair is the capital of the Andaman and Nicobar Islands.", topic, ["andaman-capital"]),
+    q("Which colonial prison is a major Port Blair landmark?", ["Cellular Jail", "Tihar Jail", "Aga Khan Palace", "Red Fort"], "A", "Cellular Jail in Port Blair is a major historic landmark.", topic, ["andaman-cellular-jail"]),
+    q("Which island is also known as Swaraj Dweep?", ["Havelock Island", "Ross Island", "Neil Island", "Barren Island"], "A", "Havelock Island was renamed Swaraj Dweep.", topic, ["andaman-swaraj-dweep"]),
+    q("What natural feature is Barren Island known for?", ["Active volcano", "Hot desert", "Salt glacier", "Coral atoll only"], "A", "Barren Island is known for India's only confirmed active volcano.", topic, ["andaman-barren-volcano"]),
+    q("The Jarawa people are associated with which region?", ["Andaman Islands", "Sundarbans", "Thar Desert", "Nilgiri Hills"], "A", "The Jarawa are an Indigenous people of the Andaman Islands.", topic, ["andaman-jarawa"])
+  ];
+}
+
+function generalKnowledgeQuestionPack(): QuestionInput[] {
+  const topic = "General Knowledge";
+  return [
+    q("Which planet is known as the Red Planet?", ["Mars", "Venus", "Jupiter", "Mercury"], "A", "Mars is commonly called the Red Planet because of its reddish appearance.", topic, ["general-mars"]),
+    q("What gas do plants absorb during photosynthesis?", ["Carbon dioxide", "Oxygen", "Helium", "Nitrogen"], "A", "Plants absorb carbon dioxide during photosynthesis.", topic, ["general-photosynthesis"]),
+    q("Which ocean is the largest on Earth?", ["Pacific Ocean", "Indian Ocean", "Atlantic Ocean", "Arctic Ocean"], "A", "The Pacific Ocean is Earth's largest ocean.", topic, ["general-pacific"]),
+    q("Who wrote the play Romeo and Juliet?", ["William Shakespeare", "Charles Dickens", "Jane Austen", "Mark Twain"], "A", "Romeo and Juliet is a play by William Shakespeare.", topic, ["general-shakespeare"]),
+    q("What is the boiling point of water at sea level?", ["100°C", "50°C", "0°C", "200°C"], "A", "At standard sea-level pressure, water boils at 100°C.", topic, ["general-boiling"]),
+    q("Which organ pumps blood through the human body?", ["Heart", "Liver", "Lung", "Kidney"], "A", "The heart pumps blood through the circulatory system.", topic, ["general-heart"]),
+    q("Which continent is the Sahara Desert in?", ["Africa", "Asia", "Europe", "Australia"], "A", "The Sahara Desert is in Africa.", topic, ["general-sahara"])
   ];
 }
 
@@ -78,7 +93,8 @@ function q(
   options: [string, string, string, string],
   correctOption: (typeof OPTION_KEYS)[number],
   explanation: string,
-  topic: string
+  topic: string,
+  factIds: string[] = [factIdFor(topic, questionText)]
 ): QuestionInput {
   return {
     questionText,
@@ -90,6 +106,15 @@ function q(
     },
     correctOption,
     explanation,
-    topic
+    topic,
+    factIds
   };
+}
+
+function factIdFor(topic: string, questionText: string): string {
+  return `${topic}-${questionText}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
 }

@@ -19,6 +19,7 @@ const fillerPatterns = [
 const unsafeWords = /\b(kill|hate|sex|weapon|bomb|gambling|betting|wager|payout|profit)\b/i;
 
 const topicRules: Array<{ topic: string; match: RegExp }> = [
+  { topic: "Andaman Islands", match: /\b(andaman|andaman islands|andaman and nicobar|andaman nicobar|port blair|cellular jail|havelock|swaraj dweep)\b/i },
   { topic: "US Visa System", match: /\b(us visa|u\.s\. visa|visa system|immigration|uscis|embassy|consulate|green card|h-?1b|f-?1|b-?1|b-?2)\b/i },
   { topic: "AI Agents", match: /\b(ai|artificial intelligence|agent|agents|llm|llms|machine learning|model|models|prompt|prompts|automation)\b/i },
   { topic: "Space Technology", match: /\b(space|rocket|rockets|nasa|orbit|satellite|satellites|mars|moon|spacex|astronomy)\b/i },
@@ -41,7 +42,8 @@ const topicDisplay: Record<string, string> = {
   "Math Logic": "Math Logic",
   "World History": "History",
   "Sports Strategy": "Sports Strategy",
-  "US Visa System": "US Visa System"
+  "US Visa System": "US Visa System",
+  "Andaman Islands": "Andaman Islands"
 };
 
 export function normalizeTranscript(text: string): string {

@@ -9,7 +9,7 @@ export const sharedGuardrails = [
   "Use the provided output schema exactly.",
   "Keep explanations short and educational.",
   "Do not use gambling language.",
-  "Questions must be answerable in a few seconds from general knowledge."
+  "Questions must be answerable in a few seconds from provided facts or widely accepted general knowledge."
 ].join("\n");
 
 export function topicRouterPrompt(): string {
@@ -23,7 +23,8 @@ export function quizAuthorPrompt(): string {
   return `${sharedGuardrails}
 
 You are the Quiz Builder Agent for QuizRush Arena.
-Generate the requested number of fast multiple-choice questions with four short options and one unambiguous correct answer.`;
+Generate the requested number of fast multiple-choice questions with four short options and one unambiguous correct answer.
+If fact cards are provided, use only those fact cards for factual claims and include at least one matching factId per question.`;
 }
 
 export function fairnessReviewPrompt(): string {
@@ -63,17 +64,29 @@ export function topicRouterUserPrompt(input: {
 export function quizAuthorUserPrompt(input: {
   topic: string;
   questionCount: number;
+  facts?: Array<{
+    factId: string;
+    sourceTitle: string;
+    sourceUrl: string;
+    factText: string;
+    confidence: number;
+  }>;
 }): string {
+  const facts = input.facts ?? [];
   return JSON.stringify({
     task: "Generate a QuizRush Arena 25-second tournament question batch.",
     topic: input.topic,
     question_count: input.questionCount,
+    fact_cards: facts,
     rules: [
       `Exactly ${input.questionCount} questions.`,
       "Each question and option must be short enough for phone screens.",
       "Options A, B, C, and D must all be plausible.",
       "Only one option can be correct.",
-      "No citations, unless provided by the prompt.",
+      facts.length
+        ? "Every question must be directly supported by at least one supplied fact card."
+        : "No citations, unless provided by the prompt.",
+      facts.length ? "Use only supplied factIds in factIds." : "If no fact cards are supplied, keep questions widely known and conservative.",
       "No political, medical, legal, financial, or gambling content."
     ],
     output_schema: {
@@ -88,7 +101,10 @@ export function quizAuthorUserPrompt(input: {
           },
           correctOption: "A|B|C|D",
           explanation: "string",
-          topic: "string"
+          topic: "string",
+          factIds: facts.length ? ["one-or-more factId strings from fact_cards"] : [],
+          sourceTitle: facts.length ? "sourceTitle from the supporting fact card" : undefined,
+          sourceUrl: facts.length ? "sourceUrl from the supporting fact card" : undefined
         }
       ]
     }

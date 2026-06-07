@@ -40,6 +40,17 @@ export interface WorkerConfig {
   readonly realtime: {
     readonly url: string;
     readonly transport: "local" | "spacetime";
+    readonly spacetimeHost: string;
+    readonly spacetimeModule: string;
+  };
+  readonly grounding: {
+    readonly firecrawlEnabled: boolean;
+    readonly firecrawlApiKey: string;
+    readonly firecrawlApiBaseUrl: string;
+    readonly firecrawlTimeoutMs: number;
+    readonly firecrawlLimit: number;
+    readonly firecrawlMaxFacts: number;
+    readonly firecrawlCountry: string;
   };
   readonly demo: {
     readonly topic: string;
@@ -109,7 +120,18 @@ export const workerConfig = Config.all({
   }),
   realtime: Config.all({
     url: Config.string("AGENT_REALTIME_URL").pipe(Config.withDefault("ws://localhost:8787")),
-    transport: Config.literal("local", "spacetime")("AGENT_TRANSPORT").pipe(Config.withDefault("local" as const))
+    transport: Config.literal("local", "spacetime")("AGENT_TRANSPORT").pipe(Config.withDefault("local" as const)),
+    spacetimeHost: Config.string("AGENT_SPACETIMEDB_HOST").pipe(Config.withDefault("https://maincloud.spacetimedb.com")),
+    spacetimeModule: Config.string("AGENT_SPACETIMEDB_MODULE").pipe(Config.withDefault("quizrush-live"))
+  }),
+  grounding: Config.all({
+    firecrawlEnabled: Config.boolean("FIRECRAWL_ENABLED").pipe(Config.withDefault(true)),
+    firecrawlApiKey: Config.string("FIRECRAWL_API_KEY").pipe(Config.withDefault("")),
+    firecrawlApiBaseUrl: Config.string("FIRECRAWL_API_BASE_URL").pipe(Config.withDefault("https://api.firecrawl.dev")),
+    firecrawlTimeoutMs: Config.integer("FIRECRAWL_TIMEOUT_MS").pipe(Config.withDefault(1500)),
+    firecrawlLimit: Config.integer("FIRECRAWL_SEARCH_LIMIT").pipe(Config.withDefault(4)),
+    firecrawlMaxFacts: Config.integer("FIRECRAWL_MAX_FACTS").pipe(Config.withDefault(10)),
+    firecrawlCountry: Config.string("FIRECRAWL_COUNTRY").pipe(Config.withDefault("US"))
   }),
   demo: Config.all({
     topic: Config.string("QUIZ_TOPIC").pipe(Config.withDefault("AI + Space + Startups")),

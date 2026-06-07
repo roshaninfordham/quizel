@@ -59,6 +59,36 @@ describe("InstantQuizEngine", () => {
     expect(pack.questions[0]?.questionText.toLowerCase()).toContain("fruit");
   });
 
+  it("returns a grounded Andaman Islands pack for the Andaman shorthand", async () => {
+    const pack = await Effect.runPromise(
+      selectInstantQuizPack(new SlowFailingProvider(), { timeoutMs: 50 }, {
+        topic: "Andaman",
+        questionCount: 7
+      })
+    );
+
+    const joined = pack.questions
+      .map((question) => `${question.questionText} ${Object.values(question.options).join(" ")} ${question.explanation}`)
+      .join(" ");
+    expect(pack.sourceType).toBe("exact_cache");
+    expect(pack.arenaName).toBe("Andaman Islands");
+    expect(joined).toContain("Bay of Bengal");
+    expect(joined).not.toMatch(/best first step|learning Andaman|good .* question should/i);
+    expect(pack.questions.every((question) => question.factIds?.length)).toBe(true);
+  });
+
+  it("rejects banned generic meta questions during pack validation", async () => {
+    const provider = new SlowFailingProvider();
+    const pack = await Effect.runPromise(
+      selectInstantQuizPack(provider, { timeoutMs: 50 }, {
+        topic: "Andaman Islands",
+        questionCount: 7
+      })
+    );
+
+    expect(pack.questions.map((question) => question.questionText).join(" ")).not.toMatch(/best first step|valid quiz question/i);
+  });
+
   it("uses a deterministic template for weird uncached topics", async () => {
     const pack = await Effect.runPromise(
       selectInstantQuizPack(new SlowFailingProvider(), { timeoutMs: 50 }, {

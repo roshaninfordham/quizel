@@ -3,6 +3,7 @@ import { buildTopicFallbackQuestions, DEFAULT_SELECTED_TOPIC, QUESTION_COUNT, no
 import type { QuestionInput } from "@quizrush/shared";
 import { ValidationError, type LlmError } from "../llm/errors";
 import type { LlmProvider } from "../llm/provider";
+import { fetchFirecrawlFacts, type FirecrawlGroundingConfig, type GroundingFact } from "../knowledge/firecrawl";
 import {
   fairnessReviewPrompt,
   fairnessReviewUserPrompt,
@@ -24,11 +25,13 @@ import {
   safetyGuardReviewSchema,
   topicRouterSchema
 } from "../schemas/agentSchemas";
+import { validateGroundedQuestionPack } from "../quiz/validateQuestionPack";
 
 export interface AgentConfig {
   timeoutMs: number;
   maxRetries: number;
   enableSafetyGuard?: boolean;
+  grounding?: FirecrawlGroundingConfig;
 }
 
 export interface AgentEventDraft {
@@ -59,6 +62,8 @@ export interface QuizGenerationResult {
   questions: QuestionInput[];
   status: "complete" | "fallback";
   events: AgentEventDraft[];
+  facts: GroundingFact[];
+  topicKey: string;
 }
 
 export function routeTopic(
@@ -126,33 +131,58 @@ export function generateQuizQuestions(
   const policy = Schedule.exponential(Duration.millis(250)).pipe(Schedule.compose(Schedule.recurs(config.maxRetries)));
   const requestedCount = input.questionCount ?? QUESTION_COUNT;
 
-  return provider
-    .generateJson<unknown>({
-      system: quizAuthorPrompt(),
-      user: quizAuthorUserPrompt({ topic: input.topic, questionCount: requestedCount }),
-      schemaName: "QuizQuestionBatch",
-      timeoutMs: config.timeoutMs,
-      temperature: 0.35
-    })
+  return fetchGroundingFacts(config, input.topic)
+    .pipe(
+      Effect.flatMap((grounding) =>
+        provider
+          .generateJson<unknown>({
+            system: quizAuthorPrompt(),
+            user: quizAuthorUserPrompt({
+              topic: grounding.displayName,
+              questionCount: requestedCount,
+              facts: grounding.facts.map((fact) => ({
+                factId: fact.factId,
+                sourceTitle: fact.sourceTitle,
+                sourceUrl: fact.sourceUrl,
+                factText: fact.factText,
+                confidence: fact.confidence
+              }))
+            }),
+            schemaName: "QuizQuestionBatch",
+            timeoutMs: config.timeoutMs,
+            temperature: grounding.facts.length ? 0.18 : 0.35
+          })
+          .pipe(Effect.map((payload) => ({ payload, grounding })))
+      )
+    )
     .pipe(
       Effect.retry(policy),
-      Effect.flatMap((payload) =>
+      Effect.flatMap(({ payload, grounding }) =>
         Effect.try({
           try: () => {
             const parsed = questionBatchSchema.safeParse(normalizeQuestionBatchPayload(payload));
             if (!parsed.success) throw new ValidationError(parsed.error.message);
+            const validation = validateGroundedQuestionPack({
+              questions: parsed.data.questions,
+              topic: grounding.displayName,
+              requireFactIds: grounding.facts.length > 0
+            });
+            if (!validation.ok) throw new ValidationError(validation.reasons.join("; "));
             return {
-              questions: parsed.data.questions.slice(0, requestedCount),
+              questions: validation.questions.slice(0, requestedCount),
               status: "complete" as const,
               events: [
+                grounding.event,
                 {
                   agentName: "Quiz Builder Agent",
                   eventType: "questions_generated",
-                  content: `${parsed.data.questions.length} fast questions generated for ${input.topic}.`,
+                  content: `${parsed.data.questions.length} fast grounded questions generated for ${grounding.displayName}.`,
                   confidence: 0.92,
                   status: "complete" as const
                 }
-              ] satisfies AgentEventDraft[]
+              ].filter((event): event is AgentEventDraft => Boolean(event)),
+              facts: grounding.facts,
+              topicKey: grounding.topicKey
             };
           },
           catch: (error): LlmError =>
@@ -197,7 +227,9 @@ export function generateQuizQuestions(
                             confidence: 0.96,
                             status: "complete" as const
                           }
-                        ].filter((event): event is AgentEventDraft => Boolean(event))
+                        ].filter((event): event is AgentEventDraft => Boolean(event)),
+                        facts: authored.facts,
+                        topicKey: authored.topicKey
                       };
                     },
                     catch: (error): LlmError =>
@@ -211,28 +243,83 @@ export function generateQuizQuestions(
         )
       ),
       Effect.catchAll((error) =>
-        Effect.succeed({
-          questions: buildTopicFallbackQuestions(input.topic, requestedCount),
-          status: "fallback" as const,
-          events: [
-            {
-              agentName: "Quiz Builder Agent",
-              eventType: "fallback_used",
-              content: `Using deterministic ${input.topic} questions because ${error.name} occurred.`,
-              confidence: 1,
-              status: "fallback" as const
-            },
-            {
-              agentName: "Fairness Agent",
-              eventType: "fallback_approved",
-              content: "Topic-specific fallback questions are schema-valid and pre-reviewed for a public hackathon audience.",
-              confidence: 1,
-              status: "fallback" as const
-            }
-          ]
-        })
+        fetchGroundingFacts(config, input.topic).pipe(
+          Effect.map((grounding) => ({
+            questions: buildTopicFallbackQuestions(grounding.displayName, requestedCount),
+            status: "fallback" as const,
+            events: [
+              grounding.event,
+              {
+                agentName: "Quiz Builder Agent",
+                eventType: "fallback_used",
+                content: `Using deterministic ${grounding.displayName} questions because ${error.name} occurred.`,
+                confidence: 1,
+                status: "fallback" as const
+              },
+              {
+                agentName: "Fairness Agent",
+                eventType: "fallback_approved",
+                content: "Topic-specific fallback questions are schema-valid and pre-reviewed for a public hackathon audience.",
+                confidence: 1,
+                status: "fallback" as const
+              }
+            ].filter((event): event is AgentEventDraft => Boolean(event)),
+            facts: grounding.facts,
+            topicKey: grounding.topicKey
+          }))
+        )
       )
     );
+}
+
+function fetchGroundingFacts(
+  config: AgentConfig,
+  topic: string
+): Effect.Effect<{
+  topicKey: string;
+  displayName: string;
+  facts: GroundingFact[];
+  event: AgentEventDraft | null;
+}, never> {
+  const normalized = normalizeIntent(topic);
+  const fallback = {
+    topicKey: normalized.topicKey,
+    displayName: normalized.displayArenaName,
+    facts: [] as GroundingFact[],
+    event: {
+      agentName: "Firecrawl Grounding Agent",
+      eventType: "grounding_skipped",
+      content: "No Firecrawl facts were available before the generation deadline.",
+      confidence: 0.35,
+      status: "fallback" as const
+    }
+  };
+
+  if (!config.grounding?.enabled) return Effect.succeed(fallback);
+
+  return fetchFirecrawlFacts(config.grounding, topic).pipe(
+    Effect.map((result) => ({
+      topicKey: result.topicKey,
+      displayName: result.displayName,
+      facts: result.facts,
+      event: {
+        agentName: "Firecrawl Grounding Agent",
+        eventType: "facts_ready",
+        content: `${result.facts.length} Firecrawl facts ready for ${result.displayName}${result.creditsUsed === null ? "" : ` (${result.creditsUsed} credits)`}.`,
+        confidence: 0.88,
+        status: "complete" as const
+      }
+    })),
+    Effect.catchAll((error) =>
+      Effect.succeed({
+        ...fallback,
+        event: {
+          ...fallback.event,
+          content: `Firecrawl fallback for ${normalized.displayArenaName}: ${error.message}`
+        }
+      })
+    )
+  );
 }
 
 function normalizeQuestionBatchPayload(payload: unknown): unknown {
@@ -252,7 +339,10 @@ function normalizeQuestionInput(input: unknown): unknown {
     options,
     correctOption: record.correctOption ?? record.correct_option ?? record.correct,
     explanation: record.explanation,
-    topic: record.topic ?? record.topicTag ?? record.topic_tag ?? DEFAULT_SELECTED_TOPIC
+    topic: record.topic ?? record.topicTag ?? record.topic_tag ?? DEFAULT_SELECTED_TOPIC,
+    factIds: record.factIds ?? record.fact_ids,
+    sourceTitle: record.sourceTitle ?? record.source_title,
+    sourceUrl: record.sourceUrl ?? record.source_url
   };
 }
 

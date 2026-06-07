@@ -47,7 +47,18 @@ const baseConfig: WorkerConfig = {
   },
   realtime: {
     url: "ws://localhost:8787",
-    transport: "local"
+    transport: "local",
+    spacetimeHost: "https://maincloud.spacetimedb.com",
+    spacetimeModule: "quizrush-live"
+  },
+  grounding: {
+    firecrawlEnabled: false,
+    firecrawlApiKey: "",
+    firecrawlApiBaseUrl: "https://api.firecrawl.dev",
+    firecrawlTimeoutMs: 100,
+    firecrawlLimit: 2,
+    firecrawlMaxFacts: 6,
+    firecrawlCountry: "US"
   },
   demo: {
     topic: "AI + Space + Startups",

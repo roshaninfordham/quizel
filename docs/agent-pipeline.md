@@ -13,7 +13,9 @@ flowchart LR
     VoteReducer --> Worker[Effect Agent Worker]
     Worker --> Router[Intent Parser / Topic Router Agent]
     Router --> Cache[Exact / alias / semantic cache race]
-    Cache --> Builder[Quiz Builder Agent]
+    Cache --> Grounding[Firecrawl Grounding Agent]
+    Grounding --> Facts[submit_topic_facts reducer]
+    Facts --> Builder[Grounded Quiz Builder Agent]
     Builder --> Guard[Safety + Fairness Guard]
     Guard --> Pack[submit_question_pack reducer]
     Pack --> Arena[25-second sprint]
@@ -27,8 +29,9 @@ flowchart LR
 - Interim speech results are display-only. Only final transcripts are committed, then repeated words/phrases are removed.
 - `submit_player_intent` stores raw text, cleaned text, canonical topics, topic key, arena name, confidence, and status in realtime state.
 - Freeform text is deterministically mapped to compact topics such as `AI Agents`, `Space Technology`, and `Database Systems`; spoken topics such as `US visa system` and `Fruit Fruits Fruits` become `US Visa System` and `Fruit Science`.
-- `request_questions` immediately commits a topic-specific pack so phones/projector never wait on model latency.
-- The Effect worker then records an Instant Quiz Engine event from exact cache, alias cache, semantic token cache, template, or seed fallback, while LLM generation can refine before the race locks.
+- `request_questions` creates an `AgentRequest` and keeps the room live with the fastest valid pack available.
+- When configured, the Effect worker calls Firecrawl, extracts compact facts, stores them with `submit_topic_facts`, and asks the LLM to generate questions from those facts only.
+- The Effect worker records Instant Quiz Engine, Firecrawl Grounding Agent, Quiz Builder, and Fairness Agent events while LLM generation can refine before the race locks.
 - If the model is slow or invalid, deterministic topic-specific fallback questions keep the sprint live without reverting to the static demo pack.
 
 ## Agent Guardrails
@@ -38,6 +41,7 @@ flowchart LR
 - Avoid political, medical, legal, financial, sexual, violent, hateful, and gambling content.
 - Keep questions short enough for a 5-second phone answer.
 - Do not invent citations.
+- If Firecrawl facts are provided, every generated question must include at least one supplied `factId`.
 - Do not let agents mutate score, rank, answer, or replay state directly.
 
 ## Production Expansion

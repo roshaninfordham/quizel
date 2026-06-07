@@ -35,6 +35,20 @@ describe("intent normalization", () => {
     expect(questions[0]?.questionText.toLowerCase()).toContain("visa");
   });
 
+  it("resolves Andaman into a factual Andaman Islands arena", () => {
+    const intent = normalizeIntent("quiz me on Andaman");
+    const questions = buildTopicFallbackQuestions(intent.displayArenaName, 7);
+    const joined = questions
+      .map((question) => `${question.questionText} ${Object.values(question.options).join(" ")} ${question.explanation}`)
+      .join(" ");
+
+    expect(intent.canonicalTopics).toEqual(["Andaman Islands"]);
+    expect(intent.displayArenaName).toBe("Andaman Islands");
+    expect(joined).toContain("Bay of Bengal");
+    expect(joined).not.toMatch(/best first step|good .* question should|learning Andaman/i);
+    expect(questions.every((question) => question.factIds?.length)).toBe(true);
+  });
+
   it("normalizes AI database startup expertise for reducers", () => {
     const intent = normalizeIntent("AI AI startup databases");
 
