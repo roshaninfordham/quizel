@@ -73,37 +73,38 @@ Measured on 2026-06-07:
 
 | Scenario | Result |
 | --- | --- |
-| 50 connected tracked users | Pass |
-| 100 connected tracked users | Functional, degraded answer p95 |
-| 250 connected tracked users | Failed during join/intention writes |
-| Active admitted racers | Keep hard cap at 12 |
+| 20 connected active racers | Pass: 200/200 answers committed, 20 FinalResult rows, 20 ShareCard rows |
+| 50 connected tracked users | Pass: 25 admitted, 25 waitlisted/spectator, 250/250 admitted answers committed |
+| Active admitted racers | Keep hard cap at 25 |
+| 100+ connected tracked users | Not claimed in this build |
 
 The projector now separates these surfaces:
 
-- **Champion Path bracket:** admitted active racers only.
+- **Live Bracket:** admitted active racers only.
 - **Leaderboard:** ranked scoring surface.
 - **Room Roster:** every tracked participant profile, including queued/watching users.
 
 See [docs/capacity-report.md](docs/capacity-report.md) for exact artifacts.
+Use [docs/multiplayer-debugging.md](docs/multiplayer-debugging.md) and `make diagnose SESSION=ARENA-42` when validating a live room.
 
 ## What It Does
 
-QuizRush Arena turns a room into a live multiplayer quiz race. The presenter runs `make online-public`, the projector shows a clean game-broadcast lobby, everyone joins from a phone, players type or speak their expertise, deterministic intent parsing converts that into live arena topics, AI agents generate and review ten rapid questions, phones show private quiz prompts, and the projector shows only the public Champion Path fixture, leaderboard, capacity state, and winner.
+QuizRush Arena turns a room into a live multiplayer quiz race. The deployed demo runs from Vercel plus the `quizrush-live` SpacetimeDB module, the projector shows a clean game-broadcast lobby, everyone joins from a phone, players type a topic, deterministic intent parsing creates a participant-scoped quiz pack, phones show private quiz prompts, and the projector shows only the public live bracket, roster, leaderboard, capacity state, and winner.
 
 ## Demo Flow
 
-1. Run `make online-public` for phones on any network, or `make online` for same-Wi-Fi testing.
-2. Projector opens `/arena/ARENA-42`.
+1. Use the deployed projector at `https://quizel-eta.vercel.app/arena/ARENA-42`, or run `make online-public` for local rehearsal.
+2. Projector opens `/arena/ARENA-42` and shows the QR.
 3. Audience scans the QR and joins `/join/ARENA-42`.
-4. Everyone types or speaks what they know; fixed topic chips are no longer the main UX.
-5. The phone shows a detected arena such as `AI Agents x Space Tech x Database Systems`.
-6. The 5-second intent window closes automatically.
-7. The phone immediately stores a `PlayerIntent`, starts `request_questions`, and commits a topic-specific instant pack while the Effect worker races cache/template paths and LLM refinement.
-8. The match starts automatically and phones answer ten rapid questions inside one 25-second race clock.
-9. Projector updates the Champion Path fixture and leaderboard from committed state without showing quiz questions.
+4. Everyone enters name/avatar and a natural-language topic.
+5. Each phone stores a `PlayerIntent`, calls participant-scoped `request_questions`, and receives its own topic-specific `QuestionPublic` rows.
+6. The projector roster and topic bubbles update from real `Participant` and `PlayerIntent` rows.
+7. The presenter starts the race with `S` only after the room is ready. Real-user races do not auto-start.
+8. Phones answer ten rapid private questions inside the race clock.
+9. Projector updates the live bracket and leaderboard from committed SpacetimeDB state without showing quiz questions.
 10. Winner screen shows champion, score, fastest answer, sound, and confetti.
-11. Phones can create a reducer-backed score share link.
-12. Press `T` or the hamburger button to open the SpacetimeDB tech drawer with metrics, formulas, capacity, and the `MatchEvent` ledger.
+11. Every participant receives a `FinalResult` and can create/open a reducer-backed `ShareCard` link.
+12. Press `T` or the hamburger button to open the SpacetimeDB tech drawer with diagnostics, metrics, formulas, capacity, and the `MatchEvent` ledger.
 
 Projector keyboard controls:
 
@@ -288,7 +289,7 @@ sequenceDiagram
 - Freeform expertise input with deterministic intent preview and optional Web Speech API mic enhancement.
 - Shared transcript cleanup removes repeated interim speech such as `Fruit Fruits Fruits` before reducers see it.
 - First-class `PlayerIntent` rows store raw expertise, cleaned text, canonical topics, topic key, arena name, confidence, and pack-ready status.
-- Realtime joins, expertise-derived topic votes, answers, scores, ranks, Champion Path fixture, winner, and share links.
+- Realtime joins, expertise-derived topic votes, answers, scores, ranks, live bracket, winner, and share links.
 - Room Roster surface for every tracked joined profile, separate from the admitted-racer bracket.
 - Tasteful generated howler.js sound effects with phone sound off by default.
 - Live projector metrics refreshed by reducer-owned `live_tick` updates.
@@ -361,8 +362,8 @@ make capacity-report
 Current measured production cap:
 
 ```text
-MAX_PLAYERS_SOFT=10
-MAX_PLAYERS_HARD=12
+MAX_PLAYERS_SOFT=20
+MAX_PLAYERS_HARD=25
 ```
 
 Vercel serves the static frontend. SpacetimeDB is the realtime race engine. Do not claim a higher live-racer count until `docs/capacity-results/` contains a passing load-test artifact for that number.
@@ -370,10 +371,10 @@ Vercel serves the static frontend. SpacetimeDB is the realtime race engine. Do n
 Latest production artifacts:
 
 ```text
-50 connected tracked users: pass
-100 connected tracked users: functionally complete, degraded p95
-250 connected tracked users: fail
-12 active admitted racers: current hard cap
+20 connected active racers: pass
+50 connected tracked users: pass with 25 admitted and 25 waitlisted/spectator
+25 active admitted racers: current hard cap
+100+ connected tracked users: not claimed in this build
 ```
 
 ## When The System Might Break
@@ -390,7 +391,7 @@ Latest production artifacts:
 - **Misleading response time:** separated total submitted-answer time from fastest answer and kept official timing server-side.
 - **Phone fatal errors:** added route/error recovery and client error logging.
 - **Room size ambiguity:** separated tracked users, admitted racers, waitlisted users, and rehearsal simulation.
-- **SpacetimeDB fanout pressure:** added admission control and documented the next scoped-subscription refactor before raising caps.
+- **SpacetimeDB fanout pressure:** raised the safe active cap to 25 after participant-scoped packs, kept admission control, and documented the next scoped-subscription refactor before raising caps.
 - **Topic quality:** deterministic normalization, topic-specific fallback packs, Firecrawl fact storage, and validation guardrails reduce unrelated questions.
 
 ## Future Scope
@@ -453,7 +454,7 @@ Production transport plan from the SpacetimeDB skills reference:
 - Subscribe projector to LiveStats, recent MatchEvents, agent events, and top leaderboard rows.
 - Keep reducers as the only game-critical mutation path; external LLM calls stay in the Effect worker.
 
-The current room-demo transport is the verified local websocket reducer gateway because it gives reliable public QR joins through tunnels today. The SpacetimeDB module builds and mirrors the same reducer/table contract for the direct SDK transport pass.
+The deployed production transport uses the generated TypeScript bindings directly against `https://maincloud.spacetimedb.com` / `quizrush-live`. The local websocket reducer gateway remains available for offline rehearsal only.
 
 ## Verification
 
@@ -473,12 +474,12 @@ Manual golden path:
 - Join from two browser tabs or phones.
 - Type or say expertise such as `US visa system` or `AI agents, space startups, and databases`.
 - Confirm the detected arena.
-- The expertise window, generation/fallback, and match start run automatically.
+- The phone creates participant-scoped quiz rows; the presenter starts the match with `S` after real users are ready.
 - Press `A` only when you want to stream 100 marked simulated players for load.
-- `G` and `S` remain emergency/manual controls.
+- `G` remains an emergency question-generation control; `S` is the normal presenter race-start control.
 - Answer on phones.
 - Tap the same answer twice and verify duplicate rejection in tech overlay.
-- Let seven rapid rounds resolve inside the 25-second race clock.
+- Let ten rapid rounds resolve inside the race clock.
 - Verify winner, leaderboard, replay, and reset.
 
 See `docs/` for architecture diagrams, data model, realtime flow, AI guardrails, demo script, risks, and reducer API contract.

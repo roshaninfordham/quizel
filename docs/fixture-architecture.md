@@ -1,6 +1,6 @@
 # Fixture Architecture
 
-QuizRush Arena now treats the projector as a public tournament broadcast. Phones show the private quiz; the projector shows the live Champion Path derived from committed SpacetimeDB rows.
+QuizRush Arena now treats the projector as a public tournament broadcast. Phones show the private quiz; the projector shows the live bracket derived from committed SpacetimeDB rows.
 
 ```mermaid
 flowchart LR
@@ -36,7 +36,7 @@ sequenceDiagram
 ## Product Split
 
 - Phone: name, avatar, topic, private questions, answer buttons, own result, share score.
-- Projector: QR lobby, Champion Path fixture, leaderboard, winner reveal, capacity strip.
+- Projector: QR lobby, live bracket, leaderboard, winner reveal, capacity strip.
 - Tech drawer: formulas, reducers, latency, capacity, MatchEvent ledger.
 
 The projector does not render quiz questions or correct answers. This keeps personalized topics private and prevents the public screen from becoming a debug dashboard.

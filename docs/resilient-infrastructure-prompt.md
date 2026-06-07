@@ -9,8 +9,8 @@ Mission:
 Make QuizRush Arena resilient enough for a live room demo where many phones join, each user gets a custom topic quiz, every answer is scored authoritatively, the projector bracket moves from database state, and every participant gets a durable shareable score card.
 
 Current measured production cap:
-- Soft cap: 10 active racers.
-- Hard cap: 12 active racers.
+- Soft cap: 20 active racers.
+- Hard cap: 25 active racers.
 - Do not raise this until a fresh load artifact passes.
 - Overflow users must become waitlisted/spectators, not admitted racers.
 
@@ -128,14 +128,15 @@ Frontend subscriptions:
 - Projector must not subscribe to all private questions or all answers for every user unless Tech Drawer is open.
 
 Capacity path:
-- Current deployed implementation is measured at hard cap 12 active racers.
+- Current deployed implementation is measured at hard cap 25 active racers.
+- The current tracked-user artifact passes 50 connected users with 25 admitted and 25 waitlisted/spectator.
 - The next engineering target is 50 active racers after scoped subscriptions and TopN leaderboard.
 - The next target after that is 100 active racers after per-answer fanout is reduced.
-- Do not claim 50, 100, or 1000 active racers until load:prod passes and docs/capacity-results contains the artifact.
+- Do not claim 50 active racers, 100 active racers, or 1000 active racers until load:prod passes and docs/capacity-results contains the artifact.
 
 Load tests:
-- make load USERS=10
-- make load USERS=12
+- make load USERS=20
+- make load USERS=50
 - make load USERS=50
 - make load USERS=100
 - make load USERS=1000

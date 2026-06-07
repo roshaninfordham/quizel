@@ -8,15 +8,15 @@
 
 0:10-0:25
 
-Run `make online-public`. Show the projector arena and QR.
+Open `https://quizel-eta.vercel.app/arena/ARENA-42`. Show the projector arena and QR.
 
 “Scan this. No app, no login. Your phone becomes the controller.”
 
 0:25-0:40
 
-Audience joins and types or speaks expertise. Point to the live count and expertise swarm.
+Audience joins and types a topic. Point to the live count, real roster avatars, and topic bubbles.
 
-“Every join and expertise signal is committed through a reducer and synced to the projector.”
+“Every join, profile, topic, and quiz-pack assignment is committed through a SpacetimeDB reducer and synced to the projector.”
 
 Optional backup: press `A` to stream 100 marked simulated players if the room is small. Say, “These are marked simulated load so we can prove the high-fan-in path honestly.”
 
@@ -26,9 +26,9 @@ Optional backup: press `A` to stream 100 marked simulated players if the room is
 
 0:55-1:20
 
-The match starts automatically. Phones answer ten rapid questions inside the 25-second race clock.
+Start the race with `S` after the room is ready. Phones answer ten rapid private questions inside the race clock.
 
-“Now watch the public Champion Path fixture move after committed taps. The projector never shows private quiz questions. Scores are not client-side guesses; response time, correctness, rank, and duplicate-answer rejection happen in reducer-owned state.”
+“Now watch the public live bracket move after committed taps. The projector never shows private quiz questions. Scores are not client-side guesses; response time, correctness, rank, and duplicate-answer rejection happen in reducer-owned state.”
 
 1:20-1:35
 

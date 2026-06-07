@@ -20,29 +20,30 @@ The deployed system is safe for:
 
 ```text
 Tracked connected users: 50 passed
-Tracked connected users: 100 completed, degraded latency
-Tracked connected users: 250 failed during join/intention writes
-Admitted active racers: 12 hard cap
+Tracked connected users above 50: not claimed in this build
+Admitted active racers: 25 hard cap
+Recommended live demo target: 10-20 real phones
 ```
 
 Keep production admission control at:
 
 ```text
-MAX_PLAYERS_SOFT=10
-MAX_PLAYERS_HARD=12
+MAX_PLAYERS_SOFT=20
+MAX_PLAYERS_HARD=25
 ```
 
-That means a hackathon room can scan the QR and be represented as tracked participants, but the live answering race admits only the measured safe number of active racers. Overflow users are waitlisted/spectators until the subscription/reducer fanout is refactored and re-tested.
+That means a hackathon room can scan the QR and be represented as tracked participants, but the live answering race admits only the measured safe number of active racers. Overflow users are waitlisted/spectators instead of seeing fatal reducer errors.
 
 ## Latest Production Runs
 
 | Run | Connected | Joined | Admitted racers | Waitlisted | Answers committed | FinalResult rows | Current ShareCard rows | Answer p95 | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `stress-50-all-connected-admitted-sharecards` | 50 | 50 | 12 | 38 | 120/120 | 50 | 50 | 420ms | Pass |
-| `stress-100-all-connected-admitted-sharecards` | 100 | 100 | 12 | 88 | 120/120 | 100 | 100 | 1285ms | Degraded |
-| `stress-250-all-connected-admitted-sharecards` | 250 | 51 | 12 | 39 | 120/120 | 51 | 51 | 1505ms | Fail |
+| `load-2026-06-07T10-52-34-263Z` | 20 | 20 | 20 | 0 | 200/200 | 20 | 20 | 122ms | Pass |
+| `load-2026-06-07T10-52-53-445Z` | 50 | 50 | 25 | 25 | 250/250 | 50 | 50 | 516ms | Pass |
+| `stress-100-all-connected-admitted-sharecards` | 100 | 100 | 12 | 88 | 120/120 | 100 | 100 | 1285ms | Old degraded baseline |
+| `stress-250-all-connected-admitted-sharecards` | 250 | 51 | 12 | 39 | 120/120 | 51 | 51 | 1505ms | Old failed baseline |
 
-The 250-user run opened 250 WebSocket connections, but 199 join/intention writes failed with `The instance encountered a fatal error`. Do not claim 250 real participants are safe on the current deployed module.
+The old 250-user baseline opened 250 WebSocket connections, but 199 join/intention writes failed with `The instance encountered a fatal error`. This build fixes the real demo target by moving phone packs to participant-scoped rows, disabling real-user auto-start, and making late joins become tracked spectators. Do not claim 100+ active racers until a new post-fix 100/250 run passes.
 
 ## What The Harness Proves
 
@@ -52,6 +53,7 @@ The production harness:
 - Opens one SpacetimeDB connection per synthetic phone.
 - Uses broad all-table subscriptions to match the current deployed client.
 - Calls `join_session` and `submit_player_intent`.
+- Calls participant-scoped `request_questions`, matching the phone Enter Race flow.
 - Lets admission control decide who is admitted versus waitlisted.
 - Starts the match.
 - Submits answers only from admitted racers, matching real product behavior.
@@ -61,11 +63,9 @@ The production harness:
 Command examples:
 
 ```bash
-SUBSCRIBE_MODE=all USERS=50 TOPICS=10 RESET_AFTER=false STATIC_REQUESTS=25 CONNECT_CONCURRENCY=25 JOIN_CONCURRENCY=25 ANSWER_CONCURRENCY=25 RUN_ID=stress-50-all-connected-admitted-sharecards pnpm load:prod
+USERS=20 TOPICS=5 STATIC_REQUESTS=10 CONNECT_CONCURRENCY=20 JOIN_CONCURRENCY=20 ANSWER_CONCURRENCY=60 pnpm load:prod
 
-SUBSCRIBE_MODE=all USERS=100 TOPICS=10 RESET_AFTER=false STATIC_REQUESTS=50 CONNECT_CONCURRENCY=50 JOIN_CONCURRENCY=50 ANSWER_CONCURRENCY=25 RUN_ID=stress-100-all-connected-admitted-sharecards pnpm load:prod
-
-SUBSCRIBE_MODE=all USERS=250 TOPICS=10 RESET_AFTER=false STATIC_REQUESTS=50 CONNECT_CONCURRENCY=50 JOIN_CONCURRENCY=50 ANSWER_CONCURRENCY=25 RUN_ID=stress-250-all-connected-admitted-sharecards pnpm load:prod
+USERS=50 TOPICS=5 STATIC_REQUESTS=20 CONNECT_CONCURRENCY=25 JOIN_CONCURRENCY=25 ANSWER_CONCURRENCY=80 pnpm load:prod
 ```
 
 ## Visual Rehearsal Load
@@ -78,7 +78,7 @@ Use them only as marked rehearsal load when the physical room is small. For real
 
 Vercel static delivery is healthy; static route p95 was 170ms for 50 and about 100ms for 100/250. The bottleneck is the current realtime fanout:
 
-- Every phone still subscribes broadly.
+- The production client still subscribes broadly.
 - `submit_answer` recomputes ranks by sorting session scores.
 - Answer bursts update `Answer`, `Score`, `MatchEvent`, `LiveStats`, and share/final state.
 - Broad subscriptions push too much state to every client.

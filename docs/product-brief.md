@@ -18,7 +18,7 @@ Live events, classrooms, sponsor booths, and team trainings struggle to make the
 
 ## Solution
 
-QuizRush Arena turns the room into a synchronized multiplayer race. Everyone joins instantly from a phone, types or speaks what they know, gets placed into an AI-detected arena, answers seven rapid questions inside a 25-second race clock, and watches the projector leaderboard/fixture move live.
+QuizRush Arena turns the room into a synchronized multiplayer race. Everyone joins instantly from a phone, types a topic, receives a participant-scoped private quiz, answers ten rapid questions, and watches the projector roster, leaderboard, and live bracket move from committed SpacetimeDB state.
 
 ## Technical Claim
 

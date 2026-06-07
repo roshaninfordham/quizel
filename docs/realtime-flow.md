@@ -5,8 +5,8 @@
 ```text
 Phone scans QR
 -> /join/ARENA-42
--> browser opens laptop LAN/tunnel URL, not localhost
--> websocket connects to the same origin at /quizrush-ws
+-> browser opens Vercel app or local rehearsal URL
+-> SpacetimeDB TypeScript SDK connects to the configured public module
 -> join_session reducer
 -> Participant + Score row inserted
 -> LiveStats joined_count updates
@@ -24,31 +24,31 @@ Phone submits freeform expertise text
 -> TopicVote rows replaced for participant
 -> MatchEvent(topic_vote)
 -> projector recomputes topic bubbles
--> request_questions reducer starts immediately from the phone confirmation
+-> participant-scoped request_questions reducer starts immediately from the phone confirmation
 ```
 
 ## Question Generation
 
 ```text
-phone confirmation or 5-second expertise window closes
--> request_questions reducer
--> topic-specific instant pack committed immediately
+phone confirmation
+-> request_questions reducer as the phone's own SpacetimeDB identity
+-> topic-specific participant-scoped instant pack committed immediately
 -> AgentRequest pending
 -> Effect worker routes topic + races exact cache / alias cache / semantic token cache / template
 -> Instant Quiz Engine records source + latency as AgentEvent
 -> LLM generation continues as refinement
 -> Zod validation + optional safety guard
 -> submit_question_pack reducer
--> Question rows inserted
+-> QuestionPublic + QuestionSecret rows inserted with participant_id
 -> Session status ready
 ```
 
-The phone starts the agent request as soon as the player confirms the arena, while the projector keeps a backup automation after the expertise window. `request_questions` commits a topic-specific instant pack first, so the judged flow never waits on model latency or falls back to an unrelated quiz. Late LLM packs are ignored once a match has already started with an existing question pack.
+The phone starts the agent request as soon as the player confirms the arena. `request_questions` commits a topic-specific instant pack first, so the judged flow never waits on model latency or falls back to an unrelated quiz. Late LLM packs are ignored once a match has already started with an existing question pack.
 
 ## 25-Second Match
 
 ```text
-questions ready
+presenter starts after users are ready
 -> start_match reducer
 -> round 1 starts with server starts_at/ends_at inside the match deadline
 -> phones render current question
@@ -61,7 +61,7 @@ questions ready
 -> projector and phone subscriptions update
 ```
 
-The sprint uses seven rapid questions inside one `match_started_at + 25s` budget. Rounds can advance early when the room has answered, but no round can extend past the match deadline:
+The sprint uses ten rapid questions inside one race budget. Rounds can advance early when the room has answered, but no round can extend past the match deadline:
 
 ```text
 round 1: starts at match start

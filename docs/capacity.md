@@ -3,8 +3,8 @@
 The current deployed Vercel + SpacetimeDB system has been load tested. The safe active racer cap is:
 
 ```text
-MAX_PLAYERS_SOFT=10
-MAX_PLAYERS_HARD=12
+MAX_PLAYERS_SOFT=20
+MAX_PLAYERS_HARD=25
 ```
 
 This is an admission-control setting, not a product failure. It protects answer latency and ensures the final result can appear quickly.
@@ -28,12 +28,12 @@ flowchart TD
 See [capacity-report.md](capacity-report.md) for raw load-test results. Latest production results:
 
 ```text
-50 connected users: pass, 12 admitted racers, 50 FinalResult rows, 50 ShareCard rows.
-100 connected users: functionally complete, degraded answer p95 at 1285ms.
-250 connected users: failed join/intention writes; not safe for current deployment.
+20 connected active racers: pass, 200/200 answers committed, 20 FinalResult rows, 20 ShareCard rows.
+50 connected users: pass, 25 admitted racers, 25 waitlisted/spectator, 50 FinalResult rows, 50 ShareCard rows.
+100+ connected users: not claimed in this build.
 ```
 
-Keep `MAX_PLAYERS_HARD=12` for active racers. Overflow users are still stored as tracked participants/waitlisted spectators when joins succeed, but they should not be admitted into the active answer race until load tests prove it.
+Keep `MAX_PLAYERS_HARD=25` for active racers. Overflow users are stored as tracked participants/waitlisted spectators instead of seeing reducer failures, but they should not be admitted into the active answer race until load tests prove it.
 
 ## Scaling Path
 

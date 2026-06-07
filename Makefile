@@ -1,4 +1,4 @@
-.PHONY: online online-public online-cloudflare online-localhostrun online-ngrok reset seed test typecheck build spacetime-build load load-smoke capacity-report
+.PHONY: online online-public online-cloudflare online-localhostrun online-ngrok reset seed test typecheck build spacetime-build diagnose load load-smoke capacity-report
 
 online:
 	pnpm online
@@ -32,6 +32,9 @@ build:
 
 spacetime-build:
 	pnpm spacetime:build
+
+diagnose:
+	SESSION=$(or $(SESSION),ARENA-42) pnpm diagnose
 
 load:
 	USERS=$(or $(USERS),100) TOPICS=$(or $(TOPICS),10) pnpm load:prod
