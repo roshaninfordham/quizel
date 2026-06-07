@@ -37,7 +37,9 @@ export function computeAnswerScore(input: { isCorrect: boolean; responseMs: numb
 export function compareScores(a: Score, b: Score): number {
   if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
   if (b.correctCount !== a.correctCount) return b.correctCount - a.correctCount;
-  if (a.totalResponseMs !== b.totalResponseMs) return a.totalResponseMs - b.totalResponseMs;
+  const aCorrectMs = a.totalCorrectResponseMs ?? a.totalOfficialResponseMs ?? a.totalResponseMs;
+  const bCorrectMs = b.totalCorrectResponseMs ?? b.totalOfficialResponseMs ?? b.totalResponseMs;
+  if (aCorrectMs !== bCorrectMs) return aCorrectMs - bCorrectMs;
   const aFast = a.fastestResponseMs ?? Number.POSITIVE_INFINITY;
   const bFast = b.fastestResponseMs ?? Number.POSITIVE_INFINITY;
   if (aFast !== bFast) return aFast - bFast;

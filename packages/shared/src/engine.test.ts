@@ -216,6 +216,26 @@ describe("QuizRush reducer invariants", () => {
     expect(computeAnswerScore({ isCorrect: false, responseMs: 1 })).toBe(0);
   });
 
+  it("tracks total submitted-answer time separately from correct-answer timing", () => {
+    useStableClock();
+    const engine = prepareReadyMatch();
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    moveClockToRoundStart(engine, round.roundId, 1000);
+    const wrong = engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "A" }, "device-arjun");
+    const state = engine.getSnapshot();
+    const arjun = state.participants.find((participant) => participant.displayName === "Arjun");
+    const score = state.scores.find((candidate) => candidate.participantId === arjun?.participantId);
+
+    expect(wrong.ok).toBe(true);
+    expect(score?.answeredCount).toBe(1);
+    expect(score?.correctCount).toBe(0);
+    expect(score?.totalAnswerResponseMs).toBe(1000);
+    expect(score?.totalCorrectResponseMs).toBe(0);
+    expect(score?.totalOfficialResponseMs).toBe(1000);
+    expect(score?.fastestOfficialResponseMs).toBeNull();
+    vi.useRealTimers();
+  });
+
   it("formats top-room placement from rank", () => {
     expect(percentile(1, 100)).toBe(1);
     expect(percentile(7, 100)).toBe(7);
@@ -286,6 +306,30 @@ describe("QuizRush reducer invariants", () => {
     expect(state.participants).toHaveLength(0);
     expect(state.questions).toHaveLength(0);
     expect(state.liveStats[0]?.joinedCount).toBe(0);
+  });
+
+  it("creates idempotent durable share cards from final database results", () => {
+    useStableClock();
+    const engine = prepareReadyMatch();
+    const round = engine.callReducer("start_match", { sessionId: DEFAULT_SESSION_ID }, "operator").data as { roundId: string };
+    moveClockToRoundStart(engine, round.roundId, 1200);
+    engine.callReducer("submit_answer", { roundId: round.roundId, selectedOption: "B" }, "device-maya");
+    engine.callReducer("finish_match", { sessionId: DEFAULT_SESSION_ID }, "operator");
+
+    const first = engine.callReducer("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
+    const second = engine.callReducer("create_share_card", { sessionId: DEFAULT_SESSION_ID }, "device-maya");
+    const share = first.data;
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    expect(share?.slug).toMatch(/^qra_[A-Za-z0-9_-]{12}$/);
+    expect(second.data?.slug).toBe(share?.slug);
+    expect(share?.totalAnswerResponseMs).toBe(1200);
+    expect(share?.totalResponseMsOfficial).toBe(1200);
+
+    engine.callReducer("reset_demo", { sessionId: DEFAULT_SESSION_ID }, "operator");
+    expect(engine.getSnapshot().shareCards.some((candidate) => candidate.slug === share?.slug)).toBe(true);
+    vi.useRealTimers();
   });
 
   it("ignores stale LLM question packs that return after reset", () => {

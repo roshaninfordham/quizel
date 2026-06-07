@@ -770,9 +770,11 @@ export class QuizRushEngine {
     score.correctCount += isCorrect ? 1 : 0;
     score.wrongCount += isCorrect ? 0 : 1;
     score.answeredCount += 1;
-    score.totalResponseMs += isCorrect ? officialResponseMs : 0;
-    score.totalOfficialResponseMs = score.totalResponseMs;
-    if (isCorrect && observedResponseMs !== null) {
+    score.totalAnswerResponseMs += officialResponseMs;
+    score.totalCorrectResponseMs += isCorrect ? officialResponseMs : 0;
+    score.totalResponseMs = score.totalAnswerResponseMs;
+    score.totalOfficialResponseMs = score.totalAnswerResponseMs;
+    if (observedResponseMs !== null) {
       score.totalObservedResponseMs = (score.totalObservedResponseMs ?? 0) + observedResponseMs;
     }
     if (isCorrect) {
@@ -782,7 +784,7 @@ export class QuizRushEngine {
         score.fastestObservedResponseMs = score.fastestObservedResponseMs === null ? observedResponseMs : Math.min(score.fastestObservedResponseMs, observedResponseMs);
       }
     }
-    score.averageResponseMs = Math.round(score.totalResponseMs / Math.max(1, score.correctCount));
+    score.averageResponseMs = Math.round(score.totalCorrectResponseMs / Math.max(1, score.correctCount));
     score.averageOfficialResponseMs = score.averageResponseMs;
     score.streakCount = isCorrect ? score.streakCount + 1 : 0;
     score.lastAnswerCorrect = isCorrect;
@@ -879,7 +881,10 @@ export class QuizRushEngine {
       totalScore: result.totalScore,
       correctCount: result.correctCount,
       questionCount: result.questionCount,
-      totalResponseMsOfficial: result.totalOfficialResponseMs,
+      answeredCount: result.answeredCount,
+      totalAnswerResponseMs: result.totalAnswerResponseMs,
+      totalCorrectResponseMs: result.totalCorrectResponseMs,
+      totalResponseMsOfficial: result.totalAnswerResponseMs,
       totalResponseMsObserved: null,
       fastestResponseMs: result.fastestResponseMs,
       fastestResponseMsOfficial: result.fastestOfficialResponseMs,
@@ -905,13 +910,13 @@ export class QuizRushEngine {
   private uniqueShareSlug(): string {
     const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
     for (let attempt = 0; attempt < 12; attempt += 1) {
-      let slug = "";
+      let slug = "qra_";
       for (let index = 0; index < 12; index += 1) {
         slug += alphabet[Math.floor(Math.random() * alphabet.length)] ?? "x";
       }
       if (!this.state.shareCards.some((card) => card.slug === slug)) return slug;
     }
-    return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    return `qra_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
   private heartbeat({ args, identity }: ReducerContext<{ sessionId: string; clientLatencyMs?: number }>): Participant | null {
@@ -1028,11 +1033,13 @@ export class QuizRushEngine {
       score.correctCount += isCorrect ? 1 : 0;
       score.wrongCount += isCorrect ? 0 : 1;
       score.answeredCount += 1;
-      score.totalResponseMs += isCorrect ? responseMs : 0;
-      score.totalOfficialResponseMs = score.totalResponseMs;
+      score.totalAnswerResponseMs += responseMs;
+      score.totalCorrectResponseMs += isCorrect ? responseMs : 0;
+      score.totalResponseMs = score.totalAnswerResponseMs;
+      score.totalOfficialResponseMs = score.totalAnswerResponseMs;
       if (isCorrect) score.fastestResponseMs = score.fastestResponseMs === null ? responseMs : Math.min(score.fastestResponseMs, responseMs);
       score.fastestOfficialResponseMs = score.fastestResponseMs;
-      score.averageResponseMs = Math.round(score.totalResponseMs / Math.max(1, score.correctCount));
+      score.averageResponseMs = Math.round(score.totalCorrectResponseMs / Math.max(1, score.correctCount));
       score.averageOfficialResponseMs = score.averageResponseMs;
       score.streakCount = isCorrect ? score.streakCount + 1 : 0;
       score.lastAnswerCorrect = isCorrect;
@@ -1152,7 +1159,9 @@ export class QuizRushEngine {
         totalScore: score.totalScore,
         correctCount: score.correctCount,
         questionCount: this.requireSession(sessionId).questionCount,
-        answeredCount: score.answeredCount,
+      answeredCount: score.answeredCount,
+        totalAnswerResponseMs: score.totalAnswerResponseMs,
+        totalCorrectResponseMs: score.totalCorrectResponseMs,
         totalResponseMs: score.totalResponseMs,
         totalOfficialResponseMs: score.totalOfficialResponseMs,
         fastestResponseMs: score.fastestResponseMs,
@@ -1174,6 +1183,8 @@ export class QuizRushEngine {
       correctCount: 0,
       wrongCount: 0,
       answeredCount: 0,
+      totalAnswerResponseMs: 0,
+      totalCorrectResponseMs: 0,
       totalResponseMs: 0,
       totalOfficialResponseMs: 0,
       totalObservedResponseMs: null,

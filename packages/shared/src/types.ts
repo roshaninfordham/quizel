@@ -190,6 +190,8 @@ export interface Score {
   correctCount: number;
   wrongCount: number;
   answeredCount: number;
+  totalAnswerResponseMs: number;
+  totalCorrectResponseMs: number;
   totalResponseMs: number;
   totalOfficialResponseMs: number;
   totalObservedResponseMs: number | null;
@@ -219,6 +221,8 @@ export interface FinalResult {
   correctCount: number;
   questionCount: number;
   answeredCount: number;
+  totalAnswerResponseMs: number;
+  totalCorrectResponseMs: number;
   totalResponseMs: number;
   totalOfficialResponseMs: number;
   fastestResponseMs: number | null;
@@ -247,6 +251,9 @@ export interface ShareCard {
   totalScore: number;
   correctCount: number;
   questionCount: number;
+  answeredCount: number;
+  totalAnswerResponseMs: number;
+  totalCorrectResponseMs: number;
   totalResponseMsOfficial: number;
   totalResponseMsObserved: number | null;
   fastestResponseMs: number | null;

@@ -48,6 +48,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const [shareMessage, setShareMessage] = useState<string | null>(null);
   const questionRenderedAtRef = useRef<number | null>(null);
   const renderedRoundIdRef = useRef<string | null>(null);
+  const shareCardsRef = useRef(state.shareCards);
   const placeholder = useMemo(() => INTENT_PLACEHOLDERS[Math.floor(Math.random() * INTENT_PLACEHOLDERS.length)] ?? "AI agents, databases, and startups", []);
   const parsedIntent = useMemo(() => parseIntentPreview(intentText), [intentText]);
   const participant = state.participants.find((candidate) => candidate.participantId === participantId);
@@ -89,6 +90,10 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     const timer = window.setInterval(() => setNow(Date.now()), 200);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    shareCardsRef.current = state.shareCards;
+  }, [state.shareCards]);
 
   useEffect(() => {
     if (!answer || lastAnswerState) return;
@@ -155,13 +160,19 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   };
 
   const shareScore = async () => {
-    const created = (shareCard ?? (await createShareCard(sessionId, participantId))) as ShareCard | undefined;
-    const card = created ?? shareCard;
-    if (!card) {
-      setShareMessage("Share card is being created. Try again in a moment.");
+    if (connectionState !== "connected") {
+      setShareMessage("Reconnecting before creating your durable score card...");
       return;
     }
-    const url = `${window.location.origin}/share/${card.slug}`;
+    setShareMessage("Creating your database-backed score card...");
+    const created = (shareCard ?? (await createShareCard(sessionId, participantId))) as ShareCard | undefined;
+    const card = created ?? shareCard ?? (await waitForShareCard(shareCardsRef, sessionId, participantId ?? null));
+    if (!card) {
+      setShareMessage("Share card is still syncing from SpacetimeDB. Try again in a moment.");
+      return;
+    }
+    const publicBase = String(import.meta.env.VITE_PUBLIC_APP_URL ?? window.location.origin).replace(/\/$/, "");
+    const url = `${publicBase}/share/${card.slug}`;
     try {
       if (navigator.share) {
         await navigator.share({
@@ -337,15 +348,15 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           <p className="mt-6 text-sm font-black uppercase text-violet-700">Personal result</p>
           <h1 className="mt-2 text-5xl font-black text-slate-950">You placed #{finalResult?.finalRank ?? score?.currentRank ?? "-"}</h1>
           <p className="mt-2 text-xl font-black text-slate-600">{(finalResult?.totalScore ?? score?.totalScore ?? 0).toLocaleString()} points</p>
-          <div className="mt-6 grid grid-cols-2 gap-3 text-left">
-            <ResultStat label="Correct" value={`${finalResult?.correctCount ?? score?.correctCount ?? 0}/${finalResult?.questionCount ?? QUESTION_COUNT}`} />
+            <div className="mt-6 grid grid-cols-2 gap-3 text-left">
+              <ResultStat label="Correct" value={`${finalResult?.correctCount ?? score?.correctCount ?? 0}/${finalResult?.questionCount ?? QUESTION_COUNT}`} />
+              <ResultStat
+              label="Total time"
+              value={`${((finalResult?.totalOfficialResponseMs ?? finalResult?.totalResponseMs ?? score?.totalOfficialResponseMs ?? score?.totalResponseMs ?? 0) / 1000).toFixed(2)}s`}
+            />
             <ResultStat
               label="Fastest"
               value={`${((finalResult?.fastestOfficialResponseMs ?? finalResult?.fastestResponseMs ?? score?.fastestOfficialResponseMs ?? score?.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`}
-            />
-            <ResultStat
-              label="Total time"
-              value={`${((finalResult?.totalOfficialResponseMs ?? finalResult?.totalResponseMs ?? score?.totalOfficialResponseMs ?? score?.totalResponseMs ?? 0) / 1000).toFixed(2)}s`}
             />
             <ResultStat label="Room" value={`Top ${finalResult?.percentile ?? percentile(score?.currentRank ?? totalPlayers, totalPlayers)}%`} />
           </div>
@@ -518,6 +529,26 @@ function ResultStat({ label, value }: { label: string; value: string }) {
 
 function ErrorMessage({ children }: { children: React.ReactNode }) {
   return <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{children}</p>;
+}
+
+function waitForShareCard(
+  shareCardsRef: React.MutableRefObject<ShareCard[]>,
+  sessionId: string,
+  participantId: string | null,
+  timeoutMs = 3500
+): Promise<ShareCard | undefined> {
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    const poll = () => {
+      const card = shareCardsRef.current.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
+      if (card || Date.now() - startedAt >= timeoutMs) {
+        resolve(card);
+        return;
+      }
+      window.setTimeout(poll, 100);
+    };
+    poll();
+  });
 }
 
 function packSourceLabel(generatedBy?: string, fairnessStatus?: string, sourceUrl?: string | null): string {

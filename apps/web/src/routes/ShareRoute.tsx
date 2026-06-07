@@ -6,10 +6,11 @@ import { useIncrementShareView } from "../hooks/useArenaActions";
 import { useSpacetime } from "../lib/spacetime/client";
 
 export function ShareRoute({ slug }: { slug: string }) {
-  const { state } = useSpacetime();
+  const { state, connectionState } = useSpacetime();
   const [expiredLoading, setExpiredLoading] = useState(false);
   const [viewRecordedFor, setViewRecordedFor] = useState<string | null>(null);
   const { incrementShareView } = useIncrementShareView();
+  const slugIsValid = isValidShareSlug(slug);
   const share = state.shareCards.find((candidate) => candidate.slug === slug);
   const session = share ? state.sessions.find((candidate) => candidate.sessionId === share.sessionId) : undefined;
   const joinPath = `/join/${session?.code ?? DEFAULT_SESSION_CODE}`;
@@ -44,9 +45,26 @@ export function ShareRoute({ slug }: { slug: string }) {
             <div className="mt-6 grid grid-cols-2 gap-3 text-left">
               <ShareStat label="Score" value={share.totalScore.toLocaleString()} />
               <ShareStat label="Correct" value={`${share.correctCount}/${share.questionCount || QUESTION_COUNT}`} />
+              <ShareStat label="Total time" value={`${((share.totalAnswerResponseMs ?? share.totalResponseMsOfficial ?? 0) / 1000).toFixed(2)}s`} />
               <ShareStat label="Fastest" value={`${((share.fastestResponseMsOfficial ?? share.fastestResponseMs ?? 0) / 1000).toFixed(2)}s`} />
+              <ShareStat label="Arena" value={share.displayTopic} />
               <ShareStat label="Room" value={`${share.totalParticipants} racers`} />
             </div>
+            <p className="mt-5 rounded-[22px] bg-violet-50 px-4 py-3 text-sm font-black text-violet-800">
+              Powered by SpacetimeDB realtime scoring. This card is loaded from a durable ShareCard row.
+            </p>
+          </>
+        ) : !slugIsValid ? (
+          <>
+            <Trophy className="mx-auto size-20 text-amber-500" />
+            <h1 className="mt-4 text-4xl font-black text-slate-950">Score card not found or expired.</h1>
+            <p className="mt-2 text-base font-bold text-slate-500">This link is not a valid QuizRush score-card slug.</p>
+          </>
+        ) : connectionState !== "connected" ? (
+          <>
+            <Loader2 className="mx-auto size-20 animate-spin text-violet-600" />
+            <h1 className="mt-4 text-4xl font-black text-slate-950">Connecting to score database…</h1>
+            <p className="mt-2 text-base font-bold text-slate-500">Waiting for the live SpacetimeDB ShareCard row.</p>
           </>
         ) : !expiredLoading ? (
           <>
@@ -77,4 +95,8 @@ function ShareStat({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
     </div>
   );
+}
+
+function isValidShareSlug(value: string): boolean {
+  return /^qra_[A-Za-z0-9_-]{8,32}$/.test(value) || /^[A-Za-z0-9_-]{10,32}$/.test(value);
 }

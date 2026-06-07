@@ -18,6 +18,8 @@ export default __t.row({
   correctCount: __t.u32().name("correct_count"),
   wrongCount: __t.u32().name("wrong_count"),
   answeredCount: __t.u32().name("answered_count"),
+  totalAnswerResponseMs: __t.u32().name("total_answer_response_ms"),
+  totalCorrectResponseMs: __t.u32().name("total_correct_response_ms"),
   totalResponseMs: __t.u32().name("total_response_ms"),
   totalOfficialResponseMs: __t.u32().name("total_official_response_ms"),
   totalObservedResponseMs: __t.option(__t.u32()).name("total_observed_response_ms"),

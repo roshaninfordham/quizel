@@ -189,6 +189,8 @@ const score = table(
     correct_count: t.u32(),
     wrong_count: t.u32().default(0),
     answered_count: t.u32().default(0),
+    total_answer_response_ms: t.u32().default(0),
+    total_correct_response_ms: t.u32().default(0),
     total_response_ms: t.u32(),
     total_official_response_ms: t.u32().default(0),
     total_observed_response_ms: t.option(t.u32()).default(undefined),
@@ -221,6 +223,8 @@ const final_result = table(
     correct_count: t.u32(),
     question_count: t.u32(),
     answered_count: t.u32().default(0),
+    total_answer_response_ms: t.u32().default(0),
+    total_correct_response_ms: t.u32().default(0),
     total_response_ms: t.u32(),
     total_official_response_ms: t.u32().default(0),
     fastest_response_ms: t.option(t.u32()),
@@ -252,6 +256,9 @@ const share_card = table(
     total_score: t.u32(),
     correct_count: t.u32(),
     question_count: t.u32(),
+    answered_count: t.u32().default(0),
+    total_answer_response_ms: t.u32().default(0),
+    total_correct_response_ms: t.u32().default(0),
     total_response_ms_official: t.u32().default(0),
     total_response_ms_observed: t.option(t.u32()).default(undefined),
     fastest_response_ms: t.option(t.u32()),
@@ -703,6 +710,8 @@ export const start_match = spacetimedb.reducer({ session_id: t.string() }, (ctx,
       correct_count: 0,
       wrong_count: 0,
       answered_count: 0,
+      total_answer_response_ms: 0,
+      total_correct_response_ms: 0,
       total_response_ms: 0,
       total_official_response_ms: 0,
       total_observed_response_ms: undefined,
@@ -815,9 +824,10 @@ export const submit_answer = spacetimedb.reducer(
   });
   const nextCorrect = currentScore.correct_count + (is_correct ? 1 : 0);
   const nextAnswered = currentScore.answered_count + 1;
-  const nextResponseTotal = currentScore.total_response_ms + (is_correct ? response_ms : 0);
+  const nextAnswerResponseTotal = currentScore.total_answer_response_ms + response_ms;
+  const nextCorrectResponseTotal = currentScore.total_correct_response_ms + (is_correct ? response_ms : 0);
   const nextObservedTotal =
-    is_correct && observed_response_ms !== undefined
+    observed_response_ms !== undefined
       ? (currentScore.total_observed_response_ms ?? 0) + observed_response_ms
       : currentScore.total_observed_response_ms;
   const nextFastest = is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms;
@@ -834,15 +844,17 @@ export const submit_answer = spacetimedb.reducer(
     correct_count: nextCorrect,
     wrong_count: currentScore.wrong_count + (is_correct ? 0 : 1),
     answered_count: nextAnswered,
-    total_response_ms: nextResponseTotal,
-    total_official_response_ms: nextResponseTotal,
+    total_answer_response_ms: nextAnswerResponseTotal,
+    total_correct_response_ms: nextCorrectResponseTotal,
+    total_response_ms: nextAnswerResponseTotal,
+    total_official_response_ms: nextAnswerResponseTotal,
     total_observed_response_ms: nextObservedTotal,
     fastest_response_ms: nextFastest,
     fastest_official_response_ms: nextFastest,
     fastest_observed_response_ms: nextFastestObserved,
-    average_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
-    average_official_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
-    normalized_score: normalizedScore(nextCorrect, nextResponseTotal, nextStreak, requireSession(ctx, currentRound.session_id).question_count),
+    average_response_ms: Math.round(nextCorrectResponseTotal / Math.max(1, nextCorrect)),
+    average_official_response_ms: Math.round(nextCorrectResponseTotal / Math.max(1, nextCorrect)),
+    normalized_score: normalizedScore(nextCorrect, nextCorrectResponseTotal, nextStreak, requireSession(ctx, currentRound.session_id).question_count),
     streak_count: nextStreak,
     last_answer_correct: is_correct,
     last_answer_at_ms: now,
@@ -906,7 +918,10 @@ export const create_share_card = spacetimedb.reducer({ session_id: t.string(), p
     total_score: result.total_score,
     correct_count: result.correct_count,
     question_count: result.question_count,
-    total_response_ms_official: result.total_official_response_ms,
+    answered_count: result.answered_count,
+    total_answer_response_ms: result.total_answer_response_ms,
+    total_correct_response_ms: result.total_correct_response_ms,
+    total_response_ms_official: result.total_answer_response_ms,
     total_response_ms_observed: undefined,
     fastest_response_ms: result.fastest_response_ms,
     fastest_response_ms_official: result.fastest_official_response_ms,
@@ -1041,7 +1056,8 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
       created_at_ms: now + BigInt(index)
     });
     const nextCorrect = currentScore.correct_count + (is_correct ? 1 : 0);
-    const nextResponseTotal = currentScore.total_response_ms + (is_correct ? response_ms : 0);
+    const nextAnswerResponseTotal = currentScore.total_answer_response_ms + response_ms;
+    const nextCorrectResponseTotal = currentScore.total_correct_response_ms + (is_correct ? response_ms : 0);
     const nextFastest = is_correct ? (currentScore.fastest_response_ms === undefined ? response_ms : Math.min(currentScore.fastest_response_ms, response_ms)) : currentScore.fastest_response_ms;
     const nextStreak = is_correct ? currentScore.streak_count + 1 : 0;
     ctx.db.score.score_id.update({
@@ -1050,13 +1066,15 @@ export const simulate_answer_burst = spacetimedb.reducer({ session_id: t.string(
       correct_count: nextCorrect,
       wrong_count: currentScore.wrong_count + (is_correct ? 0 : 1),
       answered_count: currentScore.answered_count + 1,
-      total_response_ms: nextResponseTotal,
-      total_official_response_ms: nextResponseTotal,
+      total_answer_response_ms: nextAnswerResponseTotal,
+      total_correct_response_ms: nextCorrectResponseTotal,
+      total_response_ms: nextAnswerResponseTotal,
+      total_official_response_ms: nextAnswerResponseTotal,
       fastest_response_ms: nextFastest,
       fastest_official_response_ms: nextFastest,
-      average_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
-      average_official_response_ms: Math.round(nextResponseTotal / Math.max(1, nextCorrect)),
-      normalized_score: normalizedScore(nextCorrect, nextResponseTotal, nextStreak, requireSession(ctx, session_id).question_count),
+      average_response_ms: Math.round(nextCorrectResponseTotal / Math.max(1, nextCorrect)),
+      average_official_response_ms: Math.round(nextCorrectResponseTotal / Math.max(1, nextCorrect)),
+      normalized_score: normalizedScore(nextCorrect, nextCorrectResponseTotal, nextStreak, requireSession(ctx, session_id).question_count),
       streak_count: nextStreak,
       last_answer_correct: is_correct,
       last_answer_at_ms: now + BigInt(index),
@@ -1277,7 +1295,9 @@ function recomputeRanks(ctx: ReducerCtx, session_id: string) {
 function compareScores(a: ScoreRow, b: ScoreRow): number {
   if (b.total_score !== a.total_score) return b.total_score - a.total_score;
   if (b.correct_count !== a.correct_count) return b.correct_count - a.correct_count;
-  if (a.total_official_response_ms !== b.total_official_response_ms) return a.total_official_response_ms - b.total_official_response_ms;
+  const aCorrectMs = a.total_correct_response_ms ?? a.total_official_response_ms;
+  const bCorrectMs = b.total_correct_response_ms ?? b.total_official_response_ms;
+  if (aCorrectMs !== bCorrectMs) return aCorrectMs - bCorrectMs;
   const aFast = a.fastest_official_response_ms ?? a.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
   const bFast = b.fastest_official_response_ms ?? b.fastest_response_ms ?? Number.MAX_SAFE_INTEGER;
   if (aFast !== bFast) return aFast - bFast;
@@ -1304,6 +1324,8 @@ function snapshotFinalResults(ctx: ReducerCtx, session_id: string, now: bigint) 
       correct_count: score.correct_count,
       question_count: current.question_count,
       answered_count: score.answered_count,
+      total_answer_response_ms: score.total_answer_response_ms,
+      total_correct_response_ms: score.total_correct_response_ms,
       total_response_ms: score.total_response_ms,
       total_official_response_ms: score.total_official_response_ms,
       fastest_response_ms: score.fastest_response_ms,
@@ -1412,13 +1434,13 @@ function percentileRank(rank: number, total: number): number {
 function uniqueShareSlug(ctx: ReducerCtx): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    let slug = "";
+    let slug = "qra_";
     for (let index = 0; index < 12; index += 1) {
       slug += alphabet[Number(ctx.random.integerInRange(0, alphabet.length - 1))] ?? "x";
     }
     if (!ctx.db.share_card.slug.find(slug)) return slug;
   }
-  return `s_${Number(nowMs() % BigInt(1_000_000_000)).toString(36)}_${ctx.random.integerInRange(100000, 999999)}`;
+  return `qra_${Number(nowMs() % BigInt(1_000_000_000)).toString(36)}_${ctx.random.integerInRange(100000, 999999)}`;
 }
 
 function computeAnswerScoreParts(is_correct: boolean, response_ms: number, previous_correct: boolean) {
@@ -1444,6 +1466,8 @@ function emptyScore(session_id: string, participant_id: string, now: bigint, cha
     correct_count: 0,
     wrong_count: 0,
     answered_count: 0,
+    total_answer_response_ms: 0,
+    total_correct_response_ms: 0,
     total_response_ms: 0,
     total_official_response_ms: 0,
     total_observed_response_ms: undefined,
