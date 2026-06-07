@@ -31,8 +31,9 @@ flowchart LR
 - Freeform text is deterministically mapped to compact topics such as `AI Agents`, `Space Technology`, and `Database Systems`; spoken topics such as `US visa system` and `Fruit Fruits Fruits` become `US Visa System` and `Fruit Science`.
 - `request_questions` creates an `AgentRequest` and keeps the room live with the fastest valid pack available.
 - When configured, the Effect worker calls Firecrawl, extracts compact facts, stores them with `submit_topic_facts`, and asks the LLM to generate questions from those facts only.
-- The Effect worker records Instant Quiz Engine, Firecrawl Grounding Agent, Quiz Builder, and Fairness Agent events while LLM generation can refine before the race locks.
-- If the model is slow or invalid, deterministic topic-specific fallback questions keep the sprint live without reverting to the static demo pack.
+- The Effect worker records Instant Quiz Engine, Firecrawl Grounding Agent, Quiz Builder, Safety Guard, and Fairness Agent events while LLM generation can refine before the race locks.
+- NVIDIA routes are split by job: nano for topic/commentary, author for quiz packs, reasoning for fairness, and safety guard for safety review.
+- If a model route is saturated, cooling down, slow, invalid, or rate-limited, deterministic topic-specific fallback questions keep the sprint live without reverting to the static demo pack.
 
 ## Agent Guardrails
 

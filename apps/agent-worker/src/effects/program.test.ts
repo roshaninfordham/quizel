@@ -32,7 +32,7 @@ const baseConfig: WorkerConfig = {
     geminiModelId: "gemini-2.5-flash",
     geminiSmallModelId: "gemini-2.5-flash",
     nvidiaApiKey: "",
-    nvidiaBaseUrl: "https://integrate.api.nvidia.com/v1/chat/completions",
+    nvidiaBaseUrl: "https://integrate.api.nvidia.com/v1",
     nvidiaReasoningApiKey: "",
     nvidiaReasoningModelId: "nvidia/nemotron-3-super-120b-a12b",
     nvidiaAuthorApiKey: "",
@@ -43,6 +43,12 @@ const baseConfig: WorkerConfig = {
     nvidiaSafetyModelId: "nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
     nvidiaJsonMode: false,
     nvidiaReasoningEnabled: false,
+    nvidiaAuthorMaxConcurrency: 2,
+    nvidiaReasoningMaxConcurrency: 1,
+    nvidiaSmallMaxConcurrency: 4,
+    nvidiaSafetyMaxConcurrency: 2,
+    nvidiaRouteQueueTimeoutMs: 750,
+    nvidiaCooldownMs: 15_000,
     safetyGuardEnabled: false
   },
   realtime: {

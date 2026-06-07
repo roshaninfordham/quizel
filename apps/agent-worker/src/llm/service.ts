@@ -40,7 +40,13 @@ export function makeLlmProvider(config: WorkerConfig): LlmProvider {
         safetyApiKey: config.llm.nvidiaSafetyApiKey,
         safetyModelId: config.llm.nvidiaSafetyModelId,
         jsonMode: config.llm.nvidiaJsonMode,
-        reasoningEnabled: config.llm.nvidiaReasoningEnabled
+        reasoningEnabled: config.llm.nvidiaReasoningEnabled,
+        authorMaxConcurrency: config.llm.nvidiaAuthorMaxConcurrency,
+        reasoningMaxConcurrency: config.llm.nvidiaReasoningMaxConcurrency,
+        smallMaxConcurrency: config.llm.nvidiaSmallMaxConcurrency,
+        safetyMaxConcurrency: config.llm.nvidiaSafetyMaxConcurrency,
+        routeQueueTimeoutMs: config.llm.nvidiaRouteQueueTimeoutMs,
+        cooldownMs: config.llm.nvidiaCooldownMs
       });
     case "anthropic":
       return new AnthropicLlmProvider({

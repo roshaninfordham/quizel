@@ -225,8 +225,12 @@ AGENT_TRANSPORT=spacetime \
 AGENT_SPACETIMEDB_HOST=https://maincloud.spacetimedb.com \
 AGENT_SPACETIMEDB_MODULE=quizrush-live \
 FIRECRAWL_API_KEY=... \
+LLM_PROVIDER_NAME=nvidia \
+NVIDIA_API_BASE_URL=https://integrate.api.nvidia.com/v1 \
 pnpm --filter @quizrush/agent-worker start
 ```
+
+Keep Firecrawl and NVIDIA keys in the worker secret store only. They are not needed in Vercel browser variables and should never be shipped to the frontend bundle.
 
 ## Architecture
 
@@ -303,9 +307,9 @@ sequenceDiagram
 - Heartbeats and stale-phone elimination: stale real racers are marked out without deleting their score history.
 - Duplicate answer rejection and metric tracking.
 - `MatchEvent` replay ledger hidden in the technical drawer by default.
-- Effect-based LLM worker with Firecrawl grounding, provider routing, retries, validation, safety guard support, Instant Quiz Engine cache/template racing, and topic-specific deterministic fallback.
+- Effect-based LLM worker with Firecrawl grounding, provider routing, route-level concurrency limits, cooldowns, retries, validation, safety guard support, Instant Quiz Engine cache/template racing, and topic-specific deterministic fallback.
 - `TopicFact` rows plus question-level `factIds`, `sourceTitle`, and `sourceUrl` metadata for grounded packs.
-- NVIDIA model routing through environment variables in `.env.local`.
+- NVIDIA model routing through environment variables in `.env.local`: nano for topic/commentary, author for grounded quiz packs, reasoning for fairness, and safety guard for safety review.
 - Quick-start topic chips on phones for low-latency seeded packs: Space, AI Agents, SpacetimeDB, Databases, Andaman Islands, Formula 1, Argentina, Math, History, and Startups.
 - Deterministic topic-specific fallback questions if LLM calls fail or arrive too late.
 - Firecrawl fact fallback can still publish source-backed template MCQs when web facts exist but no LLM provider is configured.
@@ -334,13 +338,15 @@ phone intent
 - Intent Parser / Topic Router Agent: selects a tournament topic from live expertise signals.
 - Arena Router Agent: represented in the UI pipeline and currently backed by deterministic topic clustering for the single sprint arena.
 - Firecrawl Grounding Agent: fetches compact web facts for arbitrary topics and stores them through `submit_topic_facts`.
-- Quiz Builder Agent: generates exactly ten short MCQ questions for the 25-second sprint from provided facts when available.
+- Quiz Builder Agent: generates the configured sprint question count as short MCQs from provided facts when available.
 - Safety Guard Agent: optional safety review.
 - Fairness Guard: validates options, ambiguity, length, and public safety.
 - Host Commentator Agent: writes short round commentary.
 - Recap Agent: summarizes what the room learned.
 
 Real keys belong only in `.env.local`. `.env.example` contains placeholders.
+
+NVIDIA route limits are intentional. If the author, reasoning, small, or safety route is saturated or rate-limited, the worker fails open into deterministic/source-backed packs. Players still receive a quiz, answer data still goes through SpacetimeDB reducers, and the bracket/leaderboard/share-card flow remains realtime.
 
 ## Commands
 

@@ -35,6 +35,12 @@ export interface WorkerConfig {
     readonly nvidiaSafetyModelId: string;
     readonly nvidiaJsonMode: boolean;
     readonly nvidiaReasoningEnabled: boolean;
+    readonly nvidiaAuthorMaxConcurrency: number;
+    readonly nvidiaReasoningMaxConcurrency: number;
+    readonly nvidiaSmallMaxConcurrency: number;
+    readonly nvidiaSafetyMaxConcurrency: number;
+    readonly nvidiaRouteQueueTimeoutMs: number;
+    readonly nvidiaCooldownMs: number;
     readonly safetyGuardEnabled: boolean;
   };
   readonly realtime: {
@@ -96,7 +102,7 @@ export const workerConfig = Config.all({
     geminiSmallModelId: Config.string("GEMINI_SMALL_MODEL").pipe(Config.withDefault("gemini-2.5-flash")),
     nvidiaApiKey: Config.string("NVIDIA_API_KEY").pipe(Config.withDefault("")),
     nvidiaBaseUrl: Config.string("NVIDIA_API_BASE_URL").pipe(
-      Config.withDefault("https://integrate.api.nvidia.com/v1/chat/completions")
+      Config.withDefault("https://integrate.api.nvidia.com/v1")
     ),
     nvidiaReasoningApiKey: Config.string("NVIDIA_REASONING_API_KEY").pipe(Config.withDefault("")),
     nvidiaReasoningModelId: Config.string("NVIDIA_REASONING_MODEL").pipe(
@@ -116,6 +122,12 @@ export const workerConfig = Config.all({
     ),
     nvidiaJsonMode: Config.boolean("NVIDIA_JSON_MODE").pipe(Config.withDefault(false)),
     nvidiaReasoningEnabled: Config.boolean("NVIDIA_REASONING_ENABLED").pipe(Config.withDefault(false)),
+    nvidiaAuthorMaxConcurrency: Config.integer("NVIDIA_AUTHOR_MAX_CONCURRENCY").pipe(Config.withDefault(2)),
+    nvidiaReasoningMaxConcurrency: Config.integer("NVIDIA_REASONING_MAX_CONCURRENCY").pipe(Config.withDefault(1)),
+    nvidiaSmallMaxConcurrency: Config.integer("NVIDIA_SMALL_MAX_CONCURRENCY").pipe(Config.withDefault(4)),
+    nvidiaSafetyMaxConcurrency: Config.integer("NVIDIA_SAFETY_MAX_CONCURRENCY").pipe(Config.withDefault(2)),
+    nvidiaRouteQueueTimeoutMs: Config.integer("NVIDIA_ROUTE_QUEUE_TIMEOUT_MS").pipe(Config.withDefault(750)),
+    nvidiaCooldownMs: Config.integer("NVIDIA_COOLDOWN_MS").pipe(Config.withDefault(15_000)),
     safetyGuardEnabled: Config.boolean("SAFETY_GUARD_ENABLED").pipe(Config.withDefault(false))
   }),
   realtime: Config.all({

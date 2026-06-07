@@ -8,7 +8,7 @@ The AI layer runs outside reducers in `apps/agent-worker`. Reducers remain deter
 | --- | --- | --- |
 | Intent Parser / Topic Router Agent | Merge expertise-derived topic signals into one tournament topic. | `record_agent_event`, selected topic for generation. |
 | Arena Router Agent | Visible pipeline step for grouping similar expertise into fair arenas. Current MVP uses deterministic topic clustering for one sprint arena. | `record_agent_event` in the UI pipeline. |
-| Quiz Builder Agent | Generate exactly seven short MCQ questions for the sprint. | `submit_question_pack`. |
+| Quiz Builder Agent | Generate the configured sprint question count as short MCQs. | `submit_question_pack`. |
 | Safety Guard Agent | Optional model-based safety classification. | `record_agent_event`; rejects unsafe content before use. |
 | Fairness Agent | Validate options, ambiguity, length, and explanation correctness. | `record_agent_event`; repaired pack if needed. |
 | Host Commentator Agent | Short positive commentary after resolved rounds. | `record_agent_event`. |
@@ -20,10 +20,12 @@ The AI layer runs outside reducers in `apps/agent-worker`. Reducers remain deter
 
 Configured NVIDIA roles:
 
-- Topic/Quiz Builder: `nvidia/llama-3.3-nemotron-super-49b-v1.5`
-- Fairness/Reasoning: `nvidia/nemotron-3-super-120b-a12b`
-- Fast commentary/recap: `nvidia/llama-3.1-nemotron-nano-8b-v1`
-- Safety: `nvidia/llama-3.1-nemotron-safety-guard-8b-v3`
+- Topic routing, host commentary, and recap: `nvidia/llama-3.1-nemotron-nano-8b-v1`
+- Grounded quiz authoring: `nvidia/llama-3.3-nemotron-super-49b-v1.5`
+- Fairness/reasoning review: `nvidia/nemotron-3-super-120b-a12b`
+- Safety review: `nvidia/llama-3.1-nemotron-safety-guard-8b-v3`
+
+Each NVIDIA route has its own key, concurrency limit, queue timeout, and cooldown. If a route is saturated, rate-limited, malformed, or slow, the worker records a fallback event and publishes the fastest valid deterministic or source-backed pack so real players are not blocked.
 
 Real API keys live only in `.env.local`.
 
@@ -51,11 +53,12 @@ Effect provides:
 - schema validation
 - topic-specific fallback questions
 - reconnecting realtime worker loop
+- NVIDIA role-level concurrency limits and cooldowns
 
 Fallback path:
 
 ```text
-LLM failure or malformed JSON
+LLM failure, route saturation, rate limit, timeout, or malformed JSON
 -> validation error
 -> deterministic topic-specific questions
 -> AgentEvent(status=fallback)
