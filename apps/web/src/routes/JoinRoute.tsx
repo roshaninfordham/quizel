@@ -10,7 +10,7 @@ import {
   type ShareCard,
   percentile
 } from "@quizrush/shared";
-import { AnswerButton, Button, ConnectionBadge, Panel, PhoneShell, ReconnectingOverlay, SoundToggle, cn } from "../components/ui";
+import { AnswerButton, Button, ConnectionBadge, LiveAgentBuildPipeline, Panel, PhoneShell, ReconnectingOverlay, SoundToggle, cn } from "../components/ui";
 import { useSpeechIntent } from "../hooks/useSpeechIntent";
 import { useCreateShareCard, useSubmitAnswer } from "../hooks/useArenaActions";
 import {
@@ -68,6 +68,7 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const playerIntent = state.playerIntents.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
   const joinedVotes = state.topicVotes.filter((vote) => vote.participantId === participantId).map((vote) => vote.topic);
   const participantPack = state.questionPacks.find((candidate) => candidate.sessionId === sessionId && candidate.participantId === participantId);
+  const agentEvents = state.agentEvents.filter((candidate) => candidate.sessionId === sessionId);
   const sessionQuestions = state.questions.filter(
     (candidate) => candidate.sessionId === sessionId && (!participantId || candidate.participantId === participantId || candidate.participantId === null)
   );
@@ -88,7 +89,6 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
     session?.status
   );
 
-  const voteMessage = null;
   const { submitAnswer, loading: answering, error: answerError } = useSubmitAnswer();
   const { createShareCard, loading: sharing, error: shareError } = useCreateShareCard();
   const speech = useSpeechIntent((value) => setIntentText(value));
@@ -564,54 +564,36 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       <Panel className="mt-auto">
         <p className="text-sm font-black uppercase text-violet-700">You're in, {participant.displayName}</p>
         <h1 className="mt-2 text-4xl font-black leading-tight text-slate-950">
-          {packReady ? "Sprint ready" : session?.status === "generating" || session?.status === "ready" ? "AI is building the sprint" : "Arena is forming"}
+          {packReady ? "Your sprint is ready" : "Building your sprint"}
         </h1>
         <p className="mt-3 text-base font-bold text-slate-500">
-          You are racing in <span className="font-black text-slate-950">{arenaLabel}</span>.
+          You are racing in <span className="font-black text-slate-950">{arenaLabel}</span>. The phone only renders quiz cards after SpacetimeDB stores the pack.
         </p>
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <WaitingStat label="Your arena" value={arenaLabel} />
-          <WaitingStat label="Global racers" value={String(totalPlayers)} />
-          <WaitingStat label="Phase" value={(session?.status ?? "lobby").replace("_", " ")} />
-          <WaitingStat label="Pack" value={packSource} />
+        <div className="mt-6">
+          <LiveAgentBuildPipeline
+            participant={participant}
+            playerIntent={playerIntent}
+            questionPack={participantPack}
+            questionCount={QUESTION_COUNT}
+            questionsReady={questionsReady}
+            packSource={packSource}
+            agentEvents={agentEvents}
+            liveStats={state.liveStats.find((candidate) => candidate.sessionId === sessionId)}
+            connectionState={connectionState}
+          />
         </div>
-        <div className="mt-6 rounded-[26px] bg-gradient-to-r from-violet-50 to-cyan-50 p-4">
-          <div className="flex items-center gap-3">
-            <Sparkles className="size-6 text-violet-700" />
-            <p className="text-base font-black text-slate-950">
-              {packReady ? "Sprint ready. Watch the projector countdown." : voteMessage ? "Expertise synced. Building instant pack..." : "AI is clustering live room intent."}
-            </p>
-          </div>
-          <div className="mt-4 grid gap-2">
-            <ProgressStep complete label="Intent captured" />
-            <ProgressStep complete={Boolean(session?.selectedTopic || joinedVotes.length)} label={`Arena detected${arenaLabel ? `: ${arenaLabel}` : ""}`} />
-            <ProgressStep complete={packReady} label={packReady ? `Quiz pack ready (${packSource})` : "Grounding facts and building pack"} />
-            <ProgressStep complete={session?.status === "playing"} label={session?.status === "playing" ? "Race live" : "Starting when presenter presses S"} />
-          </div>
+        <div className="mt-5 rounded-[24px] bg-slate-50 p-4 ring-1 ring-slate-200">
+          <p className="text-xs font-black uppercase text-slate-500">Status</p>
+          <p className="mt-1 text-lg font-black text-slate-950">
+            {packReady ? "Quiz ready · waiting for presenter countdown" : "Research Agent still building your sprint..."}
+          </p>
+          <p className="mt-1 text-sm font-bold text-slate-500">
+            {packReady ? "Watch the projector for the start signal." : "Cached topics usually complete in 2-3 seconds; long-tail topics may use Firecrawl/LLM or fallback."}
+          </p>
         </div>
       </Panel>
       <div className="mt-auto" />
     </PhoneShell>
-  );
-}
-
-function WaitingStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[22px] bg-slate-50 p-4">
-      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-2xl font-black text-slate-950">{value}</p>
-    </div>
-  );
-}
-
-function ProgressStep({ complete, label }: { complete: boolean; label: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl bg-white/70 px-3 py-2">
-      <span className={cn("grid size-6 shrink-0 place-items-center rounded-full text-xs font-black", complete ? "bg-emerald-500 text-white" : "bg-white text-slate-400 ring-2 ring-slate-200")}>
-        {complete ? <Check className="size-4" /> : ""}
-      </span>
-      <span className={cn("text-sm font-black", complete ? "text-slate-950" : "text-slate-500")}>{label}</span>
-    </div>
   );
 }
 

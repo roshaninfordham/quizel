@@ -16,19 +16,19 @@ type SoundName =
   | "replay";
 
 const soundSpecs: Record<SoundName, { frequency: number; durationMs: number; type?: OscillatorType; volume: number }> = {
-  join: { frequency: 420, durationMs: 70, volume: 0.07 },
-  micStart: { frequency: 440, durationMs: 90, volume: 0.08 },
-  micStop: { frequency: 330, durationMs: 80, volume: 0.06 },
-  intentDetected: { frequency: 560, durationMs: 120, volume: 0.08 },
-  arenaAssigned: { frequency: 640, durationMs: 150, volume: 0.09 },
-  countdown: { frequency: 520, durationMs: 55, volume: 0.06 },
-  question: { frequency: 480, durationMs: 100, volume: 0.06 },
-  answerLock: { frequency: 360, durationMs: 70, type: "triangle", volume: 0.07 },
-  correct: { frequency: 660, durationMs: 170, volume: 0.09 },
-  wrong: { frequency: 220, durationMs: 110, type: "triangle", volume: 0.05 },
-  rankUp: { frequency: 740, durationMs: 140, volume: 0.08 },
-  winner: { frequency: 523, durationMs: 420, volume: 0.1 },
-  replay: { frequency: 300, durationMs: 130, type: "triangle", volume: 0.05 }
+  join: { frequency: 392, durationMs: 64, volume: 0.045 },
+  micStart: { frequency: 440, durationMs: 80, volume: 0.045 },
+  micStop: { frequency: 330, durationMs: 74, volume: 0.035 },
+  intentDetected: { frequency: 523, durationMs: 105, volume: 0.045 },
+  arenaAssigned: { frequency: 659, durationMs: 135, volume: 0.05 },
+  countdown: { frequency: 494, durationMs: 48, volume: 0.038 },
+  question: { frequency: 466, durationMs: 88, volume: 0.038 },
+  answerLock: { frequency: 349, durationMs: 62, type: "triangle", volume: 0.04 },
+  correct: { frequency: 698, durationMs: 145, volume: 0.052 },
+  wrong: { frequency: 247, durationMs: 96, type: "triangle", volume: 0.03 },
+  rankUp: { frequency: 784, durationMs: 120, volume: 0.046 },
+  winner: { frequency: 523, durationMs: 360, volume: 0.058 },
+  replay: { frequency: 294, durationMs: 110, type: "triangle", volume: 0.03 }
 };
 
 let muted = true;
@@ -79,6 +79,8 @@ export const playMicStart = () => play("micStart");
 export const playMicStop = () => play("micStop");
 export const playIntentDetected = () => play("intentDetected");
 export const playArenaAssigned = () => play("arenaAssigned");
+export const playStepComplete = () => play("intentDetected");
+export const playQuizReady = () => play("arenaAssigned");
 export const playCountdownTick = () => play("countdown");
 export const playQuestionStart = () => play("question");
 export const playAnswerLock = () => play("answerLock");

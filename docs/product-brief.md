@@ -6,15 +6,15 @@ QuizRush Arena
 
 ## One-Liner
 
-A 25-second AI-personalized quiz tournament from one QR code.
+A live audience activation game for technical events and learning rooms.
 
 ## Memory Sentence
 
-The whole room scanned one QR code, shared expertise, and became a live AI-generated tournament in 25 seconds.
+One QR. Custom quizzes. Live bracket. Shareable scorecards.
 
 ## Problem
 
-Live events, classrooms, sponsor booths, and team trainings struggle to make the whole audience actively participate. Most tools are passive polls, slow Q&A, or ordinary quiz screens.
+DevRel demos, hackathons, bootcamps, classrooms, sponsor booths, and team trainings struggle to make the whole audience actively participate. Most tools are passive polls, slow Q&A, or ordinary quiz screens.
 
 ## Solution
 

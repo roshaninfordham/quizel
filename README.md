@@ -1,8 +1,8 @@
 # QuizRush Arena
 
-A 25-second AI-personalized quiz tournament from one QR code.
+A live audience activation game for DevRel demos, hackathons, bootcamps, and learning rooms.
 
-> The whole room scanned one QR code, shared expertise, and became a live AI-generated tournament in 25 seconds.
+> One QR. Custom quizzes. Live bracket. Shareable scorecards.
 
 QuizRush Arena uses educational game scoring only. There is no purchase, cash prize, withdrawal, transfer, or real-world value.
 
@@ -12,7 +12,7 @@ Passive learning loses attention; active learning improves outcomes. A PubMed-in
 
 Room-scale quiz games usually make everyone answer the same static question set. That breaks when every player wants a different topic, and it becomes unsafe at scale if the frontend invents score, answer timing, ranking, or share links.
 
-QuizRush Arena solves this as a realtime state race:
+QuizRush Arena solves this as a realtime audience activation race:
 
 - phones are private quiz controllers,
 - the projector is a public live tournament broadcast,
@@ -22,7 +22,7 @@ QuizRush Arena solves this as a realtime state race:
 
 ## Product Solution
 
-Users scan one QR, create a profile, type or speak any topic in natural language, answer a private quiz sprint, and see the room move through a public live bracket. Every result is stored as database state and every participant gets a durable score-card link.
+DevRel teams, hackathon hosts, bootcamp instructors, and live workshop organizers use QuizRush to turn a passive room into a measurable 25-second quiz race. Users scan one QR, create a profile, type or speak any topic in natural language, answer a private quiz sprint, and see the room move through a public live bracket. Every result is stored as database state and every participant gets a durable score-card link.
 
 ```mermaid
 flowchart LR

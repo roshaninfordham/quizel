@@ -374,7 +374,8 @@ function phoneBootstrapQueries(sessionId: string): string[] {
     `SELECT * FROM session WHERE session_id = ${s}`,
     `SELECT * FROM session_capacity WHERE session_id = ${s}`,
     `SELECT * FROM live_stats WHERE session_id = ${s}`,
-    `SELECT * FROM participant WHERE session_id = ${s}`
+    `SELECT * FROM participant WHERE session_id = ${s}`,
+    `SELECT * FROM agent_event WHERE session_id = ${s}`
   ];
 }
 
@@ -393,7 +394,8 @@ function participantSubscriptionQueries(sessionId: string, participantId: string
     `SELECT * FROM score WHERE session_id = ${s} AND participant_id = ${p}`,
     `SELECT * FROM final_result WHERE session_id = ${s} AND participant_id = ${p}`,
     `SELECT * FROM share_card WHERE session_id = ${s} AND participant_id = ${p}`,
-    `SELECT * FROM client_error WHERE session_id = ${s} AND participant_id = ${p}`
+    `SELECT * FROM client_error WHERE session_id = ${s} AND participant_id = ${p}`,
+    `SELECT * FROM agent_event WHERE session_id = ${s}`
   ];
 }
 

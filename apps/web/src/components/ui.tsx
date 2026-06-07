@@ -7,18 +7,25 @@ import {
   ArrowRight,
   Award,
   Brain,
+  CheckCircle2,
+  CircleAlert,
   Clock,
   Crown,
   Database,
+  Flag,
   Gauge,
+  Globe2,
   HelpCircle,
   Layers3,
   Menu,
   MousePointerClick,
+  Loader2,
   RadioTower,
   Play,
   QrCode,
+  Radar,
   Share2,
+  ShieldCheck,
   Smartphone,
   Table2,
   TimerReset,
@@ -40,12 +47,15 @@ import {
   DEFAULT_TOPICS,
   DISCLAIMER,
   QUESTION_COUNT,
+  type AgentEvent,
   type ClientError,
   type LiveStats,
   type MatchEvent,
   type OptionKey,
   type Participant,
+  type PlayerIntent,
   type Question,
+  type QuestionPack,
   type QuizRushState,
   type Round,
   type Score,
@@ -161,16 +171,13 @@ export function TopStatusBar({
           </div>
           <div>
             <h1 className="text-3xl font-black leading-none tracking-normal text-slate-950">{APP_NAME}</h1>
-            <p className="mt-1 text-base font-extrabold text-slate-500">{APP_TAGLINE}</p>
+            <p className="mt-1 text-base font-extrabold text-slate-500">Live quiz races from one QR</p>
           </div>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-sm font-black">
-        <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} tracked`} />
-        {typeof racingCount === "number" ? <StatusPill icon={<Zap className="size-5" />} label={`${racingCount} racing`} /> : null}
+        <StatusPill icon={<Users className="size-5" />} label={`${connectedCount} racers`} />
         <StatusPill icon={<Play className="size-5" />} label={phase.replace("_", " ")} />
-        <StatusPill icon={<Gauge className="size-5" />} label={`p95 sync ${p95LatencyMs}ms`} />
-        <StatusPill icon={<Activity className="size-5" />} label={`${reducerCalls} commits`} />
         <ConnectionBadge state={connectionState} lastSyncAt={lastSyncAt} />
         {onToggleTech ? (
           <button
@@ -335,21 +342,21 @@ function HeroStatement({
   phase: string;
   stats?: LiveStats;
 }) {
-  const statusText = joinedCount ? `Race setup closes in ${countdownSeconds}s` : "Waiting for first racer";
+  const statusText = joinedCount ? `Race setup closes in ${countdownSeconds}s` : "Waiting for racers to scan";
   return (
     <Panel className="flex min-h-0 flex-col justify-between overflow-hidden p-6">
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-700">Active learning beats passive watching.</span>
-          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">One QR. Custom quizzes. Live bracket.</span>
+          <span className="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-black text-violet-700">For DevRel demos, hackathons, bootcamps, and live workshops</span>
+          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">Live audience activation game</span>
         </div>
-        <h2 className="max-w-5xl text-[clamp(2.35rem,4.3vw,4.8rem)] font-black leading-[0.95] text-slate-950">Race your topic in 25 seconds.</h2>
+        <h2 className="max-w-5xl text-[clamp(2.35rem,4.3vw,4.8rem)] font-black leading-[0.95] text-slate-950">Turn any room into a live quiz race.</h2>
         <p className="mt-3 max-w-4xl text-[clamp(1.05rem,1.5vw,1.55rem)] font-extrabold leading-tight text-slate-600">
-          Scan the QR, type what you know, and AI creates your private quiz while SpacetimeDB powers the live bracket.
+          Everyone scans one QR, enters a topic, gets a private AI quiz, and races while the bracket moves live.
         </p>
         <div className="mt-3 grid max-w-4xl grid-cols-2 gap-3">
-          <ProofPill label="Problem" value="Passive learning loses attention; active learning improves outcomes." />
-          <ProofPill label="Solution" value="QuizRush turns a room into a live quiz race with custom questions, realtime scoring, and shareable scorecards." />
+          <ProofPill label="Problem" value="Passive rooms are hard to measure." />
+          <ProofPill label="Solution" value="Every answer, rank, bracket move, and scorecard syncs through SpacetimeDB." />
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
@@ -365,7 +372,7 @@ function HeroStatement({
             {statusText}
           </span>
           <span className="text-sm font-black text-slate-500">
-            {phase.replace("_", " ")} · p95 sync {stats?.p95LatencyMs ?? 48}ms · {stats?.reducerCalls ?? 0} realtime commits
+            One QR. Custom quizzes. Live bracket. Shareable scorecards.
           </span>
         </div>
       </div>
@@ -384,13 +391,13 @@ function ProofPill({ label, value }: { label: string; value: string }) {
 
 function VisualRaceFlow({ phase, joinedCount, topicCount }: { phase: string; joinedCount: number; topicCount: number }) {
   const steps = [
-    { label: "Scan", icon: UserPlus, state: joinedCount ? "complete" : "active" },
-    { label: "Topic", icon: MousePointerClick, state: topicCount || phase !== "lobby" ? "complete" : joinedCount ? "active" : "locked" },
-    { label: "AI Quiz", icon: Brain, state: phase === "generating" ? "active" : ["ready", "playing", "finished", "replay"].includes(phase) ? "complete" : "locked" },
-    { label: "Race", icon: TimerReset, state: phase === "playing" ? "active" : ["finished", "replay"].includes(phase) ? "complete" : phase === "ready" ? "active" : "locked" },
-    { label: "Bracket", icon: Trophy, state: phase === "playing" ? "active" : ["finished", "replay"].includes(phase) ? "complete" : "locked" },
-    { label: "Share", icon: Share2, state: ["finished", "replay"].includes(phase) ? "active" : "locked" }
-  ] satisfies Array<{ label: string; icon: React.ComponentType<{ className?: string }>; state: "active" | "complete" | "locked" }>;
+    { label: "Scan", detail: joinedCount ? "joined" : "live", icon: UserPlus, state: joinedCount ? "complete" : "active" },
+    { label: "Pick topic", detail: topicCount ? "picked" : "next", icon: MousePointerClick, state: topicCount || phase !== "lobby" ? "complete" : joinedCount ? "active" : "locked" },
+    { label: "Build quiz", detail: "AI/cache", icon: Brain, state: phase === "generating" ? "active" : ["ready", "playing", "finished", "replay"].includes(phase) ? "complete" : "locked" },
+    { label: "Race", detail: "phone", icon: TimerReset, state: phase === "playing" ? "active" : ["finished", "replay"].includes(phase) ? "complete" : phase === "ready" ? "active" : "locked" },
+    { label: "Move bracket", detail: "live", icon: Trophy, state: phase === "playing" ? "active" : ["finished", "replay"].includes(phase) ? "complete" : "locked" },
+    { label: "Share score", detail: "card", icon: Share2, state: ["finished", "replay"].includes(phase) ? "active" : "locked" }
+  ] satisfies Array<{ label: string; detail: string; icon: React.ComponentType<{ className?: string }>; state: "active" | "complete" | "locked" }>;
 
   return (
     <Panel className="shrink-0 p-4">
@@ -407,7 +414,7 @@ function FlowStep({
   step,
   showArrow
 }: {
-  step: { label: string; icon: React.ComponentType<{ className?: string }>; state: "active" | "complete" | "locked" };
+  step: { label: string; detail?: string; icon: React.ComponentType<{ className?: string }>; state: "active" | "complete" | "locked" };
   showArrow: boolean;
 }) {
   const Icon = step.icon;
@@ -433,7 +440,7 @@ function FlowStep({
         <div className="min-w-0">
           <p className="truncate text-xl font-black">{step.label}</p>
           <p className={cn("text-xs font-black uppercase", active ? "text-white/70" : complete ? "text-emerald-600" : "text-slate-400")}>
-            {complete ? "ready" : active ? "live" : "locked"}
+            {complete ? "ready" : active ? (step.detail ?? "live") : "locked"}
           </p>
         </div>
       </motion.div>
@@ -450,9 +457,11 @@ function RosterPreview({ participants, maxVisible = 24 }: { participants: Partic
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-3xl font-black text-slate-950">Racers</h2>
-          <p className="text-base font-extrabold text-slate-500">Profiles stream here as players join.</p>
+          <p className="text-base font-extrabold text-slate-500">
+            {participants.length ? "Live profiles from SpacetimeDB Participant rows." : "Waiting for racers to scan the QR."}
+          </p>
         </div>
-        <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">{participants.length} tracked</span>
+        <span className="rounded-full bg-slate-950 px-4 py-2 text-sm font-black text-white">{participants.length} racers</span>
       </div>
       <div className="mt-4 grid min-h-0 flex-1 grid-cols-8 content-start gap-3">
         {visible.map((participant) => (
@@ -481,10 +490,15 @@ function RosterPreview({ participants, maxVisible = 24 }: { participants: Partic
         ))}
         {!participants.length
           ? Array.from({ length: 16 }, (_, index) => (
-              <div key={index} className="text-center opacity-60">
+              <motion.div
+                key={index}
+                animate={{ opacity: [0.36, 0.72, 0.36] }}
+                transition={{ duration: 2.6, delay: index * 0.05, repeat: Infinity }}
+                className="text-center"
+              >
                 <div className="mx-auto size-14 rounded-full border-2 border-dashed border-slate-300 bg-slate-50" />
                 <div className="mx-auto mt-2 h-2 w-10 rounded-full bg-slate-100" />
-              </div>
+              </motion.div>
             ))
           : null}
         {hidden ? (
@@ -524,25 +538,26 @@ function TopicBubbleSwarm({
               style={{ width: size, height: size }}
             >
               <div className="px-2">
-                <p className="truncate text-sm font-black text-slate-950">{topic.topic}</p>
-                <p className="text-xs font-black text-slate-500">{topic.count ? `${topic.percent}%` : "soon"}</p>
+                <p className={cn("truncate text-sm font-black", topic.count ? "text-slate-950" : "text-slate-400")}>{topic.topic}</p>
+                <p className="text-xs font-black text-slate-500">{topic.count ? `${topic.count} racer${topic.count === 1 ? "" : "s"}` : "example"}</p>
               </div>
             </motion.div>
           );
         })}
       </div>
-      {!topicCounts.length ? <p className="mt-2 text-sm font-bold text-slate-500">Topics form as players type or speak expertise.</p> : null}
+      {!topicCounts.length ? <p className="mt-2 text-sm font-bold text-slate-500">Topics appear as racers enter what they want to quiz on.</p> : null}
     </Panel>
   );
 }
 
 function LiveJoinFeedCompact({ participants }: { participants: Participant[] }) {
   const visible = participants.slice(-4).reverse();
+  if (!visible.length) return null;
   return (
     <Panel className="p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-black text-slate-950">Live joins</h2>
-        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">streaming</span>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">live</span>
       </div>
       <div className="mt-3 grid gap-2">
         {visible.map((participant) => (
@@ -551,10 +566,230 @@ function LiveJoinFeedCompact({ participants }: { participants: Participant[] }) 
             <span className="min-w-0 truncate text-sm font-black text-slate-900">{participant.displayName} joined</span>
           </motion.div>
         ))}
-        {!visible.length ? <p className="rounded-2xl bg-slate-50 px-3 py-3 text-sm font-bold text-slate-500">Waiting for the first racer...</p> : null}
       </div>
     </Panel>
   );
+}
+
+type AgentPipelineState = "pending" | "active" | "complete" | "fallback" | "failed" | "retrying";
+
+export function LiveAgentBuildPipeline({
+  participant,
+  playerIntent,
+  questionPack,
+  questionCount,
+  questionsReady,
+  packSource,
+  agentEvents,
+  liveStats,
+  connectionState
+}: {
+  participant: Participant;
+  playerIntent?: PlayerIntent;
+  questionPack?: QuestionPack;
+  questionCount: number;
+  questionsReady: boolean;
+  packSource: string;
+  agentEvents: AgentEvent[];
+  liveStats?: LiveStats;
+  connectionState: ConnectionState;
+}) {
+  const events = agentEvents.slice().sort((a, b) => b.createdAt - a.createdAt);
+  const topic = playerIntent?.arenaName ?? questionPack?.displayTopic ?? "your topic";
+  const hasIntent = Boolean(playerIntent);
+  const hasPack = Boolean(questionPack) || questionsReady;
+  const hasStoredQuestions = questionsReady;
+  const connectionFailed = connectionState === "error" || connectionState === "disconnected";
+  const fallbackPack = Boolean(questionPack?.sourceType && /fallback|seed/.test(questionPack.sourceType)) || /instant|fallback/i.test(packSource);
+  const cachePack = Boolean(questionPack?.sourceType && /cache/.test(questionPack.sourceType)) || /cache/i.test(packSource);
+  const researchEvent = latestEvent(events, ["Firecrawl Grounding Agent", "Instant Quiz Engine"], ["facts_ready", "facts_committed", "grounding_skipped", "instant_pack_ready"]);
+  const builderEvent = latestEvent(events, ["Quiz Builder Agent"], ["generation_started", "questions_generated", "fallback_used", "template_grounded_fallback_used"]);
+  const fairnessEvent = latestEvent(events, ["Fairness Agent"], ["questions_approved", "fallback_approved"]);
+  const syncEvent = latestEvent(events, ["Match Engine"], ["questions_ready"]);
+
+  const steps: Array<{
+    id: string;
+    title: string;
+    icon: React.ComponentType<{ className?: string }>;
+    state: AgentPipelineState;
+    message: string;
+    badge?: string;
+    durationMs?: number | null;
+  }> = [
+    {
+      id: "intent",
+      title: "Intent Agent",
+      icon: Radar,
+      state: hasIntent ? "complete" : "active",
+      message: hasIntent ? `Parsed "${playerIntent?.rawText}" into ${topic}.` : "Understanding your topic...",
+      durationMs: playerIntent ? Math.max(0, playerIntent.updatedAt - playerIntent.createdAt) : null
+    },
+    {
+      id: "research",
+      title: "Research Agent",
+      icon: Globe2,
+      state: !hasIntent ? "pending" : researchState(researchEvent, hasPack, fallbackPack || cachePack),
+      message:
+        researchEvent?.content ??
+        (hasPack
+          ? cachePack || fallbackPack
+            ? `Using ${packSource.toLowerCase()}.`
+            : `Research complete for ${topic}.`
+          : "Checking cache and Firecrawl facts..."),
+      badge: cachePack ? "cache" : fallbackPack ? "fallback" : undefined,
+      durationMs: durationSinceIntent(playerIntent, researchEvent)
+    },
+    {
+      id: "builder",
+      title: "Quiz Builder",
+      icon: Brain,
+      state: !hasIntent ? "pending" : hasPack ? (fallbackPack ? "fallback" : "complete") : builderEvent?.status === "failed" ? "failed" : "active",
+      message: hasPack ? `Built ${questionCount} MCQs for ${topic}.` : builderEvent?.content ?? "Creating answer options...",
+      badge: questionPack?.sourceType ? sourceTypeLabel(questionPack.sourceType) : undefined,
+      durationMs: durationSinceIntent(playerIntent, builderEvent)
+    },
+    {
+      id: "fairness",
+      title: "Fairness Guard",
+      icon: ShieldCheck,
+      state: !hasIntent ? "pending" : hasPack ? (fallbackPack ? "fallback" : "complete") : fairnessEvent?.status === "failed" ? "failed" : "pending",
+      message: fairnessEvent?.content ?? (hasPack ? "Validated option uniqueness and answer schema." : "Waiting for generated questions..."),
+      badge: fallbackPack ? "safe fallback" : undefined,
+      durationMs: durationSinceIntent(playerIntent, fairnessEvent)
+    },
+    {
+      id: "sync",
+      title: "SpacetimeDB Sync",
+      icon: Database,
+      state: connectionFailed ? "retrying" : hasStoredQuestions ? "complete" : hasPack ? "active" : "pending",
+      message: connectionFailed
+        ? "Reconnecting to the realtime database..."
+        : hasStoredQuestions
+          ? "QuestionPack stored. Phone subscribed."
+          : hasPack
+            ? "Waiting for QuestionPublic rows..."
+            : "Reducer will store the pack before cards render.",
+      badge: `${liveStats?.reducerCalls ?? 0} commits`,
+      durationMs: durationSinceIntent(playerIntent, syncEvent)
+    },
+    {
+      id: "ready",
+      title: "Ready",
+      icon: Flag,
+      state: hasStoredQuestions ? "complete" : "pending",
+      message: hasStoredQuestions ? "Watch the projector countdown." : "Your sprint will unlock as soon as the pack syncs.",
+      badge: hasStoredQuestions ? "race ready" : undefined
+    }
+  ];
+
+  return (
+    <div className="rounded-[30px] bg-gradient-to-br from-slate-950 to-[#10194a] p-4 text-white shadow-2xl shadow-violet-100">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase text-blue-200">Live build pipeline</p>
+          <h2 className="mt-1 text-2xl font-black leading-tight">Building your {topic} sprint</h2>
+        </div>
+        <div className="grid size-12 shrink-0 place-items-center rounded-full bg-white/10 text-2xl">{participant.avatar}</div>
+      </div>
+      <div className="mt-4 space-y-2.5">
+        {steps.map((step, index) => (
+          <AgentPipelineStep key={step.id} step={step} index={index} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AgentPipelineStep({
+  step,
+  index
+}: {
+  step: {
+    title: string;
+    icon: React.ComponentType<{ className?: string }>;
+    state: AgentPipelineState;
+    message: string;
+    badge?: string;
+    durationMs?: number | null;
+  };
+  index: number;
+}) {
+  const Icon = step.icon;
+  const active = step.state === "active" || step.state === "retrying";
+  const complete = step.state === "complete" || step.state === "fallback";
+  const failed = step.state === "failed";
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: step.state === "pending" ? 0.58 : 1, y: 0 }}
+      transition={{ delay: index * 0.035 }}
+      className={cn(
+        "flex items-center gap-3 rounded-[22px] px-3 py-3 ring-1",
+        failed
+          ? "bg-rose-500/14 ring-rose-300/20"
+          : step.state === "fallback"
+            ? "bg-amber-400/14 ring-amber-300/25"
+            : complete
+              ? "bg-emerald-400/12 ring-emerald-300/20"
+              : active
+                ? "bg-white/12 ring-blue-200/25"
+                : "bg-white/7 ring-white/10"
+      )}
+    >
+      <motion.span
+        animate={active ? { scale: [1, 1.08, 1], boxShadow: ["0 0 0 0 rgba(96,165,250,0.28)", "0 0 0 10px rgba(96,165,250,0)", "0 0 0 0 rgba(96,165,250,0)"] } : {}}
+        transition={{ duration: 1.5, repeat: active ? Infinity : 0 }}
+        className={cn(
+          "grid size-11 shrink-0 place-items-center rounded-2xl",
+          failed ? "bg-rose-500 text-white" : complete ? "bg-white text-emerald-600" : active ? "bg-blue-500 text-white" : "bg-white/10 text-white/55"
+        )}
+      >
+        {active ? <Loader2 className="size-5 animate-spin" /> : failed ? <CircleAlert className="size-5" /> : complete ? <CheckCircle2 className="size-5" /> : <Icon className="size-5" />}
+      </motion.span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-base font-black">{step.title}</p>
+          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-black uppercase", pipelineBadgeClass(step.state))}>{step.state}</span>
+          {step.badge ? <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase text-blue-100">{step.badge}</span> : null}
+          {typeof step.durationMs === "number" ? <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase text-white/70">{formatDuration(step.durationMs)}</span> : null}
+        </div>
+        <p className="mt-0.5 truncate text-sm font-bold text-white/68">{step.message}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+function latestEvent(events: AgentEvent[], agentNames: string[], eventTypes?: string[]): AgentEvent | undefined {
+  return events.find((event) => agentNames.includes(event.agentName) && (!eventTypes || eventTypes.includes(event.eventType)));
+}
+
+function researchState(event: AgentEvent | undefined, hasPack: boolean, degraded: boolean): AgentPipelineState {
+  if (event?.status === "failed") return "failed";
+  if (event?.status === "fallback" || degraded) return "fallback";
+  if (event?.status === "complete" || hasPack) return "complete";
+  return "active";
+}
+
+function durationSinceIntent(playerIntent: PlayerIntent | undefined, event: AgentEvent | undefined): number | null {
+  if (!playerIntent || !event) return null;
+  return Math.max(0, event.createdAt - playerIntent.createdAt);
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(1, Math.round(ms))}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function sourceTypeLabel(sourceType: QuestionPack["sourceType"]): string {
+  return sourceType.replace(/_/g, " ");
+}
+
+function pipelineBadgeClass(state: AgentPipelineState): string {
+  if (state === "complete") return "bg-emerald-400/20 text-emerald-100";
+  if (state === "fallback") return "bg-amber-300/20 text-amber-100";
+  if (state === "failed") return "bg-rose-300/20 text-rose-100";
+  if (state === "active" || state === "retrying") return "bg-blue-300/20 text-blue-100";
+  return "bg-white/10 text-white/50";
 }
 
 export function RoomRosterBand({ participants }: { participants: Participant[] }) {

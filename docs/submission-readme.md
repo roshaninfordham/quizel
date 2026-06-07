@@ -2,19 +2,19 @@
 
 Product: QuizRush Arena
 
-Tagline: A 25-second AI-personalized quiz tournament from one QR code.
+Tagline: A live audience activation game for technical events and learning rooms.
 
-Judges should remember: “The whole room scanned one QR code, shared expertise, and became a live AI-generated tournament in 25 seconds.”
+Judges should remember: “One QR. Custom quizzes. Live bracket. Shareable scorecards.”
 
 ## What To Demo
 
 - `make online`
-- QR lobby
+- QR lobby with DevRel/hackathon/bootcamp positioning
 - phone join
 - expertise intent box with optional mic
-- detected arena confirmation
-- expertise swarm
-- agent pipeline
+- topic confirmation
+- real topic bubbles from submitted intents
+- DB-backed live agent build pipeline
 - 25-second match
 - live leaderboard and bracket
 - room roster showing tracked joined profiles
