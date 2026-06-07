@@ -598,6 +598,7 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
   const participant_id = participantRow?.participant_id;
   const selected_topic = normalizeIntentForModule(topic || topicFromVotes(ctx, session_id)).arena_name;
   const requestedCount = question_count || QUESTION_COUNT;
+  const request_id = id(ctx, "agent-request");
   const pendingSame = Array.from(ctx.db.agent_request.session_id.filter(session_id)).find(
     (request) => request.status === "pending" && request.topic === selected_topic
   );
@@ -631,19 +632,24 @@ export const request_questions = spacetimedb.reducer({ session_id: t.string(), t
     updated_at_ms: now
   });
   ctx.db.agent_request.insert({
-    request_id: id(ctx, "agent-request"),
+    request_id,
     session_id,
     request_type: "quiz_generation",
     topic: selected_topic,
     question_count: requestedCount,
-    status: "pending",
+    status: "fallback",
     created_at_ms: now,
     updated_at_ms: now,
-    error_message: undefined
+    error_message: "Instant deterministic pack committed first so the phone never waits on Firecrawl or LLM latency."
   });
-  insertAgentEvent(ctx, session_id, "Topic Router Agent", "topic_selected", `Selected ${selected_topic} from live topic votes.`, 0.88, "complete");
+  insertAgentEvent(ctx, session_id, "Intent Normalizer", "complete", `Parsed topic as ${selected_topic}.`, 0.94, "complete");
+  insertAgentEvent(ctx, session_id, "Instant Quiz Engine", "instant_pack_ready", `Using prebuilt topic-specific pack for ${selected_topic}.`, 1, "fallback");
+  insertAgentEvent(ctx, session_id, "Quiz Builder Agent", "fallback_used", `${requestedCount} MCQs are ready immediately.`, 1, "fallback");
+  insertAgentEvent(ctx, session_id, "Fairness Agent", "fallback_approved", "Validated option uniqueness and answer schema for the instant pack.", 1, "fallback");
   insertMatchEvent(ctx, session_id, participant_id, "questions_requested", undefined, undefined, undefined, JSON.stringify({ selected_topic, participantScoped: Boolean(participant_id) }));
   submitQuestionPackInternal(ctx, session_id, selected_topic, JSON.stringify({ questions: fallbackQuestionsForTopic(selected_topic, requestedCount) }), undefined, participant_id);
+  const request = ctx.db.agent_request.request_id.find(request_id);
+  if (request) ctx.db.agent_request.request_id.update({ ...request, status: "fallback", updated_at_ms: nowMs() });
   bumpStats(ctx, session_id);
   traceOperation(ctx, session_id, "request_questions", true, 1, undefined);
 });

@@ -326,6 +326,7 @@ export function ArenaRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
           stats={stats}
           phase={phase}
           countdownSeconds={participants.length ? topicWindowSeconds : TOTAL_MATCH_SECONDS}
+          onStartRace={() => startVisualRace(sessionId, callReducer)}
         />
       )}
     </ProjectorShell>

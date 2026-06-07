@@ -52,6 +52,8 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const [enterLoading, setEnterLoading] = useState(false);
   const [enterRetrying, setEnterRetrying] = useState(false);
   const [enterError, setEnterError] = useState<string | null>(null);
+  const [startRaceLoading, setStartRaceLoading] = useState(false);
+  const [startRaceError, setStartRaceError] = useState<string | null>(null);
   const questionRenderedAtRef = useRef<number | null>(null);
   const renderedRoundIdRef = useRef<string | null>(null);
   const shareCardsRef = useRef(state.shareCards);
@@ -71,6 +73,10 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
   const agentEvents = state.agentEvents.filter((candidate) => candidate.sessionId === sessionId);
   const sessionQuestions = state.questions.filter(
     (candidate) => candidate.sessionId === sessionId && (!participantId || candidate.participantId === participantId || candidate.participantId === null)
+  );
+  const previewQuestion = useMemo(
+    () => sessionQuestions.slice().sort((a, b) => a.orderIndex - b.orderIndex)[0],
+    [sessionQuestions]
   );
   const questionsReady = sessionQuestions.length >= QUESTION_COUNT;
   const packReady =
@@ -258,6 +264,20 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
       }
     } catch {
       setShareMessage(url);
+    }
+  };
+
+  const startRaceNow = async () => {
+    if (startRaceLoading) return;
+    setStartRaceLoading(true);
+    setStartRaceError(null);
+    try {
+      const receipt = await callReducer("start_match", { sessionId }, "phone-presenter");
+      if (!receipt.ok) throw new Error(receipt.error || "Race start failed.");
+    } catch (error) {
+      setStartRaceError(friendlyEnterError(error));
+    } finally {
+      setStartRaceLoading(false);
     }
   };
 
@@ -579,18 +599,65 @@ export function JoinRoute({ code = DEFAULT_SESSION_CODE }: { code?: string }) {
             connectionState={connectionState}
           />
         </div>
+        {packReady ? (
+          <div className="mt-5">
+            <QuestionDeckPreview question={previewQuestion} questionCount={QUESTION_COUNT} />
+          </div>
+        ) : null}
+        {packReady && session?.status === "ready" ? (
+          <Button onClick={startRaceNow} disabled={startRaceLoading} className="mt-5 w-full !min-h-16 !rounded-[28px] !text-xl" icon={<ArrowRight className="size-6" />}>
+            {startRaceLoading ? "Starting Race" : "Start Race"}
+          </Button>
+        ) : null}
+        {startRaceError ? <ErrorMessage>{startRaceError}</ErrorMessage> : null}
         <div className="mt-5 rounded-[24px] bg-slate-50 p-4 ring-1 ring-slate-200">
           <p className="text-xs font-black uppercase text-slate-500">Status</p>
           <p className="mt-1 text-lg font-black text-slate-950">
-            {packReady ? "Quiz ready · waiting for presenter countdown" : "Research Agent still building your sprint..."}
+            {packReady ? "Quiz cards ready · waiting for the shared countdown" : "Serving an instant pack first while agents refine if needed..."}
           </p>
           <p className="mt-1 text-sm font-bold text-slate-500">
-            {packReady ? "Watch the projector for the start signal." : "Cached topics usually complete in 2-3 seconds; long-tail topics may use Firecrawl/LLM or fallback."}
+            {packReady ? "The first card is already stored in SpacetimeDB. Options unlock when the race starts." : "Preset topics should complete almost immediately; Firecrawl/LLM should never block the fallback quiz."}
           </p>
         </div>
       </Panel>
       <div className="mt-auto" />
     </PhoneShell>
+  );
+}
+
+function QuestionDeckPreview({ question, questionCount }: { question?: { questionText: string; optionA: string; optionB: string; optionC: string; optionD: string }; questionCount: number }) {
+  if (!question) {
+    return (
+      <div className="rounded-[26px] bg-emerald-50 p-4 ring-1 ring-emerald-100">
+        <p className="text-xs font-black uppercase text-emerald-700">Instant deck ready</p>
+        <p className="mt-1 text-base font-black text-slate-950">SpacetimeDB committed your quiz pack.</p>
+        <p className="mt-1 text-sm font-bold text-slate-500">Question cards are syncing to this phone now.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-[28px] bg-white p-4 shadow-lg shadow-slate-200/70 ring-2 ring-emerald-100">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-black uppercase text-emerald-700">Quiz deck ready now</p>
+        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">{questionCount} cards</span>
+      </div>
+      <h2 className="mt-3 text-xl font-black leading-tight text-slate-950">{question.questionText}</h2>
+      <div className="mt-4 grid gap-2">
+        {[
+          ["A", question.optionA],
+          ["B", question.optionB],
+          ["C", question.optionC],
+          ["D", question.optionD]
+        ].map(([key, value]) => (
+          <div key={key} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm font-black text-slate-700 ring-1 ring-slate-200">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-slate-950 text-white">{key}</span>
+            <span>{value}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-center text-xs font-black uppercase text-slate-400">Preview only · taps unlock at race start</p>
+    </div>
   );
 }
 

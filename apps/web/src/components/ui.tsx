@@ -275,7 +275,8 @@ export function ProjectorLobbyPage({
   selectedTopic,
   stats,
   phase,
-  countdownSeconds
+  countdownSeconds,
+  onStartRace
 }: {
   joinUrl: string;
   sessionCode: string;
@@ -285,12 +286,21 @@ export function ProjectorLobbyPage({
   stats?: LiveStats;
   phase: string;
   countdownSeconds: number;
+  onStartRace?: () => void;
 }) {
+  const canStartRace = participants.some((participant) => participant.admissionStatus === "admitted") && phase === "ready";
   return (
     <div className="grid min-h-0 flex-1 grid-rows-[minmax(260px,1fr)_78px_minmax(142px,0.52fr)] gap-3">
       <section className="grid min-h-0 grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)] gap-4">
         <QRJoinHero joinUrl={joinUrl} sessionCode={sessionCode} />
-        <HeroStatement joinedCount={participants.length} countdownSeconds={countdownSeconds} phase={phase} stats={stats} />
+        <HeroStatement
+          joinedCount={participants.length}
+          countdownSeconds={countdownSeconds}
+          phase={phase}
+          stats={stats}
+          canStartRace={canStartRace}
+          onStartRace={onStartRace}
+        />
       </section>
       <VisualRaceFlow phase={phase} joinedCount={participants.length} topicCount={topicCounts.length} />
       <section className="grid min-h-0 grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] gap-4">
@@ -335,14 +345,19 @@ function HeroStatement({
   joinedCount,
   countdownSeconds,
   phase,
-  stats
+  stats,
+  canStartRace,
+  onStartRace
 }: {
   joinedCount: number;
   countdownSeconds: number;
   phase: string;
   stats?: LiveStats;
+  canStartRace?: boolean;
+  onStartRace?: () => void;
 }) {
   const statusText = joinedCount ? `Race setup closes in ${countdownSeconds}s` : "Waiting for racers to scan";
+  const startLabel = canStartRace ? "Start Race" : phase === "ready" ? "Waiting for racers" : "Waiting for quiz decks";
   return (
     <Panel className="flex min-h-0 flex-col justify-between overflow-hidden p-6">
       <div>
@@ -367,6 +382,20 @@ function HeroStatement({
           </motion.p>
         </div>
         <div className="grid gap-2 text-right">
+          <button
+            type="button"
+            onClick={onStartRace}
+            disabled={!canStartRace}
+            className={cn(
+              "inline-flex min-h-14 items-center justify-center gap-2 rounded-[24px] px-5 text-lg font-black transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55",
+              canStartRace
+                ? "bg-gradient-to-r from-emerald-500 to-lime-500 text-white shadow-lg shadow-emerald-100"
+                : "bg-slate-100 text-slate-500"
+            )}
+          >
+            <Play className="size-5" />
+            {startLabel}
+          </button>
           <span className="inline-flex items-center justify-end gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-base font-black text-white">
             <Clock className="size-5" />
             {statusText}
@@ -597,7 +626,8 @@ export function LiveAgentBuildPipeline({
   const events = agentEvents.slice().sort((a, b) => b.createdAt - a.createdAt);
   const topic = playerIntent?.arenaName ?? questionPack?.displayTopic ?? "your topic";
   const sprintTitle = topic === "your topic" ? "Building your sprint" : `Building your ${topic} sprint`;
-  const hasIntent = Boolean(playerIntent);
+  const intentEvent = latestEvent(events, ["Intent Normalizer", "Topic Router Agent"], ["complete", "topic_selected"]);
+  const hasIntent = Boolean(playerIntent) || Boolean(intentEvent) || Boolean(questionPack) || questionsReady;
   const hasPack = Boolean(questionPack) || questionsReady;
   const hasStoredQuestions = questionsReady;
   const connectionFailed = connectionState === "error" || connectionState === "disconnected";
@@ -622,7 +652,7 @@ export function LiveAgentBuildPipeline({
       title: "Intent Agent",
       icon: Radar,
       state: hasIntent ? "complete" : "active",
-      message: hasIntent ? `Parsed "${playerIntent?.rawText}" into ${topic}.` : "Understanding your topic...",
+      message: playerIntent ? `Parsed "${playerIntent.rawText}" into ${topic}.` : intentEvent?.content ?? (hasIntent ? `Parsed topic into ${topic}.` : "Understanding your topic..."),
       durationMs: playerIntent ? Math.max(0, playerIntent.updatedAt - playerIntent.createdAt) : null
     },
     {

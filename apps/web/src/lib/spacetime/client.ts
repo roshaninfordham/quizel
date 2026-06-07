@@ -375,6 +375,16 @@ function phoneBootstrapQueries(sessionId: string): string[] {
     `SELECT * FROM session_capacity WHERE session_id = ${s}`,
     `SELECT * FROM live_stats WHERE session_id = ${s}`,
     `SELECT * FROM participant WHERE session_id = ${s}`,
+    `SELECT * FROM admission_ticket WHERE session_id = ${s}`,
+    `SELECT * FROM topic_vote WHERE session_id = ${s}`,
+    `SELECT * FROM player_intent WHERE session_id = ${s}`,
+    `SELECT * FROM question_pack WHERE session_id = ${s}`,
+    `SELECT * FROM question_public WHERE session_id = ${s}`,
+    `SELECT * FROM round WHERE session_id = ${s}`,
+    `SELECT * FROM answer WHERE session_id = ${s}`,
+    `SELECT * FROM score WHERE session_id = ${s}`,
+    `SELECT * FROM final_result WHERE session_id = ${s}`,
+    `SELECT * FROM share_card WHERE session_id = ${s}`,
     `SELECT * FROM agent_event WHERE session_id = ${s}`
   ];
 }

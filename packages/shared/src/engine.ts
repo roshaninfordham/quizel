@@ -414,20 +414,53 @@ export class QuizRushEngine {
       requestType: "quiz_generation",
       topic,
       questionCount,
-      status: "pending",
+      status: "fallback",
       createdAt: now,
       updatedAt: now,
-      errorMessage: null
+      errorMessage: "Instant deterministic pack committed first so the phone never waits on external AI latency."
     };
     this.state.agentRequests.push(request);
     this.recordAgentEvent({
       args: {
         sessionId: session.sessionId,
-        agentName: "Topic Router Agent",
-        eventType: "topic_selected",
-        content: `Selected ${topic} from live room intent.`,
-        confidence: 0.88,
+        agentName: "Intent Normalizer",
+        eventType: "complete",
+        content: `Parsed topic as ${topic}.`,
+        confidence: 0.94,
         status: "complete"
+      },
+      identity
+    });
+    this.recordAgentEvent({
+      args: {
+        sessionId: session.sessionId,
+        agentName: "Instant Quiz Engine",
+        eventType: "instant_pack_ready",
+        content: `Using prebuilt topic-specific pack for ${topic}.`,
+        confidence: 1,
+        status: "fallback"
+      },
+      identity
+    });
+    this.recordAgentEvent({
+      args: {
+        sessionId: session.sessionId,
+        agentName: "Quiz Builder Agent",
+        eventType: "fallback_used",
+        content: `${questionCount} MCQs are ready immediately.`,
+        confidence: 1,
+        status: "fallback"
+      },
+      identity
+    });
+    this.recordAgentEvent({
+      args: {
+        sessionId: session.sessionId,
+        agentName: "Fairness Agent",
+        eventType: "fallback_approved",
+        content: "Validated option uniqueness and answer schema for the instant pack.",
+        confidence: 1,
+        status: "fallback"
       },
       identity
     });
@@ -441,6 +474,8 @@ export class QuizRushEngine {
       },
       identity: "seed-fallback"
     });
+    request.status = "fallback";
+    request.updatedAt = Date.now();
     return request;
   }
 

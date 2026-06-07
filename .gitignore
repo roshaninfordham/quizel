@@ -11,3 +11,5 @@ src/module_bindings
 target
 .spacetime
 .vercel
+.playwright-cli
+output
